@@ -20,8 +20,20 @@ poetry run pytest
 # Run single test
 poetry run pytest tests/test_file.py::test_function -v
 
-# Start database (once infrastructure exists)
+# Start database
 docker-compose up -d
+
+# View database logs
+docker-compose logs -f postgres
+
+# Reset database (regenerate data)
+docker-compose down -v && docker-compose up -d
+
+# Regenerate seed data
+poetry run python scripts/generate_data.py
+
+# Serve documentation
+poetry run mkdocs serve
 ```
 
 ## Project Overview
@@ -36,11 +48,11 @@ The system routes queries through three paths based on complexity:
 - **YELLOW**: Recursive traversal - uses `traverse()` handler with frontier-batched BFS
 - **RED**: Network algorithms - uses NetworkX handlers for pathfinding/centrality
 
-Key components (to be implemented in `src/virt_graph/`):
-- `handlers/base.py` - Safety limits (MAX_DEPTH=50, MAX_NODES=10K), frontier batching utilities
+Key components in `src/virt_graph/`:
+- `handlers/base.py` - Safety limits, frontier batching utilities, exceptions
 - `handlers/traversal.py` - Generic BFS traversal, schema-parameterized
-- `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX
-- `handlers/network.py` - Centrality, connected components
+- `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX (Phase 3)
+- `handlers/network.py` - Centrality, connected components (Phase 3)
 
 ## Critical Implementation Rules
 
@@ -49,12 +61,19 @@ Key components (to be implemented in `src/virt_graph/`):
 - **Hybrid SQL/Python**: Python orchestrates traversal, SQL filters; never bulk load entire tables
 - **Safety limits are non-negotiable**: MAX_DEPTH=50, MAX_NODES=10,000, MAX_RESULTS=1,000, QUERY_TIMEOUT=30s
 
+## Database
+
+PostgreSQL 14 with supply chain schema (15 tables, ~130K rows):
+- Connection: `postgresql://virt_graph:dev_password@localhost:5432/supply_chain`
+- Key tables: suppliers, supplier_relationships, parts, bill_of_materials, facilities, transport_routes
+
 ## MCP Integration
 
 Always use Context7 MCP tools (`resolve-library-id` → `get-library-docs`) when generating code, configuration, or needing library documentation.
 
 ## Project Management
 
-Update `CHANGELOG.md` and `pyproject.toml` with semantic versioning and change details on every commit
-
-Use pytest and run integration tests (don't get crazy with unit tests) to make sure things are workin. Write and run tests for each phase.
+- Update `CHANGELOG.md` and `pyproject.toml` with semantic versioning on every commit
+- Run integration tests for each phase (prefer integration over unit tests)
+- Documentation lives in `docs/` - update when adding features
+- Update `CLAUDE.md` if needed
