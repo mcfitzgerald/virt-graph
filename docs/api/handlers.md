@@ -224,3 +224,216 @@ def bom_explode(
         dict with BOM tree structure and aggregated quantities
     """
 ```
+
+---
+
+## Module: `virt_graph.handlers.pathfinding`
+
+### Functions
+
+#### `shortest_path()`
+
+```python
+def shortest_path(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    start_id: int,
+    end_id: int,
+    weight_col: str | None = None,
+    max_depth: int = 20,
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Find shortest path between two nodes using Dijkstra.
+
+    Uses bidirectional search and incremental graph loading
+    for efficiency.
+
+    Args:
+        conn: Database connection
+        nodes_table: Table containing nodes (e.g., "facilities")
+        edges_table: Table containing edges (e.g., "transport_routes")
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        start_id: Starting node ID
+        end_id: Target node ID
+        weight_col: Column for edge weights (None = hop count)
+        max_depth: Maximum search depth
+        id_column: Name of the ID column
+
+    Returns:
+        dict with:
+            - path: list of node IDs (None if no path)
+            - path_nodes: list of node dicts with details
+            - distance: total path weight/length
+            - edges: list of edge dicts along path
+            - nodes_explored: nodes loaded into graph
+            - error: error message if no path found
+
+    Raises:
+        SubgraphTooLarge: If search exceeds MAX_NODES
+    """
+```
+
+#### `all_shortest_paths()`
+
+```python
+def all_shortest_paths(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    start_id: int,
+    end_id: int,
+    weight_col: str | None = None,
+    max_depth: int = 20,
+    max_paths: int = 10,
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Find all shortest paths between two nodes.
+
+    Useful when there are multiple equivalent optimal routes.
+
+    Args:
+        max_paths: Maximum number of paths to return
+
+    Returns:
+        dict with:
+            - paths: list of paths (each is list of node IDs)
+            - distance: common distance of all paths
+            - path_count: number of paths found
+            - nodes_explored: nodes loaded into graph
+    """
+```
+
+---
+
+## Module: `virt_graph.handlers.network`
+
+### Functions
+
+#### `centrality()`
+
+```python
+def centrality(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    centrality_type: str = "degree",
+    top_n: int = 10,
+    weight_col: str | None = None,
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Calculate centrality for nodes in the graph.
+
+    WARNING: Loads entire graph into memory. Only use for
+    small-medium graphs under MAX_NODES.
+
+    Args:
+        centrality_type: Type of centrality:
+            - "degree": Number of connections (fast)
+            - "betweenness": Bridge nodes (slower)
+            - "closeness": Average distance to all (medium)
+            - "pagerank": Importance by incoming links (medium)
+        top_n: Number of top nodes to return
+
+    Returns:
+        dict with:
+            - results: list of {node, score} sorted by score desc
+            - centrality_type: type calculated
+            - graph_stats: nodes, edges, density, connectivity
+            - nodes_loaded: total nodes in graph
+
+    Raises:
+        SubgraphTooLarge: If graph exceeds MAX_NODES
+    """
+```
+
+#### `connected_components()`
+
+```python
+def connected_components(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    min_size: int = 1,
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Find connected components in the graph.
+
+    Useful for identifying isolated clusters or verifying
+    network connectivity.
+
+    Args:
+        min_size: Minimum component size to return
+
+    Returns:
+        dict with:
+            - components: list with node_ids, size, sample_nodes
+            - component_count: total number of components
+            - largest_component_size: size of largest
+            - isolated_nodes: nodes with no connections
+            - graph_stats: nodes, edges
+    """
+```
+
+#### `graph_density()`
+
+```python
+def graph_density(
+    conn: PgConnection,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    weight_col: str | None = None,
+) -> dict[str, Any]:
+    """
+    Calculate graph density and basic statistics.
+
+    Returns:
+        dict with:
+            - nodes, edges, density
+            - is_directed, is_connected/is_weakly_connected
+            - avg_degree, max_degree, min_degree
+    """
+```
+
+#### `neighbors()`
+
+```python
+def neighbors(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    node_id: int,
+    direction: str = "both",
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Get direct neighbors of a node.
+
+    Args:
+        node_id: Node to get neighbors for
+        direction: "outbound", "inbound", or "both"
+
+    Returns:
+        dict with:
+            - neighbors: list of neighbor node dicts
+            - outbound_count: outgoing edges
+            - inbound_count: incoming edges
+            - total_degree: unique neighbors
+    """
+```

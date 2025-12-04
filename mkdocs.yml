@@ -61,6 +61,7 @@ nav:
   - Development:
     - Phase 1 - Foundation: development/phase1.md
     - Phase 2 - Discovery: development/phase2.md
+    - Phase 3 - Query Paths: development/phase3.md
     - Gate Validations: development/gates.md
   - Ontology:
     - Discovery Session: ontology_discovery_session.md
