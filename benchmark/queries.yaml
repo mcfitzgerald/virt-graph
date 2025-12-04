@@ -1,0 +1,505 @@
+# Virtual Graph Benchmark Query Definitions
+# 25 queries covering GREEN (1-9), YELLOW (10-18), and RED (19-25) routes
+#
+# Each query is designed to test specific graph query capabilities:
+# - GREEN: Simple SQL (direct lookups, 1-2 hop joins)
+# - YELLOW: Recursive traversal (BFS/DFS via handlers)
+# - RED: Network algorithms (pathfinding, centrality)
+
+version: "1.0"
+benchmark_name: "Virtual Graph vs Neo4j Comparison"
+created: "2024-12-04"
+
+# Named test entities used across queries
+# These are generated in seed data with predictable values
+test_entities:
+  suppliers:
+    - name: "Acme Corp"
+      tier: 1
+      description: "Major tier 1 supplier"
+    - name: "GlobalTech Industries"
+      tier: 1
+      description: "Electronics tier 1 supplier"
+    - name: "Pacific Components"
+      tier: 2
+      description: "Component tier 2 supplier"
+    - name: "Eastern Electronics"
+      tier: 3
+      description: "Raw materials tier 3 supplier"
+    - name: "Delta Supplies"
+      tier: 2
+      description: "Industrial tier 2 supplier"
+
+  products:
+    - sku: "TURBO-001"
+      name: "Turbo Encabulator"
+      description: "Complex product with deep BOM"
+    - sku: "FLUX-001"
+      name: "Flux Capacitor"
+      description: "Electronic product"
+    - sku: "WIDGET-STD"
+      name: "Standard Widget"
+      description: "Simple product"
+
+  facilities:
+    - code: "FAC-CHI"
+      name: "Chicago Warehouse"
+      type: "warehouse"
+    - code: "FAC-LA"
+      name: "LA Distribution Center"
+      type: "distribution_center"
+    - code: "FAC-NYC"
+      name: "New York Factory"
+      type: "factory"
+
+# Query definitions
+queries:
+  # =========================================================================
+  # GREEN QUERIES (1-9): Simple SQL - lookups and joins
+  # =========================================================================
+
+  - id: 1
+    name: "find_supplier"
+    natural_language: "Find supplier Acme Corp"
+    category: "lookup"
+    route: "GREEN"
+    expected_handler: null  # Direct SQL
+    cypher_file: "01_find_supplier.cypher"
+    parameters:
+      supplier_name: "Acme Corp"
+    expected_result_count: 1
+    success_criteria:
+      correctness: "Returns exactly one supplier matching the name"
+      latency_target_ms: 100
+
+  - id: 2
+    name: "tier1_suppliers"
+    natural_language: "List all tier 1 suppliers"
+    category: "lookup"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "02_tier1_suppliers.cypher"
+    parameters: {}
+    expected_result_count: 50
+    success_criteria:
+      correctness: "Returns all active tier 1 suppliers"
+      latency_target_ms: 100
+
+  - id: 3
+    name: "parts_with_sensor"
+    natural_language: "Find all parts with 'sensor' in the description"
+    category: "lookup"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "03_parts_with_sensor.cypher"
+    parameters: {}
+    expected_result_count: null  # Variable based on seed data
+    success_criteria:
+      correctness: "Returns parts with 'sensor' in description (case-insensitive)"
+      latency_target_ms: 150
+
+  - id: 4
+    name: "parts_from_supplier"
+    natural_language: "Parts provided by Acme Corp"
+    category: "1-hop"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "04_parts_from_supplier.cypher"
+    parameters:
+      supplier_name: "Acme Corp"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns all parts where primary_supplier is Acme Corp"
+      latency_target_ms: 100
+
+  - id: 5
+    name: "facilities_by_state"
+    natural_language: "Facilities in California"
+    category: "lookup"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "05_facilities_by_state.cypher"
+    parameters:
+      state: "CA"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns all active facilities in California"
+      latency_target_ms: 100
+
+  - id: 6
+    name: "supplier_certifications"
+    natural_language: "Get all valid certifications for Acme Corp"
+    category: "1-hop"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "06_supplier_certifications.cypher"
+    parameters:
+      supplier_name: "Acme Corp"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns valid (is_valid=true) certifications for supplier"
+      latency_target_ms: 100
+
+  - id: 7
+    name: "products_with_part"
+    natural_language: "Products containing part PRT-000001"
+    category: "1-hop"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "07_products_with_part.cypher"
+    parameters:
+      part_number: "PRT-000001"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns products that directly contain this part"
+      latency_target_ms: 100
+
+  - id: 8
+    name: "orders_from_facility"
+    natural_language: "Orders shipping from Chicago Warehouse"
+    category: "1-hop"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "08_orders_from_facility.cypher"
+    parameters:
+      facility_name: "Chicago Warehouse"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns non-cancelled orders from this facility"
+      latency_target_ms: 150
+
+  - id: 9
+    name: "alternate_suppliers"
+    natural_language: "Find alternate suppliers for part PRT-000001"
+    category: "2-hop"
+    route: "GREEN"
+    expected_handler: null
+    cypher_file: "09_alternate_suppliers.cypher"
+    parameters:
+      part_number: "PRT-000001"
+    expected_result_count: null
+    success_criteria:
+      correctness: "Returns approved alternate suppliers with cost/lead time"
+      latency_target_ms: 100
+
+  # =========================================================================
+  # YELLOW QUERIES (10-18): Recursive traversal
+  # =========================================================================
+
+  - id: 10
+    name: "tier3_suppliers"
+    natural_language: "Find all tier 3 suppliers for Acme Corp"
+    category: "n-hop-recursive"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "10_tier3_suppliers.cypher"
+    parameters:
+      company_name: "Acme Corp"
+    expected_result_count: null
+    handler_params:
+      direction: "inbound"
+      max_depth: 10
+      stop_condition: "tier = 3"
+    success_criteria:
+      correctness: "Returns tier 3 suppliers in the upstream chain"
+      latency_target_ms: 2000
+
+  - id: 11
+    name: "upstream_suppliers"
+    natural_language: "Find all upstream suppliers of Pacific Components"
+    category: "n-hop-recursive"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "11_upstream_suppliers.cypher"
+    parameters:
+      supplier_name: "Pacific Components"
+    expected_result_count: null
+    handler_params:
+      direction: "inbound"
+      max_depth: 10
+    success_criteria:
+      correctness: "Returns all suppliers who directly or indirectly supply to target"
+      latency_target_ms: 2000
+
+  - id: 12
+    name: "downstream_customers"
+    natural_language: "Find all downstream customers of Eastern Electronics"
+    category: "n-hop-recursive"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "12_downstream_customers.cypher"
+    parameters:
+      supplier_name: "Eastern Electronics"
+    expected_result_count: null
+    handler_params:
+      direction: "outbound"
+      max_depth: 10
+    success_criteria:
+      correctness: "Returns all suppliers who receive from target (directly or indirectly)"
+      latency_target_ms: 2000
+
+  - id: 13
+    name: "bom_explosion"
+    natural_language: "Full parts list for the Turbo Encabulator"
+    category: "bom-traversal"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "13_bom_explosion.cypher"
+    parameters:
+      product_name: "Turbo Encabulator"
+    expected_result_count: null  # Will be determined from ground truth
+    handler_params:
+      direction: "outbound"
+      max_depth: 20
+    success_criteria:
+      correctness: "Returns all components at all levels of the BOM"
+      latency_target_ms: 2000
+
+  - id: 14
+    name: "where_used"
+    natural_language: "Where is part PRT-000100 used?"
+    category: "bom-traversal"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "14_where_used.cypher"
+    parameters:
+      part_number: "PRT-000100"
+    expected_result_count: null
+    handler_params:
+      direction: "outbound"  # child -> parent
+      max_depth: 20
+    success_criteria:
+      correctness: "Returns all parent assemblies that contain this part"
+      latency_target_ms: 2000
+
+  - id: 15
+    name: "supplier_impact"
+    natural_language: "What products are affected if Acme Corp fails?"
+    category: "impact-analysis"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "15_supplier_impact.cypher"
+    parameters:
+      supplier_name: "Acme Corp"
+    expected_result_count: null
+    handler_params:
+      relationship_chain:
+        - "provides"
+        - "component_of"
+        - "contains_component"
+    success_criteria:
+      correctness: "Returns products that depend on supplier's parts"
+      latency_target_ms: 3000
+
+  - id: 16
+    name: "supply_chain_depth"
+    natural_language: "Find supply chain depth from GlobalTech Industries"
+    category: "n-hop-recursive"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "16_supply_chain_depth.cypher"
+    parameters:
+      supplier_name: "GlobalTech Industries"
+    expected_result_count: null
+    handler_params:
+      direction: "inbound"
+      max_depth: 10
+      collect_depth: true
+    success_criteria:
+      correctness: "Returns upstream suppliers with their distance in chain"
+      latency_target_ms: 2000
+
+  - id: 17
+    name: "bom_leaf_parts"
+    natural_language: "Find all leaf parts (raw materials) in Turbo Encabulator"
+    category: "bom-traversal"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "17_bom_leaf_parts.cypher"
+    parameters:
+      product_name: "Turbo Encabulator"
+    expected_result_count: null
+    handler_params:
+      direction: "outbound"
+      max_depth: 20
+      leaf_only: true
+    success_criteria:
+      correctness: "Returns only parts with no children (leaf nodes)"
+      latency_target_ms: 2000
+
+  - id: 18
+    name: "common_suppliers"
+    natural_language: "Find suppliers common to Turbo Encabulator and Flux Capacitor"
+    category: "n-hop-recursive"
+    route: "YELLOW"
+    expected_handler: "traverse"
+    cypher_file: "18_common_suppliers.cypher"
+    parameters:
+      product1_name: "Turbo Encabulator"
+      product2_name: "Flux Capacitor"
+    expected_result_count: null
+    handler_params:
+      multi_traversal: true
+    success_criteria:
+      correctness: "Returns suppliers that provide parts to both products"
+      latency_target_ms: 4000
+
+  # =========================================================================
+  # RED QUERIES (19-25): Network algorithms
+  # =========================================================================
+
+  - id: 19
+    name: "cheapest_route"
+    natural_language: "What's the cheapest shipping route from Chicago Warehouse to LA Distribution Center?"
+    category: "pathfinding"
+    route: "RED"
+    expected_handler: "shortest_path"
+    cypher_file: "19_cheapest_route.cypher"
+    parameters:
+      from_facility: "Chicago Warehouse"
+      to_facility: "LA Distribution Center"
+    expected_result_count: 1
+    handler_params:
+      weight_col: "cost_usd"
+    success_criteria:
+      correctness: "Returns path with minimum total cost"
+      latency_target_ms: 5000
+
+  - id: 20
+    name: "fastest_route"
+    natural_language: "What's the fastest shipping route from Chicago Warehouse to LA Distribution Center?"
+    category: "pathfinding"
+    route: "RED"
+    expected_handler: "shortest_path"
+    cypher_file: "20_fastest_route.cypher"
+    parameters:
+      from_facility: "Chicago Warehouse"
+      to_facility: "LA Distribution Center"
+    expected_result_count: 1
+    handler_params:
+      weight_col: "transit_time_hours"
+    success_criteria:
+      correctness: "Returns path with minimum total transit time"
+      latency_target_ms: 5000
+
+  - id: 21
+    name: "shortest_distance"
+    natural_language: "What's the shortest distance route from New York Factory to LA Distribution Center?"
+    category: "pathfinding"
+    route: "RED"
+    expected_handler: "shortest_path"
+    cypher_file: "21_shortest_distance.cypher"
+    parameters:
+      from_facility: "New York Factory"
+      to_facility: "LA Distribution Center"
+    expected_result_count: 1
+    handler_params:
+      weight_col: "distance_km"
+    success_criteria:
+      correctness: "Returns path with minimum total distance"
+      latency_target_ms: 5000
+
+  - id: 22
+    name: "critical_facility_betweenness"
+    natural_language: "Which facility is most critical to our logistics network?"
+    category: "network-analysis"
+    route: "RED"
+    expected_handler: "centrality"
+    cypher_file: "22_critical_facility_betweenness.cypher"
+    parameters: {}
+    expected_result_count: 10
+    handler_params:
+      centrality_type: "betweenness"
+      top_n: 10
+    success_criteria:
+      correctness: "Returns facilities ranked by betweenness centrality"
+      latency_target_ms: 5000
+
+  - id: 23
+    name: "most_connected_supplier"
+    natural_language: "Which supplier has the most connections?"
+    category: "network-analysis"
+    route: "RED"
+    expected_handler: "centrality"
+    cypher_file: "23_most_connected_supplier.cypher"
+    parameters: {}
+    expected_result_count: 10
+    handler_params:
+      centrality_type: "degree"
+      top_n: 10
+    success_criteria:
+      correctness: "Returns suppliers ranked by total degree"
+      latency_target_ms: 5000
+
+  - id: 24
+    name: "isolated_facilities"
+    natural_language: "Find isolated or weakly connected facilities"
+    category: "network-analysis"
+    route: "RED"
+    expected_handler: "connected_components"
+    cypher_file: "24_isolated_facilities.cypher"
+    parameters: {}
+    expected_result_count: null
+    handler_params:
+      min_connections: 3
+    success_criteria:
+      correctness: "Returns facilities with fewer than 3 connections"
+      latency_target_ms: 5000
+
+  - id: 25
+    name: "all_routes"
+    natural_language: "Find all possible routes from Chicago Warehouse to LA Distribution Center"
+    category: "pathfinding"
+    route: "RED"
+    expected_handler: "all_shortest_paths"
+    cypher_file: "25_all_routes.cypher"
+    parameters:
+      from_facility: "Chicago Warehouse"
+      to_facility: "LA Distribution Center"
+    expected_result_count: null
+    handler_params:
+      max_paths: 10
+      max_hops: 5
+    success_criteria:
+      correctness: "Returns multiple valid routes with costs"
+      latency_target_ms: 5000
+
+# Benchmark configuration
+benchmark_config:
+  # Number of times to run each query for timing
+  iterations: 3
+
+  # Warmup runs before timing
+  warmup_runs: 1
+
+  # Timeout for individual queries
+  query_timeout_sec: 30
+
+  # Metrics to collect
+  metrics:
+    - correctness
+    - first_attempt_correct
+    - retries_needed
+    - execution_time_ms
+    - llm_tokens  # Virtual Graph only
+    - pattern_used  # Virtual Graph only
+
+  # Targets by route
+  targets:
+    GREEN:
+      accuracy: 1.0  # 100%
+      first_attempt: 0.9  # 90%
+      latency_p50_ms: 100
+      latency_p95_ms: 200
+
+    YELLOW:
+      accuracy: 0.9  # 90%
+      first_attempt: 0.7  # 70%
+      latency_p50_ms: 500
+      latency_p95_ms: 2000
+
+    RED:
+      accuracy: 0.8  # 80%
+      first_attempt: 0.6  # 60%
+      latency_p50_ms: 2000
+      latency_p95_ms: 5000

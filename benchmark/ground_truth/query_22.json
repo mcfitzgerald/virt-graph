@@ -1,0 +1,69 @@
+{
+  "query_id": 22.0,
+  "expected_count": 10.0,
+  "expected_node_ids": [
+    3.0,
+    42.0,
+    31.0,
+    37.0,
+    46.0,
+    48.0,
+    30.0,
+    9.0,
+    22.0,
+    4.0
+  ],
+  "rankings": [
+    {
+      "id": 3.0,
+      "name": "New York Factory",
+      "score": 21.0
+    },
+    {
+      "id": 42.0,
+      "name": "West Jasmine Distribution Center",
+      "score": 16.0
+    },
+    {
+      "id": 31.0,
+      "name": "East Clayton Distribution Center",
+      "score": 15.0
+    },
+    {
+      "id": 37.0,
+      "name": "South Nicoleshire Factory",
+      "score": 15.0
+    },
+    {
+      "id": 46.0,
+      "name": "North Christopher Hub",
+      "score": 11.0
+    },
+    {
+      "id": 48.0,
+      "name": "Alejandrofurt Factory",
+      "score": 11.0
+    },
+    {
+      "id": 30.0,
+      "name": "Lake Jerryfort Hub",
+      "score": 10.0
+    },
+    {
+      "id": 9.0,
+      "name": "North Melaniestad Distribution Center",
+      "score": 10.0
+    },
+    {
+      "id": 22.0,
+      "name": "Carlychester Distribution Center",
+      "score": 10.0
+    },
+    {
+      "id": 4.0,
+      "name": "Shanghai Hub",
+      "score": 10.0
+    }
+  ],
+  "generation_time_ms": 0.6611347198486328
+}

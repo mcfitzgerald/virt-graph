@@ -1,0 +1,16 @@
+{
+  "query_id": 5.0,
+  "expected_count": 1.0,
+  "expected_node_ids": [
+    2.0
+  ],
+  "sample_results": [
+    {
+      "id": 2.0,
+      "facility_code": "FAC-LA",
+      "name": "LA Distribution Center",
+      "city": "Los Angeles"
+    }
+  ],
+  "generation_time_ms": 0.6918907165527344
+}

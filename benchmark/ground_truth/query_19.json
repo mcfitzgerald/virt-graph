@@ -1,0 +1,13 @@
+{
+  "expected_path": [
+    1.0,
+    42.0,
+    50.0,
+    2.0
+  ],
+  "expected_distance": 9836.64,
+  "expected_count": 1.0,
+  "path_length": 4.0,
+  "query_id": 19.0,
+  "generation_time_ms": 30.965089797973633
+}

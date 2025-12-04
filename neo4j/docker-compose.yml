@@ -1,0 +1,34 @@
+# Neo4j Baseline for Virtual Graph Benchmark
+# Used for comparing graph query performance against Virtual Graph approach
+
+services:
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: virt-graph-neo4j
+    ports:
+      - "7474:7474"  # HTTP (Browser)
+      - "7687:7687"  # Bolt (Driver)
+    environment:
+      NEO4J_AUTH: neo4j/dev_password
+      NEO4J_PLUGINS: '["apoc"]'
+      # Performance tuning
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+      # Allow CSV import from any location
+      NEO4J_dbms_security_allow__csv__import__from__anywhere: "true"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:

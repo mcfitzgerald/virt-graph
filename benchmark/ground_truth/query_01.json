@@ -1,0 +1,17 @@
+{
+  "query_id": 1.0,
+  "expected_count": 1.0,
+  "expected_node_ids": [
+    1.0
+  ],
+  "sample_results": [
+    {
+      "id": 1.0,
+      "supplier_code": "SUP00001",
+      "name": "Acme Corp",
+      "tier": 1.0,
+      "country": "USA"
+    }
+  ],
+  "generation_time_ms": 1.767873764038086
+}

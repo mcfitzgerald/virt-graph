@@ -1,0 +1,255 @@
+{
+  "timestamp": "2025-12-04T10:01:52.428649",
+  "results": [
+    {
+      "query_id": 1,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.124786376953125,
+      "result_count": 1,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 2,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.6411075592041016,
+      "result_count": 49,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 3,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 4.237174987792969,
+      "result_count": 503,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 4,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.8943080902099609,
+      "result_count": 27,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 5,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.6241798400878906,
+      "result_count": 1,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 6,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.6968975067138672,
+      "result_count": 0,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 7,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.9789466857910156,
+      "result_count": 0,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 8,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 0.9601116180419922,
+      "result_count": 100,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 9,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.6358623504638672,
+      "result_count": 0,
+      "error": null,
+      "handler_used": null
+    },
+    {
+      "query_id": 10,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 5.021095275878906,
+      "result_count": 26,
+      "error": null,
+      "handler_used": "traverse"
+    },
+    {
+      "query_id": 11,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.724885940551758,
+      "result_count": 4,
+      "error": null,
+      "handler_used": "traverse"
+    },
+    {
+      "query_id": 12,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.633810043334961,
+      "result_count": 4,
+      "error": null,
+      "handler_used": "traverse"
+    },
+    {
+      "query_id": 13,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.4939308166503906,
+      "result_count": 0,
+      "error": "SubgraphTooLarge: Query would touch ~65,629 nodes (limit: 10,000). Consider adding filters or reducing depth.",
+      "handler_used": null
+    },
+    {
+      "query_id": 14,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.2278556823730469,
+      "result_count": 0,
+      "error": "SubgraphTooLarge: Query would touch ~42,931 nodes (limit: 10,000). Consider adding filters or reducing depth.",
+      "handler_used": null
+    },
+    {
+      "query_id": 15,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.2600421905517578,
+      "result_count": 0,
+      "error": "SubgraphTooLarge: Query would touch ~24,786 nodes (limit: 10,000). Consider adding filters or reducing depth.",
+      "handler_used": null
+    },
+    {
+      "query_id": 16,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.7320384979248047,
+      "result_count": 13,
+      "error": null,
+      "handler_used": "traverse"
+    },
+    {
+      "query_id": 17,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.3041496276855469,
+      "result_count": 0,
+      "error": "SubgraphTooLarge: Query would touch ~65,629 nodes (limit: 10,000). Consider adding filters or reducing depth.",
+      "handler_used": null
+    },
+    {
+      "query_id": 18,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.5349388122558594,
+      "result_count": 0,
+      "error": "SubgraphTooLarge: Query would touch ~65,629 nodes (limit: 10,000). Consider adding filters or reducing depth.",
+      "handler_used": null
+    },
+    {
+      "query_id": 19,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.5451183319091797,
+      "result_count": 1,
+      "error": null,
+      "handler_used": "shortest_path"
+    },
+    {
+      "query_id": 20,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.007007598876953,
+      "result_count": 1,
+      "error": null,
+      "handler_used": "shortest_path"
+    },
+    {
+      "query_id": 21,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 2.012968063354492,
+      "result_count": 1,
+      "error": null,
+      "handler_used": "shortest_path"
+    },
+    {
+      "query_id": 22,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 1.0249614715576172,
+      "result_count": 10,
+      "error": null,
+      "handler_used": "centrality"
+    },
+    {
+      "query_id": 23,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.4808177947998047,
+      "result_count": 10,
+      "error": null,
+      "handler_used": "centrality"
+    },
+    {
+      "query_id": 24,
+      "system": "virtual_graph",
+      "correct": true,
+      "first_attempt_correct": true,
+      "execution_time_ms": 0.8442401885986328,
+      "result_count": 0,
+      "error": null,
+      "handler_used": "connected_components"
+    },
+    {
+      "query_id": 25,
+      "system": "virtual_graph",
+      "correct": false,
+      "first_attempt_correct": false,
+      "execution_time_ms": 1.8012523651123047,
+      "result_count": 1,
+      "error": null,
+      "handler_used": "all_shortest_paths"
+    }
+  ]
+}

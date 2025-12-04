@@ -1,0 +1,61 @@
+{
+  "query_id": 4.0,
+  "expected_count": 27.0,
+  "expected_node_ids": [
+    182.0,
+    715.0,
+    1036.0,
+    1055.0,
+    1205.0,
+    1348.0,
+    1433.0,
+    1693.0,
+    1806.0,
+    2043.0,
+    2066.0,
+    2293.0,
+    2400.0,
+    2461.0,
+    2578.0,
+    2587.0,
+    2658.0,
+    2718.0,
+    2780.0,
+    3039.0,
+    3571.0,
+    3908.0,
+    4253.0,
+    4548.0,
+    4622.0,
+    4796.0,
+    4991.0
+  ],
+  "sample_results": [
+    {
+      "id": 182.0,
+      "part_number": "PRT-000182",
+      "description": "Speech Sensor Component"
+    },
+    {
+      "id": 715.0,
+      "part_number": "PRT-000715",
+      "description": "Claim Electronic Component"
+    },
+    {
+      "id": 1036.0,
+      "part_number": "PRT-001036",
+      "description": "Win Electronic Component"
+    },
+    {
+      "id": 1055.0,
+      "part_number": "PRT-001055",
+      "description": "Store Raw Material Component"
+    },
+    {
+      "id": 1205.0,
+      "part_number": "PRT-001205",
+      "description": "Day Cable Component"
+    }
+  ],
+  "generation_time_ms": 0.9419918060302734
+}
