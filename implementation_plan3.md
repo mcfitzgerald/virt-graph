@@ -1344,11 +1344,32 @@ services:
 
 **CRITICAL**: The migration script reads from `ontology/supply_chain.yaml` to ensure
 consistency with the Virtual Graph approach. Both systems derive their schema from the
-same source of truth.
+same source of truth for a fair TCO comparison.
+
+**Architecture**:
+
+```
+ontology/supply_chain.yaml (Single Source of Truth)
+       │
+       ├──→ Virtual Graph
+       │    └── handlers use sql_mapping
+       │    └── queries stay in PostgreSQL
+       │
+       └──→ Neo4j Migration (neo4j/migrate.py)
+            └── reads ontology to create labels/relationships
+            └── populates data from sql_mapping.table
+```
 
 **Implementation** (see `neo4j/migrate.py` for full code):
 
 ```python
+def load_ontology() -> dict:
+    """Load ontology as the single source of truth."""
+    ontology_path = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
+    with open(ontology_path) as f:
+        return yaml.safe_load(f)
+
+
 class OntologyDrivenMigrator:
     """
     Migrates supply chain data from PostgreSQL to Neo4j using ontology.
@@ -1358,6 +1379,21 @@ class OntologyDrivenMigrator:
     - relationships -> Neo4j relationship types
     - sql_mapping -> source tables and keys
     """
+
+    # Neo4j label mapping for special cases
+    LABEL_MAPPING = {
+        "SupplierCertification": "Certification",  # Shorter label
+    }
+
+    def create_constraints_from_ontology(self):
+        """Create Neo4j constraints from ontology classes."""
+        for class_name, class_def in self.ontology["classes"].items():
+            label = self._get_neo4j_label(class_name)
+            pk = class_def["sql_mapping"]["primary_key"]
+            session.run(
+                f"CREATE CONSTRAINT {label.lower()}_{pk}_unique "
+                f"IF NOT EXISTS FOR (n:{label}) REQUIRE n.{pk} IS UNIQUE"
+            )
 
     def migrate_nodes_from_ontology(self):
         """Migrate nodes using ontology class definitions."""
@@ -1371,21 +1407,34 @@ class OntologyDrivenMigrator:
     def migrate_relationships_from_ontology(self):
         """Migrate relationships using ontology relationship definitions."""
         for rel_name, rel_def in self.ontology["relationships"].items():
+            sql_mapping = rel_def["sql_mapping"]
+            table = sql_mapping["table"]
+            domain_key = sql_mapping["domain_key"]
+            range_key = sql_mapping["range_key"]
             # Distinguish FK relationships vs junction tables
-            # Use sql_mapping.table, domain_key, range_key
             # Include additional_columns as relationship properties
-            # Convert to UPPER_SNAKE_CASE for Neo4j
+            # Convert rel_name to UPPER_SNAKE_CASE for Neo4j
 ```
 
 **Key Design Decisions**:
 - Schema derived from `ontology/supply_chain.yaml`, not hardcoded
-- Node labels = ontology class names (with `LABEL_MAPPING` for special cases)
+- Node labels = ontology class names (with `LABEL_MAPPING` for special cases like SupplierCertification → Certification)
 - Relationship types = ontology relationship names in UPPER_SNAKE_CASE
 - Data sources = `sql_mapping.table` from ontology
-- Soft deletes respected via `soft_delete` and `soft_delete_column`
-- Properties from `additional_columns` in ontology
-- FK vs junction table relationships handled automatically
+- Soft deletes respected via `soft_delete` and `soft_delete_column` ontology fields
+- Properties from `additional_columns` in ontology relationship definitions
+- FK vs junction table relationships detected automatically based on whether `sql_mapping.table` matches the domain class table
 - Validation against ontology `row_count` expectations
+- Migration metrics tracked and saved to `neo4j/migration_metrics.json`
+
+**What the "Lift" Measures**:
+
+For a fair TCO comparison, the Neo4j "lift" measures:
+1. **Infrastructure**: Setting up graph DB (docker, config, monitoring)
+2. **Data Migration**: Moving data from PostgreSQL → Neo4j
+3. **Query Language**: Learning Cypher instead of staying with SQL
+
+**NOT** the cost of schema definition—both approaches use the same ontology.
 
 **Reduction**: From ~880 lines of hardcoded code to ~480 lines of ontology-driven code
 

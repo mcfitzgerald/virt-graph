@@ -1,0 +1,40 @@
+{
+  "duration_seconds": 57.34688901901245,
+  "ontology_version": "1.0",
+  "nodes_created": {
+    "Supplier": 500,
+    "Part": 5003,
+    "Product": 200,
+    "Facility": 50,
+    "Customer": 1000,
+    "Order": 20000,
+    "Shipment": 7995,
+    "Certification": 721
+  },
+  "relationships_created": {
+    "SUPPLIES_TO": 817,
+    "COMPONENT_OF": 14283,
+    "CONNECTS_TO": 197,
+    "PROVIDES": 5003,
+    "CAN_SUPPLY": 7582,
+    "CONTAINS_COMPONENT": 619,
+    "HAS_CERTIFICATION": 721,
+    "STORES_AT": 10056,
+    "PLACED_BY": 20000,
+    "SHIPS_FROM": 20000,
+    "CONTAINS_ITEM": 60241,
+    "FULFILLS": 7995,
+    "USES_ROUTE": 156
+  },
+  "total_nodes": 35469,
+  "total_relationships": 147670,
+  "decisions": [
+    "Created unique constraints on all node IDs for referential integrity",
+    "Filtered soft-deleted Supplier (deleted_at IS NULL)",
+    "Filtered soft-deleted Part (deleted_at IS NULL)"
+  ],
+  "edge_cases": [
+    "Converted Decimal types to float for Neo4j compatibility",
+    "Converted datetime/date types to string for Neo4j compatibility"
+  ]
+}

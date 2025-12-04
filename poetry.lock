@@ -602,10 +602,9 @@ files = [
 name = "neo4j"
 version = "6.0.3"
 description = "Neo4j Bolt driver for Python"
-optional = true
+optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"neo4j\""
 files = [
     {file = "neo4j-6.0.3-py3-none-any.whl", hash = "sha256:a92023854da96aed4270e0d03d6429cdd7f0d3335eae977370934f4732de5678"},
     {file = "neo4j-6.0.3.tar.gz", hash = "sha256:7fb79e166e281aafd67d521f6611763ebcdc529f26db506c5605f91ddcd825ea"},
@@ -1366,4 +1365,4 @@ neo4j = ["neo4j"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12"
-content-hash = "d87c5c2934b46d441626c414fe560cf0b3bbdf67013ab6e2e591a9c2952a87e1"
+content-hash = "7e8b00b6298855ec0d135ffd3224f7bb1e5fd28616c449c6c63df1f8cefa8990"

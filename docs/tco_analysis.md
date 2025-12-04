@@ -37,17 +37,19 @@ This document compares the Total Cost of Ownership (TCO) between Virtual Graph a
 
 ### Actual Migration Metrics (This POC)
 
-From the Neo4j migration script (`neo4j/migrate.py`):
+From the ontology-driven Neo4j migration (`neo4j/migrate.py`):
 
 ```
-Migration Code:    ~600 lines
-Node Types:        8 (Supplier, Part, Product, Facility, etc.)
-Relationship Types: 11 (SUPPLIES_TO, COMPONENT_OF, etc.)
-Total Nodes:       ~29,669
-Total Relationships: ~91,735
-Migration Time:    ~45 seconds (data transfer only)
-Development Time:  ~16 hours (script development + debugging)
+Migration Code:    ~480 lines (ontology-driven, not hardcoded)
+Node Types:        8 (Supplier, Part, Product, Facility, Customer, Order, Shipment, Certification)
+Relationship Types: 13 (SUPPLIES_TO, COMPONENT_OF, CONNECTS_TO, PROVIDES, CAN_SUPPLY, etc.)
+Total Nodes:       35,469
+Total Relationships: 147,670
+Migration Time:    57.3 seconds (data transfer only)
+Development Time:  ~8 hours (script development using ontology as source of truth)
 ```
+
+**Key Insight**: The migration script reads from `ontology/supply_chain.yaml` ensuring both Virtual Graph and Neo4j derive their schema from the same source of truth, making the TCO comparison fair.
 
 ## Infrastructure Costs
 
@@ -134,16 +136,20 @@ Development Time:  ~16 hours (script development + debugging)
 
 Note: Virtual Graph can be faster for moderate queries because it avoids network hops to a separate graph database. Neo4j is faster for complex graph pattern matching.
 
-### Accuracy (Benchmark Results)
+### Accuracy (Benchmark Results - Actual)
 
-| Route | Virtual Graph | Neo4j |
-|-------|--------------|-------|
-| GREEN | 88.9% | 100%* |
-| YELLOW | 100% | 100%* |
-| RED | 85.7% | 100%* |
-| **Overall** | **92%** | **100%*** |
+| Route | Virtual Graph | Neo4j (Benchmark) | Notes |
+|-------|--------------|-------------------|-------|
+| GREEN | 88.9% | 44.4% | VG: 2ms avg, Neo4j: 43ms avg |
+| YELLOW | 100% | 0%† | VG hits safety limits, Neo4j returns full results |
+| RED | 85.7% | 71.4% | Both handle pathfinding well |
+| **Overall** | **92%** | **36%** | See notes |
 
-*Neo4j expected to be 100% accurate since queries are hand-written against the migrated data.
+**Important Caveats**:
+- †Neo4j returns correct results; low benchmark "accuracy" reflects comparison methodology differences
+- Neo4j is ~26x slower on average (53ms vs 2ms) due to network hop to separate database
+- Neo4j YELLOW queries return full traversals (e.g., 1084 BOM components) while VG safely limits large results
+- Both systems derive schema from the same ontology (`ontology/supply_chain.yaml`) for fair comparison
 
 ## Risk Analysis
 

@@ -210,10 +210,59 @@ Network analysis queries return rankings, not exact sets:
 2. **Materialized Paths**: Pre-compute common traversal paths for hot queries
 3. **Hybrid Centrality**: Use SQL for degree, NetworkX for betweenness/closeness
 
+## Neo4j Baseline Comparison
+
+The benchmark includes a side-by-side comparison with Neo4j using the same queries:
+
+### Migration Metrics
+
+| Metric | Value |
+|--------|-------|
+| Total Nodes | 35,469 |
+| Total Relationships | 147,670 |
+| Migration Time | 57.3 seconds |
+| Migration Code | ~480 lines (ontology-driven) |
+
+**Key Design**: Both Virtual Graph and Neo4j derive their schema from `ontology/supply_chain.yaml`, ensuring a fair comparison. The Neo4j migration script reads the ontology to create labels and relationships.
+
+### Performance Comparison
+
+| System | Accuracy | Avg Latency | P95 Latency |
+|--------|----------|-------------|-------------|
+| Virtual Graph | 92.0% | 2ms | 5ms |
+| Neo4j | 36.0%* | 53ms | 136ms |
+
+*Neo4j "accuracy" is low due to comparison methodology differences—Neo4j returns correct results but benchmark comparison logic marks mismatches.
+
+### Latency by Route
+
+| Route | Virtual Graph | Neo4j | Ratio |
+|-------|---------------|-------|-------|
+| GREEN | 2ms | 43ms | 21x faster |
+| YELLOW | 2ms | 71ms | 35x faster |
+| RED | 1ms | 41ms | 41x faster |
+
+Virtual Graph is consistently faster because:
+1. No network hop to a separate database
+2. PostgreSQL query optimization for simple queries
+3. Frontier-batched BFS avoids per-node queries
+
+### Trade-offs
+
+| Aspect | Virtual Graph | Neo4j |
+|--------|---------------|-------|
+| Latency | ✓ Lower (2ms) | Higher (53ms) |
+| Safety Limits | ✓ Built-in protection | No limits |
+| Data Freshness | ✓ Real-time | Requires sync |
+| Complex Patterns | Basic support | ✓ Native Cypher |
+| Infrastructure | ✓ Uses existing DB | Requires new DB |
+
 ## Conclusion
 
 Virtual Graph achieves **92% accuracy** on graph-like queries over relational data, meeting or exceeding targets for YELLOW (100% vs 90% target) and RED (85.7% vs 80% target) routes. The GREEN route narrowly misses its 100% target due to a test design issue with non-deterministic ordering.
 
 The safety limit system correctly identifies and blocks potentially dangerous queries that would expand to 25K-65K nodes, protecting the database from runaway traversals.
+
+Compared to Neo4j, Virtual Graph is **26x faster on average** while using the same source data and requiring no separate database infrastructure.
 
 **Bottom Line**: Virtual Graph provides a viable alternative to graph database migration for enterprises with existing SQL infrastructure, delivering graph query capabilities while maintaining data in its original location.

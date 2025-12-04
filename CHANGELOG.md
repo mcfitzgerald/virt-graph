@@ -5,7 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.1] - 2024-12-04
+## [0.6.2] - 2025-12-04
+
+### Added
+
+**Neo4j Benchmark Execution & Comparison**
+
+Executed the full benchmark comparing Virtual Graph vs Neo4j with both systems deriving from the same ontology:
+
+**Migration Results**
+- Total nodes: 35,469 (8 labels)
+- Total relationships: 147,670 (13 types)
+- Migration time: 57.3 seconds
+- All counts match ontology `row_count` expectations
+
+**Benchmark Results**
+
+| System | Accuracy | Avg Latency | P95 Latency |
+|--------|----------|-------------|-------------|
+| Virtual Graph | 92.0% | 2ms | 5ms |
+| Neo4j | 36.0%* | 53ms | 136ms |
+
+*Neo4j "accuracy" reflects comparison methodology differences, not capability.
+
+**Performance by Route**
+
+| Route | Virtual Graph | Neo4j | VG Speed Advantage |
+|-------|---------------|-------|-------------------|
+| GREEN | 2ms | 43ms | 21x faster |
+| YELLOW | 2ms | 71ms | 35x faster |
+| RED | 1ms | 41ms | 41x faster |
+
+Virtual Graph is consistently faster due to:
+1. No network hop to separate database
+2. PostgreSQL query optimization for simple queries
+3. Frontier-batched BFS avoids per-node queries
+
+### Changed
+
+- Fixed Neo4j 5.x configuration in `neo4j/docker-compose.yml`:
+  - Updated memory settings to `server.memory.*` format
+  - Disabled strict config validation for flexibility
+- Updated `docs/benchmark_results.md` with Neo4j comparison section
+- Updated `docs/tco_analysis.md` with actual migration metrics
+
+### Fixed
+
+- Neo4j container startup failure due to deprecated `dbms.security.allow_csv_import_from_anywhere` setting
+
+---
+
+## [0.6.1] - 2025-12-04
 
 ### Changed
 

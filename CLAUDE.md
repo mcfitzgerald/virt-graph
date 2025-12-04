@@ -34,6 +34,12 @@ poetry run python scripts/generate_data.py
 
 # Serve documentation
 poetry run mkdocs serve
+
+# Run benchmark suite (requires Neo4j running)
+docker-compose -f neo4j/docker-compose.yml up -d
+poetry run python neo4j/migrate.py
+poetry run python benchmark/generate_ground_truth.py
+poetry run python benchmark/run.py --system both
 ```
 
 ## Project Overview
@@ -130,4 +136,5 @@ Always use Context7 MCP tools (`resolve-library-id` → `get-library-docs`) when
 - Run integration tests for each phase (prefer integration over unit tests)
 - Documentation lives in `docs/` - update when adding features
 - Update `CLAUDE.md` if needed
-- Use Claude's todo list to manage complex task
+- Use Claude's todo list to manage complex tasks
+- Current version: see `pyproject.toml` (follows semantic versioning)
