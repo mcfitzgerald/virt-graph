@@ -1338,47 +1338,56 @@ services:
       - neo4j_data:/data
 ```
 
-#### 5A.2 Migration Script
+#### 5A.2 Migration Script (Ontology-Driven)
 
-**Deliverable**: `neo4j/migrate.py`
+**Deliverable**: `neo4j/migrate.py` ✅ IMPLEMENTED
+
+**CRITICAL**: The migration script reads from `ontology/supply_chain.yaml` to ensure
+consistency with the Virtual Graph approach. Both systems derive their schema from the
+same source of truth.
+
+**Implementation** (see `neo4j/migrate.py` for full code):
 
 ```python
-"""
-Migrate data from PostgreSQL to Neo4j.
-Track effort: lines of code, time spent, decisions made.
-"""
-from neo4j import GraphDatabase
-import psycopg2
+class OntologyDrivenMigrator:
+    """
+    Migrates supply chain data from PostgreSQL to Neo4j using ontology.
 
-def migrate_all():
-    """Main migration entry point."""
-    # Track metrics
-    start_time = time.time()
+    The ontology defines:
+    - classes -> Neo4j node labels
+    - relationships -> Neo4j relationship types
+    - sql_mapping -> source tables and keys
+    """
 
-    # Connect to both databases
-    pg_conn = psycopg2.connect(...)
-    neo4j_driver = GraphDatabase.driver(...)
+    def migrate_nodes_from_ontology(self):
+        """Migrate nodes using ontology class definitions."""
+        for class_name, class_def in self.ontology["classes"].items():
+            table = class_def["sql_mapping"]["table"]
+            label = self._get_neo4j_label(class_name)
+            # Get columns from PostgreSQL information_schema
+            # Respect soft_delete flags from ontology
+            # Create nodes with converted types (Decimal→float, date→string)
 
-    # Migrate nodes (entities)
-    migrate_suppliers(pg_conn, neo4j_driver)
-    migrate_parts(pg_conn, neo4j_driver)
-    migrate_products(pg_conn, neo4j_driver)
-    migrate_facilities(pg_conn, neo4j_driver)
-
-    # Migrate edges (relationships)
-    migrate_supplier_relationships(pg_conn, neo4j_driver)
-    migrate_bom(pg_conn, neo4j_driver)
-    migrate_transport_routes(pg_conn, neo4j_driver)
-
-    # Report
-    elapsed = time.time() - start_time
-    print(f"Migration complete in {elapsed:.1f}s")
+    def migrate_relationships_from_ontology(self):
+        """Migrate relationships using ontology relationship definitions."""
+        for rel_name, rel_def in self.ontology["relationships"].items():
+            # Distinguish FK relationships vs junction tables
+            # Use sql_mapping.table, domain_key, range_key
+            # Include additional_columns as relationship properties
+            # Convert to UPPER_SNAKE_CASE for Neo4j
 ```
 
-**Document**:
-- Lines of migration code
-- Edge cases handled (nulls, orphans, type conversions)
-- Schema design decisions (labels, property names)
+**Key Design Decisions**:
+- Schema derived from `ontology/supply_chain.yaml`, not hardcoded
+- Node labels = ontology class names (with `LABEL_MAPPING` for special cases)
+- Relationship types = ontology relationship names in UPPER_SNAKE_CASE
+- Data sources = `sql_mapping.table` from ontology
+- Soft deletes respected via `soft_delete` and `soft_delete_column`
+- Properties from `additional_columns` in ontology
+- FK vs junction table relationships handled automatically
+- Validation against ontology `row_count` expectations
+
+**Reduction**: From ~880 lines of hardcoded code to ~480 lines of ontology-driven code
 
 #### 5A.3 Cypher Queries
 
@@ -1538,9 +1547,59 @@ def generate_report(results):
 
 **Before proceeding to Phase 6, validate**:
 
-1. **Neo4j loaded**: All data migrated, Cypher queries runnable
-2. **Ground truth**: All 25 queries have verified expected results
-3. **Runner works**: Can execute single query on both systems, compare results
+1. **Neo4j Running**: Start and verify Neo4j container
+   ```bash
+   # Start Neo4j
+   docker-compose -f neo4j/docker-compose.yml up -d
+
+   # Wait for healthy status (may take 30-60 seconds)
+   docker-compose -f neo4j/docker-compose.yml ps
+   # Should show: neo4j ... Up (healthy)
+
+   # Verify browser accessible at http://localhost:7474
+   # Default credentials: neo4j / dev_password
+   ```
+
+2. **Data Migrated**: Run migration and verify node/relationship counts
+   ```bash
+   # Install Neo4j driver (if not already installed)
+   poetry install --extras neo4j
+
+   # Run migration from PostgreSQL to Neo4j
+   poetry run python neo4j/migrate.py
+
+   # Expected output:
+   # - Suppliers: 500 nodes
+   # - Parts: 5,003 nodes
+   # - Products: 200 nodes
+   # - Facilities: 50 nodes
+   # - SUPPLIES_TO: ~817 relationships
+   # - COMPONENT_OF: ~14,283 relationships
+   # - CONNECTS_TO: ~197 relationships
+   # - Migration metrics saved to: neo4j/migration_metrics.json
+   ```
+
+3. **Cypher Queries Work**: Test at least 3 queries in Neo4j Browser
+   ```cypher
+   // In Neo4j Browser (http://localhost:7474), run:
+   MATCH (s:Supplier) RETURN count(s);           // Should return 500
+   MATCH (p:Part) RETURN count(p);               // Should return 5003
+   MATCH ()-[r:SUPPLIES_TO]->() RETURN count(r); // Should return ~817
+   ```
+
+4. **Ground truth generated**: All 25 queries have verified expected results
+   ```bash
+   poetry run python benchmark/generate_ground_truth.py
+   # Creates benchmark/ground_truth/*.json files
+   ```
+
+5. **Runner works on BOTH systems**: Test single query comparison
+   ```bash
+   # Test single query on both systems
+   poetry run python benchmark/run.py --system both --query 1
+
+   # Should show results for both Virtual Graph and Neo4j
+   ```
 
 **Deliverables checkpoint**:
 - [x] `neo4j/docker-compose.yml`
@@ -1590,13 +1649,54 @@ Before running the full benchmark, resolve the known issues from Phase 5:
 
 ### 6.1 Run Full Benchmark
 
-Execute all 25 queries × 2 systems:
+**Prerequisites** (verify before proceeding):
+```bash
+# 1. Verify Neo4j is running and healthy
+docker-compose -f neo4j/docker-compose.yml ps
+# Must show: neo4j ... Up (healthy)
 
-| Query # | VG Correct | VG Time | VG Retries | Neo4j Correct | Neo4j Time |
-|---------|------------|---------|------------|---------------|------------|
-| 1 | ✓ | 45ms | 0 | ✓ | 12ms |
+# 2. Verify PostgreSQL is running
+docker-compose ps
+# Must show: postgres ... Up
+
+# 3. Verify migration completed successfully
+cat neo4j/migration_metrics.json
+# Should show node/relationship counts and success status
+
+# 4. Verify Neo4j driver is installed
+poetry run python -c "import neo4j; print('Neo4j driver OK')"
+```
+
+**Execute benchmark on BOTH systems**:
+```bash
+# Run full benchmark comparing Virtual Graph vs Neo4j
+poetry run python benchmark/run.py --system both
+
+# This executes all 25 queries on:
+# - Virtual Graph (using handlers against PostgreSQL)
+# - Neo4j (using Cypher queries against Neo4j)
+# And compares results to ground truth for both
+```
+
+**Expected output files**:
+- `benchmark/results/benchmark_results.md` - Side-by-side comparison report
+- `benchmark/results/benchmark_results.json` - Raw data for both systems
+
+**Results table format** (actual results will vary):
+
+| Query # | VG Correct | VG Time | Neo4j Correct | Neo4j Time | Both Match |
+|---------|------------|---------|---------------|------------|------------|
+| 1 | ✓ | 45ms | ✓ | 12ms | ✓ |
 | ... | ... | ... | ... | ... | ... |
-| 25 | ✓ | 2.3s | 1 | ✓ | 0.8s |
+| 25 | ✓ | 2.3s | ✓ | 0.8s | ✓ |
+
+**If Neo4j is unavailable**, you can run VG-only benchmark:
+```bash
+# Fallback: Run only Virtual Graph benchmark
+poetry run python benchmark/run.py --system vg
+
+# Note: This will not produce a Neo4j comparison
+```
 
 ### 6.2 Analysis
 
@@ -1712,6 +1812,24 @@ initial setup effort by 90% while achieving 88% of Neo4j's accuracy.
 ## Examples
 [10+ annotated examples]
 ```
+
+### 6.4 Cleanup (Optional)
+
+After benchmark completion and documentation, optionally stop Neo4j to free resources:
+
+```bash
+# Stop Neo4j container (preserves data)
+docker-compose -f neo4j/docker-compose.yml down
+
+# To completely remove Neo4j data (start fresh next time)
+docker-compose -f neo4j/docker-compose.yml down -v
+```
+
+**Note**: Keep Neo4j running if you plan to:
+- Re-run benchmarks
+- Debug query results
+- Compare additional queries
+- Demo the comparison
 
 ---
 

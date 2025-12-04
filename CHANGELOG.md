@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2024-12-04
+
+### Changed
+
+**Neo4j Migration Refactored to Ontology-Driven Approach**
+
+- Refactored `neo4j/migrate.py` to read from `ontology/supply_chain.yaml`:
+  - Node labels derived from ontology `classes` (not hardcoded)
+  - Relationship types derived from ontology `relationships` (UPPER_SNAKE_CASE)
+  - Data sources from `sql_mapping.table` in ontology
+  - Soft delete handling from `soft_delete` and `soft_delete_column` flags
+  - Relationship properties from `additional_columns`
+- New `OntologyDrivenMigrator` class replaces hardcoded `PostgreSQLToNeo4jMigrator`
+- Automatic FK vs junction table relationship detection
+- Validation against ontology `row_count` expectations
+- Code reduction: ~880 lines → ~480 lines (45% reduction)
+
+**Why This Matters**
+
+For a fair TCO comparison between Virtual Graph and Neo4j, both approaches must
+derive from the same source of truth. Previously, the Neo4j migration had its
+schema hardcoded independently, which would unfairly penalize the Neo4j approach
+with additional schema definition work.
+
+```
+ontology/supply_chain.yaml (Single Source of Truth)
+       │
+       ├──→ Virtual Graph: uses sql_mapping for handlers
+       │
+       └──→ Neo4j Migration: reads ontology for labels/relationships
+```
+
+### Updated
+
+- `implementation_plan3.md` Section 5A.2 updated with implementation details
+
+---
+
 ## [0.6.0] - 2024-12-04
 
 ### Added
