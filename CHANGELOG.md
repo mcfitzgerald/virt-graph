@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2024-12-04
+
+### Added
+
+#### Phase 2: Discovery Foundation
+
+**Schema Introspection**
+- `.claude/skills/schema/scripts/introspect.sql` - Comprehensive introspection queries:
+  - Tables and columns with types
+  - Foreign key relationships
+  - Primary keys and unique constraints
+  - Row counts per table
+  - Check constraints and indexes
+  - Self-referential relationship detection
+  - Soft delete and audit column detection
+- `.claude/skills/schema/SKILL.md` - Schema skill definition for Claude Code
+
+**Ontology Discovery**
+- `ontology/supply_chain.yaml` - Discovered ontology from schema introspection:
+  - 8 entity classes (Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification)
+  - 12 relationships with traversal complexity classification
+  - Business rules and traversal patterns documented
+  - Validation results and data distribution
+- `docs/ontology_discovery_session.md` - Discovery session transcript:
+  - Round 1: Schema introspection findings
+  - Round 2: Business context interview
+  - Round 3: Data validation
+
+**Testing**
+- `tests/test_gate2_validation.py` - Gate 2 validation tests (21 tests):
+  - Ontology coverage tests
+  - Relationship mapping validation
+  - Self-referential edge integrity
+  - Query execution tests for GREEN/YELLOW/RED paths
+  - Named entity verification
+  - Data distribution validation
+
+### Gate 2 Validation Results
+
+All 21 tests passed:
+
+| Test Category | Tests | Result |
+|--------------|-------|--------|
+| Ontology Coverage | 2 | ✅ |
+| Relationship Mappings | 4 | ✅ |
+| Self-Referential Edges | 4 | ✅ |
+| Ontology Queries | 5 | ✅ |
+| Named Entities | 3 | ✅ |
+| Data Distribution | 2 | ✅ |
+| Gate 2 Summary | 1 | ✅ |
+
+---
+
 ## [0.1.0] - 2024-12-04
 
 ### Added

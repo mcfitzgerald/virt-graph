@@ -67,6 +67,23 @@ PostgreSQL 14 with supply chain schema (15 tables, ~130K rows):
 - Connection: `postgresql://virt_graph:dev_password@localhost:5432/supply_chain`
 - Key tables: suppliers, supplier_relationships, parts, bill_of_materials, facilities, transport_routes
 
+## Ontology
+
+The discovered ontology (`ontology/supply_chain.yaml`) maps semantic concepts to physical SQL:
+- **8 Classes**: Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
+- **12 Relationships** with traversal complexity (GREEN/YELLOW/RED)
+- Use ontology mappings when generating SQL for graph queries
+
+Key relationship complexities:
+- **GREEN**: Simple FK joins (provides, can_supply, contains_component, etc.)
+- **YELLOW**: Recursive traversal (supplies_to, component_of)
+- **RED**: Network algorithms with weights (connects_to)
+
+## Skills
+
+Claude Code skills in `.claude/skills/`:
+- `schema/` - Schema introspection queries and skill definition
+
 ## MCP Integration
 
 Always use Context7 MCP tools (`resolve-library-id` → `get-library-docs`) when generating code, configuration, or needing library documentation.

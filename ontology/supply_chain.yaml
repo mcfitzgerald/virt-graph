@@ -1,0 +1,629 @@
+# Virtual Graph Supply Chain Ontology
+# Discovered from PostgreSQL schema introspection
+#
+# This ontology maps semantic concepts to physical SQL schema,
+# enabling graph-like queries over relational data.
+
+version: "1.0"
+domain: "Supply Chain"
+discovered: "2024-12-04"
+discovery_rounds: 3
+database:
+  type: postgresql
+  version: "14"
+  connection: "postgresql://virt_graph:dev_password@localhost:5432/supply_chain"
+
+# ============================================================================
+# CLASSES (Entity Types)
+# ============================================================================
+# Each class maps to a database table with semantic meaning
+
+classes:
+  Supplier:
+    description: "Companies that provide materials, parts, or services in the supply chain"
+    sql_mapping:
+      table: suppliers
+      primary_key: id
+      identifier_columns: [supplier_code, name]
+    attributes:
+      tier:
+        type: integer
+        values: [1, 2, 3]
+        description: "Supply chain tier (1=direct supplier, 2=tier2, 3=tier3/raw materials)"
+        distribution:
+          tier_1: 50
+          tier_2: 150
+          tier_3: 300
+      country:
+        type: string
+        description: "Country of operation"
+      credit_rating:
+        type: string
+        description: "Financial credit rating"
+      is_active:
+        type: boolean
+        description: "Whether supplier is currently active"
+    soft_delete: true
+    soft_delete_column: deleted_at
+    audit_columns: [created_at, updated_at, created_by]
+    row_count: 500
+
+  Part:
+    description: "Components, materials, and subassemblies used in manufacturing"
+    sql_mapping:
+      table: parts
+      primary_key: id
+      identifier_columns: [part_number, description]
+    attributes:
+      category:
+        type: string
+        description: "Part category (Cable, Housing, Subassembly, Fastener, Motor, etc.)"
+      unit_cost:
+        type: decimal
+        description: "Cost per unit in base currency"
+      weight_kg:
+        type: decimal
+        description: "Weight in kilograms"
+      lead_time_days:
+        type: integer
+        description: "Lead time for procurement in days"
+      is_critical:
+        type: boolean
+        description: "Whether part is critical to operations"
+      min_stock_level:
+        type: integer
+        description: "Minimum inventory threshold"
+    soft_delete: true
+    soft_delete_column: deleted_at
+    audit_columns: [created_at, updated_at]
+    row_count: 5003
+
+  Product:
+    description: "Finished goods sold to customers"
+    sql_mapping:
+      table: products
+      primary_key: id
+      identifier_columns: [sku, name]
+    attributes:
+      category:
+        type: string
+        description: "Product category"
+      list_price:
+        type: decimal
+        description: "List price in base currency"
+      is_active:
+        type: boolean
+        description: "Whether product is currently available"
+      launch_date:
+        type: date
+        description: "Product launch date"
+    named_entities:
+      - sku: "TURBO-001"
+        name: "Turbo Encabulator"
+      - sku: "FLUX-001"
+        name: "Flux Capacitor"
+      - sku: "WIDGET-STD"
+        name: "Standard Widget"
+    audit_columns: [created_at, updated_at]
+    row_count: 200
+
+  Facility:
+    description: "Physical locations including warehouses, factories, and distribution centers"
+    sql_mapping:
+      table: facilities
+      primary_key: id
+      identifier_columns: [facility_code, name]
+    attributes:
+      facility_type:
+        type: string
+        values: [warehouse, factory, distribution_center]
+        description: "Type of facility"
+      city:
+        type: string
+        description: "City location"
+      state:
+        type: string
+        description: "State/province location"
+      country:
+        type: string
+        description: "Country location"
+      latitude:
+        type: decimal
+        description: "Geographic latitude"
+      longitude:
+        type: decimal
+        description: "Geographic longitude"
+      capacity_units:
+        type: integer
+        description: "Storage/processing capacity"
+      is_active:
+        type: boolean
+        description: "Whether facility is operational"
+    named_entities:
+      - facility_code: "FAC-CHI"
+        name: "Chicago Warehouse"
+      - facility_code: "FAC-LA"
+        name: "LA Distribution Center"
+      - facility_code: "FAC-NYC"
+        name: "New York Factory"
+    audit_columns: [created_at, updated_at]
+    row_count: 50
+
+  Customer:
+    description: "Customers who purchase products"
+    sql_mapping:
+      table: customers
+      primary_key: id
+      identifier_columns: [customer_code, name]
+    attributes:
+      customer_type:
+        type: string
+        values: [retail, wholesale, enterprise]
+        description: "Type of customer"
+      city:
+        type: string
+        description: "Customer city"
+      country:
+        type: string
+        description: "Customer country"
+    audit_columns: [created_at, updated_at]
+    row_count: 1000
+
+  Order:
+    description: "Customer purchase orders"
+    sql_mapping:
+      table: orders
+      primary_key: id
+      identifier_columns: [order_number]
+    attributes:
+      order_date:
+        type: timestamp
+        description: "Date order was placed"
+      required_date:
+        type: date
+        description: "Requested delivery date"
+      status:
+        type: string
+        values: [pending, confirmed, shipped, delivered, cancelled]
+        description: "Order status"
+      total_amount:
+        type: decimal
+        description: "Total order value"
+    audit_columns: [created_at, updated_at]
+    row_count: 20000
+
+  Shipment:
+    description: "Physical shipments of goods"
+    sql_mapping:
+      table: shipments
+      primary_key: id
+      identifier_columns: [shipment_number]
+    attributes:
+      carrier:
+        type: string
+        description: "Shipping carrier"
+      tracking_number:
+        type: string
+        description: "Carrier tracking number"
+      status:
+        type: string
+        values: [pending, in_transit, delivered, failed]
+        description: "Shipment status"
+      weight_kg:
+        type: decimal
+        description: "Total shipment weight"
+      cost_usd:
+        type: decimal
+        description: "Shipping cost"
+    audit_columns: [created_at, updated_at]
+    row_count: 7995
+
+  SupplierCertification:
+    description: "Quality certifications held by suppliers"
+    sql_mapping:
+      table: supplier_certifications
+      primary_key: id
+      identifier_columns: [certification_number]
+    attributes:
+      certification_type:
+        type: string
+        description: "Type of certification (ISO9001, ISO14001, etc.)"
+      issued_date:
+        type: date
+        description: "Date certification was issued"
+      expiry_date:
+        type: date
+        description: "Certification expiration date"
+      is_valid:
+        type: boolean
+        description: "Whether certification is currently valid"
+    audit_columns: [created_at]
+    row_count: 721
+
+# ============================================================================
+# RELATIONSHIPS (Graph Edges)
+# ============================================================================
+# Relationships define how entities connect, with traversal complexity hints
+
+relationships:
+  # --- SELF-REFERENTIAL (Graph Edges) ---
+
+  supplies_to:
+    description: "Supplier provides materials/parts to another supplier (tiered supply chain)"
+    domain: Supplier
+    range: Supplier
+    sql_mapping:
+      table: supplier_relationships
+      domain_key: seller_id
+      range_key: buyer_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+      is_reflexive: false  # no_self_supply constraint
+    business_rules: |
+      Represents supply chain tiers:
+      - Tier 3 suppliers (raw materials) sell to Tier 2
+      - Tier 2 suppliers (components) sell to Tier 1
+      - Tier 1 suppliers (direct) sell to us (implicit)
+      Direction: seller_id -> buyer_id means "supplies to"
+    traversal_complexity: YELLOW
+    is_hierarchical: true
+    additional_columns:
+      - relationship_type
+      - contract_start_date
+      - contract_end_date
+      - is_primary
+    row_count: 817
+
+  component_of:
+    description: "Part is a component of another part (Bill of Materials hierarchy)"
+    domain: Part
+    range: Part
+    sql_mapping:
+      table: bill_of_materials
+      domain_key: child_part_id
+      range_key: parent_part_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+      is_reflexive: false  # no_self_reference constraint
+    business_rules: |
+      Represents BOM hierarchy:
+      - child_part_id is a component OF parent_part_id
+      - Direction: child -> parent means "is component of"
+      - Reverse traversal (parent -> children) gives "contains"
+      Depth distribution: avg ~3.5 levels, max 5 levels
+    traversal_complexity: YELLOW
+    is_recursive: true
+    additional_columns:
+      - quantity
+      - unit
+      - is_optional
+      - assembly_sequence
+    row_count: 14283
+
+  connects_to:
+    description: "Transport route between facilities (logistics network)"
+    domain: Facility
+    range: Facility
+    sql_mapping:
+      table: transport_routes
+      domain_key: origin_facility_id
+      range_key: destination_facility_id
+      weight_columns:
+        distance: distance_km
+        cost: cost_usd
+        time: transit_time_hours
+    properties:
+      cardinality: many-to-many
+      is_directional: true  # Routes may be one-way or asymmetric
+      is_reflexive: false   # no_same_facility constraint
+    business_rules: |
+      Logistics network edges with weights:
+      - Routes can be asymmetric (different cost/time each direction)
+      - Multiple transport modes between same facilities
+      Use for shortest path (cost/distance/time optimization)
+    traversal_complexity: RED
+    is_weighted: true
+    additional_columns:
+      - transport_mode
+      - capacity_tons
+      - is_active
+    row_count: 197
+
+  # --- SIMPLE FOREIGN KEY RELATIONSHIPS ---
+
+  provides:
+    description: "Supplier is the primary source for a part"
+    domain: Supplier
+    range: Part
+    sql_mapping:
+      table: parts
+      domain_key: primary_supplier_id
+      range_key: id
+    properties:
+      cardinality: one-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+    business_rules: |
+      Each part has one primary supplier (nullable).
+      Query: "parts from supplier X" or "who supplies part Y"
+
+  can_supply:
+    description: "Supplier is an approved alternate source for a part"
+    domain: Supplier
+    range: Part
+    sql_mapping:
+      table: part_suppliers
+      domain_key: supplier_id
+      range_key: part_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+    additional_columns:
+      - supplier_part_number
+      - unit_cost
+      - lead_time_days
+      - is_approved
+    row_count: 7582
+
+  contains_component:
+    description: "Product contains a top-level part"
+    domain: Product
+    range: Part
+    sql_mapping:
+      table: product_components
+      domain_key: product_id
+      range_key: part_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+    additional_columns:
+      - quantity
+      - is_required
+    row_count: 619
+
+  has_certification:
+    description: "Supplier holds a quality certification"
+    domain: Supplier
+    range: SupplierCertification
+    sql_mapping:
+      table: supplier_certifications
+      domain_key: supplier_id
+      range_key: id
+    properties:
+      cardinality: one-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+
+  stores_at:
+    description: "Part inventory stored at a facility"
+    domain: Part
+    range: Facility
+    sql_mapping:
+      table: inventory
+      domain_key: part_id
+      range_key: facility_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+    additional_columns:
+      - quantity_on_hand
+      - quantity_reserved
+      - quantity_on_order
+    row_count: 10056
+
+  placed_by:
+    description: "Order placed by a customer"
+    domain: Order
+    range: Customer
+    sql_mapping:
+      table: orders
+      domain_key: id
+      range_key: customer_id
+    properties:
+      cardinality: many-to-one
+      is_directional: true
+    traversal_complexity: GREEN
+
+  ships_from:
+    description: "Order ships from a facility"
+    domain: Order
+    range: Facility
+    sql_mapping:
+      table: orders
+      domain_key: id
+      range_key: shipping_facility_id
+    properties:
+      cardinality: many-to-one
+      is_directional: true
+    traversal_complexity: GREEN
+
+  contains_item:
+    description: "Order contains a product line item"
+    domain: Order
+    range: Product
+    sql_mapping:
+      table: order_items
+      domain_key: order_id
+      range_key: product_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+    traversal_complexity: GREEN
+    additional_columns:
+      - quantity
+      - unit_price
+      - discount_percent
+    row_count: 60241
+
+  fulfills:
+    description: "Shipment fulfills an order"
+    domain: Shipment
+    range: Order
+    sql_mapping:
+      table: shipments
+      domain_key: id
+      range_key: order_id
+    properties:
+      cardinality: many-to-one
+      is_directional: true
+    traversal_complexity: GREEN
+
+  uses_route:
+    description: "Shipment uses a transport route"
+    domain: Shipment
+    range: Facility  # Via transport_routes join
+    sql_mapping:
+      table: shipments
+      domain_key: id
+      range_key: transport_route_id
+    properties:
+      cardinality: many-to-one
+      is_directional: true
+    traversal_complexity: GREEN
+
+# ============================================================================
+# BUSINESS RULES
+# ============================================================================
+# Domain knowledge that informs query interpretation
+
+business_rules:
+  supply_chain_structure:
+    - "Tier 1 suppliers have direct contracts with the company"
+    - "Tier 2 suppliers provide to Tier 1"
+    - "Tier 3 suppliers are raw material providers to Tier 2"
+    - "Higher tier numbers = further upstream in supply chain"
+
+  bom_structure:
+    - "Products are assembled from top-level BOM items"
+    - "BOM is recursive: parts contain subassemblies which contain components"
+    - "Leaf parts in BOM are raw materials/purchased components"
+    - "BOM depth averages 3.5 levels with max of 5"
+
+  logistics:
+    - "Shipments must follow valid transport routes"
+    - "Transport routes may be asymmetric (different cost each direction)"
+    - "Multiple transport modes possible between same facility pair"
+
+  data_quality:
+    - "All parts must have at least one supplier (primary or alternate)"
+    - "Soft deletes used for suppliers and parts (check deleted_at IS NULL)"
+    - "Active records filtered by is_active = true where applicable"
+
+# ============================================================================
+# TRAVERSAL PATTERNS
+# ============================================================================
+# Common query patterns and their recommended approaches
+
+traversal_patterns:
+  upstream_suppliers:
+    description: "Find all suppliers upstream from a given supplier"
+    relationship: supplies_to
+    direction: inbound  # Follow seller_id backwards
+    use_handler: traverse
+    example_queries:
+      - "Find all tier 3 suppliers for Acme Corp"
+      - "Who supplies to GlobalTech Industries?"
+      - "Trace upstream supply chain from Pacific Components"
+
+  downstream_customers:
+    description: "Find all suppliers downstream (buyers) from a given supplier"
+    relationship: supplies_to
+    direction: outbound  # Follow buyer_id forward
+    use_handler: traverse
+    example_queries:
+      - "Who does Eastern Electronics supply to?"
+      - "Find all companies that buy from Delta Supplies"
+
+  bom_explosion:
+    description: "Find all components recursively in a part's BOM"
+    relationship: component_of
+    direction: inbound  # parent -> children (reverse of component_of)
+    use_handler: traverse
+    example_queries:
+      - "Full parts list for Turbo Encabulator"
+      - "What components go into product X?"
+      - "BOM explosion for part PRT-000001"
+
+  bom_where_used:
+    description: "Find all parent assemblies that use a given part"
+    relationship: component_of
+    direction: outbound  # child -> parents
+    use_handler: traverse
+    example_queries:
+      - "Where is part X used?"
+      - "What assemblies contain this component?"
+
+  impact_analysis:
+    description: "Find all downstream entities affected by a supplier failure"
+    chain: [supplies_to, provides, component_of, contains_component]
+    use_handler: traverse
+    example_queries:
+      - "What products are affected if Acme Corp fails?"
+      - "Impact analysis for supplier disruption"
+
+  shortest_route:
+    description: "Find optimal path between facilities"
+    relationship: connects_to
+    weight_column: cost_usd | distance_km | transit_time_hours
+    use_handler: shortest_path
+    example_queries:
+      - "Cheapest route from Chicago to LA"
+      - "Fastest shipping path from NYC to Munich"
+
+  critical_facilities:
+    description: "Identify most connected or central facilities"
+    relationship: connects_to
+    use_handler: centrality
+    example_queries:
+      - "Most critical facility in logistics network"
+      - "Which warehouse has highest connectivity?"
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+# Data integrity verification results from discovery
+
+validation:
+  foreign_key_integrity:
+    bill_of_materials:
+      parent_part_id: "100% referential integrity"
+      child_part_id: "100% referential integrity"
+    supplier_relationships:
+      seller_id: "100% referential integrity"
+      buyer_id: "100% referential integrity"
+    transport_routes:
+      origin_facility_id: "100% referential integrity"
+      destination_facility_id: "100% referential integrity"
+
+  graph_properties:
+    supplier_relationships:
+      is_dag: true
+      description: "Tier structure forms valid DAG (no cycles)"
+    bill_of_materials:
+      is_dag: true
+      description: "BOM hierarchy is acyclic"
+    transport_routes:
+      is_connected: true
+      description: "All facilities reachable (connected graph)"
+
+  data_distribution:
+    suppliers:
+      total: 500
+      tier_1: 50
+      tier_2: 150
+      tier_3: 300
+    parts:
+      total: 5003
+    bom_edges:
+      total: 14283
+      avg_depth: 3.5
+      max_depth: 5
+    facilities:
+      total: 50
+    transport_routes:
+      total: 197

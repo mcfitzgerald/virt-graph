@@ -60,7 +60,10 @@ nav:
     - Handlers: api/handlers.md
   - Development:
     - Phase 1 - Foundation: development/phase1.md
+    - Phase 2 - Discovery: development/phase2.md
     - Gate Validations: development/gates.md
+  - Ontology:
+    - Discovery Session: ontology_discovery_session.md
 
 extra:
   social:

@@ -1,0 +1,251 @@
+# Phase 2: Discovery Foundation
+
+Phase 2 establishes the ontology discovery foundation that enables Virtual Graph to understand the semantic meaning of the database schema.
+
+## Overview
+
+**Goal**: Discovered ontology from raw schema + schema introspection skill
+
+**Deliverables**:
+
+| Deliverable | Description |
+|-------------|-------------|
+| `.claude/skills/schema/scripts/introspect.sql` | Schema introspection queries |
+| `.claude/skills/schema/SKILL.md` | Schema skill definition |
+| `ontology/supply_chain.yaml` | Discovered ontology |
+| `docs/ontology_discovery_session.md` | Discovery session transcript |
+
+## Schema Introspection
+
+The schema skill provides SQL queries to discover physical database structure:
+
+### Available Queries
+
+```sql
+-- 1. Tables and columns
+SELECT table_name, column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public';
+
+-- 2. Foreign key relationships
+SELECT source_table, source_column, target_table, target_column
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu ...
+WHERE tc.constraint_type = 'FOREIGN KEY';
+
+-- 3. Self-referential patterns (graph edges)
+-- Detects tables with two FKs to the same table
+```
+
+### Using the Schema Skill
+
+The schema skill is invoked when Claude needs to:
+
+1. **Translate ontology concepts to SQL**: Map "Supplier" class to `suppliers` table
+2. **Resolve relationships**: Find FK columns for `supplies_to` relationship
+3. **Validate queries**: Check column types before generating WHERE clauses
+4. **Understand patterns**: Identify soft deletes, audit columns, etc.
+
+## Ontology Structure
+
+The ontology maps semantic concepts to physical SQL:
+
+### Classes
+
+```yaml
+classes:
+  Supplier:
+    description: "Companies that provide materials/parts"
+    sql_mapping:
+      table: suppliers
+      primary_key: id
+      identifier_columns: [supplier_code, name]
+    attributes:
+      tier:
+        type: integer
+        values: [1, 2, 3]
+        description: "Supply chain tier"
+```
+
+### Relationships
+
+```yaml
+relationships:
+  supplies_to:
+    domain: Supplier
+    range: Supplier
+    sql_mapping:
+      table: supplier_relationships
+      domain_key: seller_id
+      range_key: buyer_id
+    properties:
+      cardinality: many-to-many
+      is_directional: true
+    traversal_complexity: YELLOW
+```
+
+### Traversal Complexity
+
+Each relationship is classified by query complexity:
+
+| Complexity | Description | Handler |
+|------------|-------------|---------|
+| **GREEN** | Simple SQL joins | None (direct SQL) |
+| **YELLOW** | Recursive traversal | `traverse()` |
+| **RED** | Network algorithms | NetworkX handlers |
+
+## Discovery Process
+
+The ontology was discovered through a 3-round process:
+
+### Round 1: Schema Introspection
+
+- Query `information_schema` for tables, columns, constraints
+- Identify foreign key relationships
+- Detect self-referential patterns (graph edges)
+- Generate initial ontology draft with questions
+
+### Round 2: Business Context Interview
+
+Required questions for each relationship:
+
+1. **Cardinality**: One-to-many or many-to-many?
+2. **Directionality**: Is this strictly one-way?
+3. **Reflexivity**: Can entities relate to themselves?
+4. **Optionality**: Required or optional?
+
+Example for `supplier_relationships`:
+
+> Q: What does seller_id → buyer_id represent?
+> A: Tiered supply chain - seller supplies to buyer
+
+### Round 3: Data Validation
+
+Verify discovered structure against actual data:
+
+```sql
+-- Check FK integrity (should be 0 orphans)
+SELECT COUNT(*) FROM supplier_relationships
+WHERE seller_id NOT IN (SELECT id FROM suppliers);
+
+-- Verify DAG structure
+SELECT s1.tier, s2.tier, COUNT(*)
+FROM supplier_relationships sr
+JOIN suppliers s1 ON sr.seller_id = s1.id
+JOIN suppliers s2 ON sr.buyer_id = s2.id
+GROUP BY s1.tier, s2.tier;
+```
+
+## Discovered Entities
+
+### Classes (8)
+
+| Class | Table | Row Count |
+|-------|-------|-----------|
+| Supplier | suppliers | 500 |
+| Part | parts | 5,003 |
+| Product | products | 200 |
+| Facility | facilities | 50 |
+| Customer | customers | 1,000 |
+| Order | orders | 20,000 |
+| Shipment | shipments | 7,995 |
+| SupplierCertification | supplier_certifications | 721 |
+
+### Graph Edges (Self-Referential)
+
+| Relationship | Edge Table | Complexity |
+|--------------|------------|------------|
+| supplies_to | supplier_relationships | YELLOW |
+| component_of | bill_of_materials | YELLOW |
+| connects_to | transport_routes | RED |
+
+### Simple FK Relationships (9)
+
+| Relationship | Complexity |
+|--------------|------------|
+| provides | GREEN |
+| can_supply | GREEN |
+| contains_component | GREEN |
+| has_certification | GREEN |
+| stores_at | GREEN |
+| placed_by | GREEN |
+| ships_from | GREEN |
+| contains_item | GREEN |
+| fulfills | GREEN |
+
+## Gate 2 Validation
+
+Validation criteria:
+
+1. **Coverage**: Every table maps to a class or relationship ✅
+2. **Correctness**: 5 simple queries validate ontology mappings ✅
+3. **Completeness**: All relationships have required properties ✅
+
+Test results:
+
+```
+tests/test_gate2_validation.py - 21 tests passed
+
+TestOntologyCoverage: 2 passed
+TestRelationshipMappings: 4 passed
+TestSelfReferentialEdges: 4 passed
+TestOntologyQueries: 5 passed
+TestNamedEntities: 3 passed
+TestDataDistribution: 2 passed
+TestGate2Summary: 1 passed
+```
+
+## Usage Examples
+
+### GREEN Query (Simple SQL)
+
+```python
+# "Find supplier Acme Corp"
+# Ontology lookup: Supplier.sql_mapping.table = "suppliers"
+# Generated SQL:
+SELECT * FROM suppliers WHERE name = 'Acme Corp';
+```
+
+### YELLOW Query (Recursive)
+
+```python
+# "Find all tier 3 suppliers for Acme Corp"
+# Ontology lookup: supplies_to relationship
+# Use traverse() handler with:
+traverse(
+    conn=db,
+    nodes_table="suppliers",
+    edges_table="supplier_relationships",
+    edge_from_col="seller_id",
+    edge_to_col="buyer_id",
+    start_id=1,  # Acme Corp
+    direction="inbound",
+    stop_condition="tier = 3"
+)
+```
+
+### RED Query (Network Algorithm)
+
+```python
+# "Cheapest route from Chicago to LA"
+# Ontology lookup: connects_to relationship with weight_columns.cost
+# Use shortest_path() handler with:
+shortest_path(
+    conn=db,
+    nodes_table="facilities",
+    edges_table="transport_routes",
+    edge_from_col="origin_facility_id",
+    edge_to_col="destination_facility_id",
+    start_id=1,  # Chicago
+    end_id=2,    # LA
+    weight_col="cost_usd"
+)
+```
+
+## Next Steps
+
+With the ontology complete, Phase 3 implements:
+
+1. **GREEN Path**: Claude generates SQL using ontology mappings
+2. **YELLOW Path**: Pattern discovery + traversal handler integration
+3. **RED Path**: NetworkX handlers for pathfinding and centrality
