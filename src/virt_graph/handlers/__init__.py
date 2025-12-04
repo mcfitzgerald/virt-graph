@@ -19,7 +19,21 @@ from .base import (
     fetch_edges_for_frontier,
     fetch_nodes,
 )
-from .traversal import traverse
+from .network import (
+    centrality,
+    connected_components,
+    graph_density,
+    neighbors,
+)
+from .pathfinding import (
+    all_shortest_paths,
+    shortest_path,
+)
+from .traversal import (
+    bom_explode,
+    traverse,
+    traverse_collecting,
+)
 
 __all__ = [
     # Constants
@@ -30,10 +44,21 @@ __all__ = [
     # Exceptions
     "SafetyLimitExceeded",
     "SubgraphTooLarge",
-    # Functions
+    # Base functions
     "check_limits",
     "estimate_reachable_nodes",
     "fetch_edges_for_frontier",
     "fetch_nodes",
+    # Traversal handlers (YELLOW)
     "traverse",
+    "traverse_collecting",
+    "bom_explode",
+    # Pathfinding handlers (RED)
+    "shortest_path",
+    "all_shortest_paths",
+    # Network handlers (RED)
+    "centrality",
+    "connected_components",
+    "graph_density",
+    "neighbors",
 ]

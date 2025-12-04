@@ -51,8 +51,34 @@ The system routes queries through three paths based on complexity:
 Key components in `src/virt_graph/`:
 - `handlers/base.py` - Safety limits, frontier batching utilities, exceptions
 - `handlers/traversal.py` - Generic BFS traversal, schema-parameterized
-- `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX (Phase 3)
-- `handlers/network.py` - Centrality, connected components (Phase 3)
+- `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX
+- `handlers/network.py` - Centrality, connected components
+
+## Handlers
+
+Available handlers for graph operations:
+
+**YELLOW (Recursive Traversal)**:
+- `traverse(conn, nodes_table, edges_table, edge_from_col, edge_to_col, start_id, direction, max_depth)` - Generic BFS traversal
+- `traverse_collecting(conn, ..., target_condition)` - Traverse and collect nodes matching condition
+- `bom_explode(conn, start_part_id, max_depth, include_quantities)` - BOM explosion with quantities
+
+**RED (Network Algorithms)**:
+- `shortest_path(conn, nodes_table, edges_table, ..., start_id, end_id, weight_col)` - Dijkstra shortest path
+- `all_shortest_paths(conn, ..., max_paths)` - Find all optimal routes
+- `centrality(conn, ..., centrality_type, top_n)` - Degree/betweenness/closeness/PageRank
+- `connected_components(conn, ..., min_size)` - Find graph clusters
+- `graph_density(conn, edges_table, ...)` - Network statistics
+- `neighbors(conn, ..., node_id, direction)` - Direct neighbor lookup
+
+## Patterns
+
+Raw pattern recordings in `patterns/raw/`:
+- Supplier tier traversal (upstream/downstream)
+- BOM explosion and where-used analysis
+- Impact analysis for supplier failures
+- Shortest path with cost/distance/time weights
+- Centrality and connectivity analysis
 
 ## Critical Implementation Rules
 
@@ -94,3 +120,4 @@ Always use Context7 MCP tools (`resolve-library-id` → `get-library-docs`) when
 - Run integration tests for each phase (prefer integration over unit tests)
 - Documentation lives in `docs/` - update when adding features
 - Update `CLAUDE.md` if needed
+- Use Claude's todo list to manage complex task

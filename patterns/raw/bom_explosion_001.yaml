@@ -1,0 +1,48 @@
+# Pattern: BOM Explosion
+# Discovered during Phase 3 implementation
+discovered: "2024-12-04"
+query: "Full parts list for the Turbo Encabulator"
+category: bom-traversal
+route: YELLOW
+
+# Handler approach
+handler_used: bom_explode
+handler_params:
+  start_part_id: 789  # Top-level part for Turbo Encabulator
+  max_depth: 20
+  include_quantities: true
+
+# Alternative using generic traverse
+alternative_handler: traverse
+alternative_params:
+  nodes_table: parts
+  edges_table: bill_of_materials
+  edge_from_col: parent_part_id
+  edge_to_col: child_part_id
+  start_id: 789
+  direction: outbound  # parent -> children
+  max_depth: 20
+  include_start: true
+
+# Ontology bindings
+ontology_bindings:
+  relationship: component_of
+  node_class: Part
+  direction_semantic: "part contains subparts"
+  # Note: component_of has domain=child, range=parent
+  # So we swap from/to for "explosion" (parent->children)
+
+result_correct: true
+execution_time_ms: 180
+nodes_returned: 342
+max_depth_found: 12
+
+notes: |
+  bom_explode is a convenience wrapper that also aggregates quantities.
+  Deep BOM (12 levels), handler outperforms CTE for this depth.
+
+  Key insight: component_of relationship is child->parent semantically,
+  but for BOM explosion we want parent->children, so we use:
+  - edge_from_col: parent_part_id
+  - edge_to_col: child_part_id
+  - direction: outbound

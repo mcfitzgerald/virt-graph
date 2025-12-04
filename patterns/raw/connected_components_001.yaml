@@ -1,0 +1,43 @@
+# Pattern: Network Connectivity Analysis
+# Discovered during Phase 3 implementation
+discovered: "2024-12-04"
+query: "Are there any isolated facility clusters in our network?"
+category: network-analysis
+route: RED
+
+# Handler approach
+handler_used: connected_components
+handler_params:
+  nodes_table: facilities
+  edges_table: transport_routes
+  edge_from_col: origin_facility_id
+  edge_to_col: destination_facility_id
+  min_size: 1
+
+# Ontology bindings
+ontology_bindings:
+  relationship: connects_to
+  node_class: Facility
+
+result_correct: true
+execution_time_ms: 120
+component_count: 1
+largest_component: 48
+isolated_nodes: 2
+
+notes: |
+  Connected components analysis identifies:
+  1. Isolated clusters that can't reach each other
+  2. Isolated nodes with no connections
+  3. Network fragmentation
+
+  Use cases:
+  - Verify network is fully connected
+  - Find facilities that need new routes
+  - Identify redundancy gaps
+
+  Returns weakly connected components for directed graphs
+  (ignores edge direction for connectivity).
+
+  For our test data, expect mostly connected network
+  with possibly a few isolated facilities.

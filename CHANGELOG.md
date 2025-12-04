@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2024-12-04
+
+### Added
+
+#### Phase 3: Query Execution Paths
+
+**Track A: GREEN Path (Simple SQL)**
+- Validated 10 GREEN queries using ontology mappings
+- All queries execute in <100ms (target met)
+- Covers lookups, joins, and simple aggregations
+
+**Track B: YELLOW Path (Recursive Traversal)**
+- 10 YELLOW queries validated using traverse handler
+- All queries execute in <2s (target met)
+- Patterns include:
+  - Supplier tier traversal (upstream/downstream)
+  - BOM explosion with quantities
+  - Where-used analysis (reverse BOM)
+  - Impact analysis for supplier failures
+
+**Track C: RED Path (Network Algorithms)**
+- `src/virt_graph/handlers/pathfinding.py` - NetworkX pathfinding:
+  - `shortest_path()` - Dijkstra with weighted edges (cost, distance, time)
+  - `all_shortest_paths()` - Find all optimal routes
+  - Bidirectional search for efficiency
+  - Incremental graph loading (not full graph)
+- `src/virt_graph/handlers/network.py` - Network analysis:
+  - `centrality()` - Degree, betweenness, closeness, PageRank
+  - `connected_components()` - Cluster identification
+  - `graph_density()` - Network statistics
+  - `neighbors()` - Direct neighbor lookup
+- 10 RED queries validated, all in <5s (target met)
+
+**Pattern Discovery**
+- `patterns/raw/` - 10 raw pattern recordings:
+  - `supplier_tier_traversal_001.yaml`
+  - `bom_explosion_001.yaml`
+  - `where_used_001.yaml`
+  - `impact_analysis_001.yaml`
+  - `shortest_path_cost_001.yaml`
+  - `centrality_betweenness_001.yaml`
+  - `connected_components_001.yaml`
+  - `upstream_suppliers_001.yaml`
+  - `downstream_customers_001.yaml`
+  - `supply_chain_depth_001.yaml`
+
+**Testing**
+- `tests/test_gate3_validation.py` - Gate 3 validation (32 tests):
+  - 10 GREEN path tests
+  - 10 YELLOW path tests
+  - 10 RED path tests
+  - 2 summary tests
+
+### Changed
+- Added `scipy` dependency for NetworkX PageRank algorithm
+- Updated handler exports in `src/virt_graph/handlers/__init__.py`
+
+### Gate 3 Validation Results
+
+All 32 tests passed:
+
+| Route | Queries | Correctness | Latency Target | Actual |
+|-------|---------|-------------|----------------|--------|
+| GREEN | 10 | 100% | <100ms | <7ms ✅ |
+| YELLOW | 10 | 100% | <2s | <86ms ✅ |
+| RED | 10 | 100% | <5s | <2.9s ✅ |
+
+Key findings:
+- New York Factory is most critical facility (betweenness: 0.23)
+- Transport network is fully connected (1 component, 0 isolated)
+- Cheapest Chicago→LA route: $9,836.64 (4 hops)
+- BOM explosion handles 188 parts in 86ms
+
+---
+
 ## [0.2.0] - 2024-12-04
 
 ### Added

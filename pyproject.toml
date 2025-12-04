@@ -1,6 +1,6 @@
 [project]
 name = "virt-graph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Graph-like queries over relational data using LLM reasoning"
 authors = [
     {name = "Your Name", email = "you@example.com"}
@@ -13,6 +13,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.0",
     "faker>=24.0",
+    "scipy (>=1.16.3,<2.0.0)",
 ]
 
 [project.optional-dependencies]

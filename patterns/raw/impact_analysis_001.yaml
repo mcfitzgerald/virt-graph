@@ -1,0 +1,59 @@
+# Pattern: Impact Analysis (Supplier Failure)
+# Discovered during Phase 3 implementation
+discovered: "2024-12-04"
+query: "What products are affected if Acme Corp fails?"
+category: impact-analysis
+route: YELLOW
+
+# Multi-step analysis required
+steps:
+  - name: find_supplier_parts
+    description: "Find parts supplied by Acme Corp"
+    sql: |
+      SELECT id FROM parts WHERE primary_supplier_id = 42
+
+  - name: where_used_traversal
+    description: "For each part, find all assemblies using it"
+    handler: traverse
+    handler_params:
+      nodes_table: parts
+      edges_table: bill_of_materials
+      edge_from_col: child_part_id
+      edge_to_col: parent_part_id
+      start_id: "{part_id}"  # For each part from step 1
+      direction: outbound
+      max_depth: 10
+
+  - name: find_affected_products
+    description: "Find products containing affected top-level parts"
+    sql: |
+      SELECT DISTINCT p.id, p.name
+      FROM products p
+      JOIN product_components pc ON p.id = pc.product_id
+      WHERE pc.part_id IN ({affected_part_ids})
+
+# Ontology bindings
+ontology_bindings:
+  chain:
+    - relationship: provides
+      direction: "supplier -> parts"
+    - relationship: component_of
+      direction: "parts -> assemblies (reverse)"
+    - relationship: contains_component
+      direction: "assemblies -> products (reverse)"
+
+result_correct: true
+execution_time_ms: 320  # Combined for all steps
+
+notes: |
+  Impact analysis requires chaining multiple relationships.
+  This is a common pattern for risk assessment:
+  1. Supplier -> Parts they supply (GREEN: simple FK)
+  2. Parts -> Assemblies that use them (YELLOW: where-used traversal)
+  3. Assemblies -> Products (GREEN: simple join)
+
+  Future optimization: Could create a dedicated impact_analysis handler
+  that combines these steps with early termination.
+
+  Alternative approach: Start from supplier and do multi-hop traversal
+  if we add cross-entity relationship traversal to handlers.

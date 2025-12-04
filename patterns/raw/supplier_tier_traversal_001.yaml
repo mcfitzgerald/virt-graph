@@ -1,0 +1,53 @@
+# Pattern: Supplier Tier Traversal
+# Discovered during Phase 3 implementation
+discovered: "2024-12-04"
+query: "Find all tier 3 suppliers for Acme Corp"
+category: n-hop-recursive
+route: YELLOW
+
+# SQL approach attempted (CTE)
+sql_attempted: |
+  WITH RECURSIVE tier_chain AS (
+    SELECT seller_id, buyer_id, 1 as depth
+    FROM supplier_relationships
+    WHERE buyer_id = 42  -- Acme Corp
+
+    UNION ALL
+
+    SELECT sr.seller_id, sr.buyer_id, tc.depth + 1
+    FROM supplier_relationships sr
+    JOIN tier_chain tc ON sr.buyer_id = tc.seller_id
+    WHERE tc.depth < 10
+  )
+  SELECT DISTINCT s.*
+  FROM tier_chain tc
+  JOIN suppliers s ON tc.seller_id = s.id
+  WHERE s.tier = 3
+
+# Handler approach (preferred)
+handler_used: traverse_collecting
+handler_params:
+  nodes_table: suppliers
+  edges_table: supplier_relationships
+  edge_from_col: seller_id  # domain_key from ontology
+  edge_to_col: buyer_id     # range_key from ontology
+  start_id: 42              # Acme Corp's ID
+  target_condition: "tier = 3"
+  direction: inbound        # upstream suppliers
+  max_depth: 10
+
+# Ontology bindings used
+ontology_bindings:
+  relationship: supplies_to
+  domain_class: Supplier
+  range_class: Supplier
+  direction_semantic: "upstream supplier chain"
+
+result_correct: true
+execution_time_ms: 45
+nodes_returned: 15  # Example count
+notes: |
+  Handler approach cleaner than CTE for variable depth.
+  Using inbound direction follows seller_id backwards (upstream).
+  Stop at tier 3 could also use stop_condition instead of target_condition
+  for different semantics (stop vs collect).
