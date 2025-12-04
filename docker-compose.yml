@@ -1,0 +1,24 @@
+# Virtual Graph - PostgreSQL Development Database
+# Supply chain data for graph-like query experiments
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: supply_chain
+      POSTGRES_USER: virt_graph
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./data/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U virt_graph -d supply_chain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

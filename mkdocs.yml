@@ -1,0 +1,68 @@
+site_name: Virtual Graph
+site_description: Graph-like queries over relational data using LLM reasoning
+site_url: https://github.com/your-org/virt-graph
+
+repo_name: virt-graph
+repo_url: https://github.com/your-org/virt-graph
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Query Routing: architecture/query-routing.md
+    - Handlers: architecture/handlers.md
+  - API Reference:
+    - Handlers: api/handlers.md
+  - Development:
+    - Phase 1 - Foundation: development/phase1.md
+    - Gate Validations: development/gates.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/virt-graph
