@@ -11,7 +11,7 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/virt-graph.git
+git clone https://github.com/mcfitzgerald/virt-graph.git
 cd virt-graph
 ```
 
