@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2025-12-04
+
+### Added
+
+**Ontology-Driven Migration Tests**
+
+Added `TestOntologyDrivenMigration` class to Gate 5 tests (7 new tests):
+- `test_migration_loads_ontology` - Verify `load_ontology()` function exists and works
+- `test_node_labels_match_ontology_classes` - Verify label mapping from ontology
+- `test_relationship_types_are_upper_snake_case` - Verify naming convention
+- `test_sql_mappings_complete_for_classes` - Verify class sql_mapping completeness
+- `test_sql_mappings_complete_for_relationships` - Verify relationship sql_mapping
+- `test_migration_metrics_node_counts_match_ontology` - Verify node counts match
+- `test_migration_metrics_relationship_counts_match_ontology` - Verify relationship counts
+
+### Changed
+
+- Updated `CLAUDE.md` with testing section and named test entities
+
+Total tests: 138 (all passing)
+
+---
+
 ## [0.6.2] - 2025-12-04
 
 ### Added

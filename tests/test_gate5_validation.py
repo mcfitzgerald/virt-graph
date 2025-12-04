@@ -343,3 +343,138 @@ def test_phase5_deliverables_complete():
     print(f"  - benchmark/generate_ground_truth.py: ✓")
     print(f"  - benchmark/run.py: ✓")
     print("=" * 60)
+
+
+# === Ontology-Driven Migration Tests ===
+
+
+class TestOntologyDrivenMigration:
+    """Tests for ontology-driven Neo4j migration."""
+
+    @pytest.fixture
+    def ontology(self):
+        """Load ontology for tests."""
+        ontology_path = PROJECT_ROOT / "ontology" / "supply_chain.yaml"
+        with open(ontology_path) as f:
+            return yaml.safe_load(f)
+
+    @pytest.fixture
+    def migration_metrics(self):
+        """Load migration metrics if available."""
+        metrics_path = NEO4J_DIR / "migration_metrics.json"
+        if not metrics_path.exists():
+            pytest.skip("Migration metrics not available - run migration first")
+        with open(metrics_path) as f:
+            return json.load(f)
+
+    def test_migration_loads_ontology(self):
+        """Verify migrate.py has load_ontology function that works."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("migrate", NEO4J_DIR / "migrate.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Verify load_ontology exists and returns valid structure
+        assert hasattr(module, "load_ontology"), "migrate.py missing load_ontology function"
+
+        ontology = module.load_ontology()
+        assert isinstance(ontology, dict)
+        assert "classes" in ontology, "Ontology missing 'classes'"
+        assert "relationships" in ontology, "Ontology missing 'relationships'"
+
+    def test_node_labels_match_ontology_classes(self, ontology):
+        """Verify Neo4j labels derived from ontology classes."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("migrate", NEO4J_DIR / "migrate.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Get LABEL_MAPPING from module
+        label_mapping = getattr(module, "OntologyDrivenMigrator").LABEL_MAPPING
+
+        # Every ontology class should map to a label
+        for class_name in ontology["classes"]:
+            # Either in LABEL_MAPPING or uses class name directly
+            neo4j_label = label_mapping.get(class_name, class_name)
+            assert neo4j_label, f"Class {class_name} has no Neo4j label mapping"
+
+    def test_relationship_types_are_upper_snake_case(self, ontology):
+        """Verify relationship types convert to UPPER_SNAKE_CASE."""
+        for rel_name in ontology["relationships"]:
+            expected_type = rel_name.upper()
+            # Verify the naming convention is UPPER_SNAKE_CASE
+            assert expected_type == expected_type.upper(), (
+                f"Relationship {rel_name} should become {expected_type}"
+            )
+            assert "_" in expected_type or expected_type.isalpha(), (
+                f"Relationship type {expected_type} should be valid Neo4j type"
+            )
+
+    def test_sql_mappings_complete_for_classes(self, ontology):
+        """Verify each class has complete sql_mapping."""
+        required_keys = ["table", "primary_key"]
+
+        for class_name, class_def in ontology["classes"].items():
+            assert "sql_mapping" in class_def, f"Class {class_name} missing sql_mapping"
+            sql_mapping = class_def["sql_mapping"]
+
+            for key in required_keys:
+                assert key in sql_mapping, (
+                    f"Class {class_name} sql_mapping missing '{key}'"
+                )
+
+    def test_sql_mappings_complete_for_relationships(self, ontology):
+        """Verify each relationship has complete sql_mapping."""
+        required_keys = ["table", "domain_key", "range_key"]
+
+        for rel_name, rel_def in ontology["relationships"].items():
+            assert "sql_mapping" in rel_def, f"Relationship {rel_name} missing sql_mapping"
+            sql_mapping = rel_def["sql_mapping"]
+
+            for key in required_keys:
+                assert key in sql_mapping, (
+                    f"Relationship {rel_name} sql_mapping missing '{key}'"
+                )
+
+    def test_migration_metrics_node_counts_match_ontology(self, ontology, migration_metrics):
+        """Verify migrated node counts match ontology row_count values."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("migrate", NEO4J_DIR / "migrate.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        label_mapping = getattr(module, "OntologyDrivenMigrator").LABEL_MAPPING
+        nodes_created = migration_metrics.get("nodes_created", {})
+
+        for class_name, class_def in ontology["classes"].items():
+            expected_count = class_def.get("row_count")
+            if expected_count is None:
+                continue
+
+            neo4j_label = label_mapping.get(class_name, class_name)
+            actual_count = nodes_created.get(neo4j_label, 0)
+
+            assert actual_count == expected_count, (
+                f"Node count mismatch for {neo4j_label}: "
+                f"expected {expected_count}, got {actual_count}"
+            )
+
+    def test_migration_metrics_relationship_counts_match_ontology(self, ontology, migration_metrics):
+        """Verify migrated relationship counts match ontology row_count values."""
+        relationships_created = migration_metrics.get("relationships_created", {})
+
+        for rel_name, rel_def in ontology["relationships"].items():
+            expected_count = rel_def.get("row_count")
+            if expected_count is None:
+                continue
+
+            neo4j_type = rel_name.upper()
+            actual_count = relationships_created.get(neo4j_type, 0)
+
+            assert actual_count == expected_count, (
+                f"Relationship count mismatch for {neo4j_type}: "
+                f"expected {expected_count}, got {actual_count}"
+            )

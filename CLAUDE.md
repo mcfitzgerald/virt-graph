@@ -40,6 +40,10 @@ docker-compose -f neo4j/docker-compose.yml up -d
 poetry run python neo4j/migrate.py
 poetry run python benchmark/generate_ground_truth.py
 poetry run python benchmark/run.py --system both
+
+# Check database status
+docker-compose ps
+docker-compose logs -f  # Follow all logs
 ```
 
 ## Project Overview
@@ -102,6 +106,11 @@ PostgreSQL 14 with supply chain schema (15 tables, ~130K rows):
 - Connection: `postgresql://virt_graph:dev_password@localhost:5432/supply_chain`
 - Key tables: suppliers, supplier_relationships, parts, bill_of_materials, facilities, transport_routes
 
+Named test entities for queries:
+- Suppliers: "Acme Corp", "GlobalTech Industries", "Pacific Components"
+- Products: "Turbo Encabulator" (TURBO-001), "Flux Capacitor" (FLUX-001)
+- Facilities: "Chicago Warehouse" (FAC-CHI), "LA Distribution Center" (FAC-LA)
+
 ## Ontology
 
 The discovered ontology (`ontology/supply_chain.yaml`) maps semantic concepts to physical SQL:
@@ -129,6 +138,17 @@ Use skills to:
 ## MCP Integration
 
 Always use Context7 MCP tools (`resolve-library-id` → `get-library-docs`) when generating code, configuration, or needing library documentation.
+
+## Testing
+
+Gate validation tests in `tests/`:
+- `test_gate1_validation.py` - Database and core handler tests
+- `test_gate2_validation.py` - Ontology and traversal tests
+- `test_gate3_validation.py` - Pattern matching tests
+- `test_gate4_validation.py` - Pathfinding and network tests
+- `test_gate5_validation.py` - Benchmark infrastructure tests
+
+Run specific test: `poetry run pytest tests/test_gate1_validation.py::test_bom_traversal -v`
 
 ## Project Management
 
