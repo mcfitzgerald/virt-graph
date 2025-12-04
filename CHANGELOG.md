@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2025-12-04
+
+### Changed
+
+**Project Folder Reorganization**
+
+Reorganized docker-compose files for consistency:
+
+```
+BEFORE:                          AFTER:
+docker-compose.yml         →     postgres/docker-compose.yml
+data/                      →     postgres/
+  schema.sql               →       schema.sql
+  seed.sql                 →       seed.sql
+```
+
+- Moved PostgreSQL docker-compose.yml to `postgres/` folder
+- Moved `data/schema.sql` and `data/seed.sql` to `postgres/`
+- Updated all documentation and scripts with new paths
+- Both databases now have consistent folder structure:
+  - `postgres/docker-compose.yml`
+  - `neo4j/docker-compose.yml`
+
+**Files Updated:**
+- `CLAUDE.md` - New docker-compose commands
+- `SPEC.md` - Updated deliverable paths
+- `docs/` - All installation and development guides
+- `scripts/generate_data.py` - Output path
+- `tests/test_gate1_validation.py` - Prerequisites comment
+- `neo4j/migrate.py` - Requirements comment
+- `.gitignore` - Updated seed.sql path
+
+---
+
 ## [0.6.3] - 2025-12-04
 
 ### Added

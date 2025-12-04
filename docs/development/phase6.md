@@ -146,7 +146,7 @@ Created four comprehensive documentation files:
 
 ```bash
 # Ensure PostgreSQL is running
-docker-compose ps
+docker-compose -f postgres/docker-compose.yml ps
 
 # Run Virtual Graph benchmark
 poetry run python benchmark/run.py --system vg

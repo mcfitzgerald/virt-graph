@@ -52,7 +52,7 @@ PASSED
 
 ```bash
 # Start database first
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml up -d
 
 # Run all Gate 1 tests
 poetry run pytest tests/test_gate1_validation.py -v

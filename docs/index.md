@@ -33,7 +33,7 @@ graph LR
 
 ```bash
 # Start PostgreSQL
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml up -d
 
 # Install dependencies
 poetry install

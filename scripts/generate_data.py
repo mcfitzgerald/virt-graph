@@ -27,7 +27,7 @@ Faker.seed(42)
 random.seed(42)
 
 # Output path
-OUTPUT_PATH = Path(__file__).parent.parent / "data" / "seed.sql"
+OUTPUT_PATH = Path(__file__).parent.parent / "postgres" / "seed.sql"
 
 
 def sql_str(val: str | None) -> str:

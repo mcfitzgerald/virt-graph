@@ -133,7 +133,7 @@ PHASE 6: Evaluation & Documentation
 #### 1A.1 PostgreSQL Setup
 
 ```yaml
-# docker-compose.yml
+# postgres/docker-compose.yml
 services:
   postgres:
     image: postgres:14
@@ -144,13 +144,13 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./data/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
 ```
 
 #### 1A.2 Schema Design
 
-**Deliverable**: `data/schema.sql`
+**Deliverable**: `postgres/schema.sql`
 
 Supply chain schema with realistic "enterprise messiness":
 - ~15 tables with inconsistent naming conventions
@@ -394,8 +394,8 @@ def traverse(
    - Transport network is connected
 
 **Deliverables checkpoint**:
-- [ ] `docker-compose.yml` - PostgreSQL working
-- [ ] `data/schema.sql` - All 15 tables created
+- [ ] `postgres/docker-compose.yml` - PostgreSQL working
+- [ ] `postgres/schema.sql` - All 15 tables created
 - [ ] `scripts/generate_data.py` - 130K rows generated
 - [ ] `handlers/base.py` - Safety infrastructure
 - [ ] `handlers/traversal.py` - BFS with frontier batching
@@ -1705,7 +1705,7 @@ docker-compose -f neo4j/docker-compose.yml ps
 # Must show: neo4j ... Up (healthy)
 
 # 2. Verify PostgreSQL is running
-docker-compose ps
+docker-compose -f postgres/docker-compose.yml ps
 # Must show: postgres ... Up
 
 # 3. Verify migration completed successfully
@@ -1885,8 +1885,8 @@ docker-compose -f neo4j/docker-compose.yml down -v
 ## Complete Deliverables Checklist
 
 ### Phase 1: Foundation
-- [ ] `docker-compose.yml`
-- [ ] `data/schema.sql`
+- [ ] `postgres/docker-compose.yml`
+- [ ] `postgres/schema.sql`
 - [ ] `scripts/generate_data.py`
 - [ ] `handlers/base.py`
 - [ ] `handlers/traversal.py`

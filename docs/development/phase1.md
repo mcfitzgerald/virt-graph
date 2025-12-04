@@ -11,9 +11,9 @@ Phase 1 establishes the foundation for Virtual Graph with two parallel tracks:
 
 | Deliverable | Status | Description |
 |-------------|--------|-------------|
-| `docker-compose.yml` | ✅ | PostgreSQL 14 development setup |
-| `data/schema.sql` | ✅ | 15-table supply chain schema |
-| `data/seed.sql` | ✅ | ~130K rows of synthetic data |
+| `postgres/docker-compose.yml` | ✅ | PostgreSQL 14 development setup |
+| `postgres/schema.sql` | ✅ | 15-table supply chain schema |
+| `postgres/seed.sql` | ✅ | ~130K rows of synthetic data |
 | `scripts/generate_data.py` | ✅ | Faker-based data generator |
 
 ### Track B: Handler Core

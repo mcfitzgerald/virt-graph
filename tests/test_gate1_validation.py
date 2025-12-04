@@ -8,7 +8,7 @@ These tests validate the Phase 1 deliverables:
 
 Prerequisites:
 - PostgreSQL running with schema and seed data
-- Run: docker-compose up -d
+- Run: docker-compose -f postgres/docker-compose.yml up -d
 - Run: poetry run python scripts/generate_data.py (if seed.sql doesn't exist)
 """
 

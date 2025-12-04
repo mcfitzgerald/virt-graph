@@ -9,7 +9,7 @@ Usage:
     poetry run python neo4j/migrate.py
 
 Requirements:
-    - PostgreSQL running (docker-compose up -d from root)
+    - PostgreSQL running (docker-compose -f postgres/docker-compose.yml up -d)
     - Neo4j running (docker-compose -f neo4j/docker-compose.yml up -d)
 """
 

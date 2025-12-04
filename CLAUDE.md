@@ -20,14 +20,14 @@ poetry run pytest
 # Run single test
 poetry run pytest tests/test_file.py::test_function -v
 
-# Start database
-docker-compose up -d
+# Start PostgreSQL database
+docker-compose -f postgres/docker-compose.yml up -d
 
 # View database logs
-docker-compose logs -f postgres
+docker-compose -f postgres/docker-compose.yml logs -f
 
 # Reset database (regenerate data)
-docker-compose down -v && docker-compose up -d
+docker-compose -f postgres/docker-compose.yml down -v && docker-compose -f postgres/docker-compose.yml up -d
 
 # Regenerate seed data
 poetry run python scripts/generate_data.py
@@ -42,8 +42,8 @@ poetry run python benchmark/generate_ground_truth.py
 poetry run python benchmark/run.py --system both
 
 # Check database status
-docker-compose ps
-docker-compose logs -f  # Follow all logs
+docker-compose -f postgres/docker-compose.yml ps
+docker-compose -f postgres/docker-compose.yml logs -f
 ```
 
 ## Project Overview

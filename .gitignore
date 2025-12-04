@@ -50,4 +50,4 @@ site/
 Thumbs.db
 
 # Project specific
-data/seed.sql
+postgres/seed.sql

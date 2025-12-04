@@ -24,7 +24,7 @@ poetry install
 ### 3. Start PostgreSQL
 
 ```bash
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml up -d
 ```
 
 This starts a PostgreSQL 14 container with:
@@ -43,7 +43,7 @@ The schema and seed data are automatically loaded on first start.
 poetry run pytest
 
 # Check database connection
-docker-compose ps
+docker-compose -f postgres/docker-compose.yml ps
 ```
 
 ## Development Dependencies
@@ -65,17 +65,17 @@ This adds:
 
 ```bash
 # Start database
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml up -d
 
 # View logs
-docker-compose logs -f postgres
+docker-compose -f postgres/docker-compose.yml logs -f
 
 # Stop database
-docker-compose down
+docker-compose -f postgres/docker-compose.yml down
 
 # Reset database (delete data)
-docker-compose down -v
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml down -v
+docker-compose -f postgres/docker-compose.yml up -d
 ```
 
 ## Regenerating Seed Data
@@ -89,6 +89,6 @@ poetry run python scripts/generate_data.py
 Then restart PostgreSQL to reload:
 
 ```bash
-docker-compose down -v
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml down -v
+docker-compose -f postgres/docker-compose.yml up -d
 ```

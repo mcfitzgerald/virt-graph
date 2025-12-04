@@ -32,7 +32,7 @@ The migration script transfers data from PostgreSQL to Neo4j:
 
 ```bash
 # Ensure PostgreSQL is running with seed data
-docker-compose up -d
+docker-compose -f postgres/docker-compose.yml up -d
 
 # Run migration
 poetry run python neo4j/migrate.py
