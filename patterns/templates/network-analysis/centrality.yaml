@@ -1,0 +1,132 @@
+# Pattern Template: Centrality Analysis
+# Identify important/critical nodes in a network
+name: centrality
+description: "Calculate node importance using various centrality measures"
+version: "1.0"
+
+derived_from:
+  - patterns/raw/centrality_betweenness_001.yaml
+
+handler: centrality
+priority: 1
+success_rate: 0.90
+
+# When this pattern applies
+applicability:
+  query_signals:
+    - "most critical"
+    - "most important"
+    - "most connected"
+    - "central"
+    - "key .* in network"
+    - "bottleneck"
+    - "hub"
+    - "influential"
+    - "critical node"
+    - "single point of failure"
+    - "highest degree"
+  relationship_properties:
+    traversal_complexity: RED
+
+# Ontology bindings
+ontology_bindings:
+  node_class: Facility  # Most common use case
+  edge_relationship: connects_to
+
+# Handler parameters
+handler_params:
+  nodes_table: facilities
+  edges_table: transport_routes
+  edge_from_col: origin_facility_id
+  edge_to_col: destination_facility_id
+  top_n: 10
+  # centrality_type determined by variant
+
+# Variants by centrality type
+variants:
+  degree:
+    description: "Most connections (local importance)"
+    example_queries:
+      - "Most connected facility"
+      - "Facility with most routes"
+      - "Highest degree node"
+    handler_params:
+      centrality_type: degree
+    interpretation: |
+      High degree = many direct connections
+      Good for: identifying busy hubs
+      Fast to compute (O(n))
+
+  betweenness:
+    description: "Bridge nodes between clusters (global importance)"
+    example_queries:
+      - "Most critical facility in network"
+      - "Bottleneck facilities"
+      - "Single points of failure"
+    handler_params:
+      centrality_type: betweenness
+    interpretation: |
+      High betweenness = lies on many shortest paths
+      Good for: identifying chokepoints, failure vulnerability
+      Slower to compute (O(n*m))
+
+  closeness:
+    description: "Nodes with best average access to all others"
+    example_queries:
+      - "Best located facility"
+      - "Optimal distribution center"
+      - "Most accessible node"
+    handler_params:
+      centrality_type: closeness
+    interpretation: |
+      High closeness = short average distance to all nodes
+      Good for: optimal placement, service coverage
+      Medium speed (O(n*m))
+
+  pagerank:
+    description: "Importance based on incoming connections"
+    example_queries:
+      - "Most influential facility"
+      - "Where does traffic flow to?"
+    handler_params:
+      centrality_type: pagerank
+    interpretation: |
+      High PageRank = receives many incoming links from important nodes
+      Good for: understanding flow patterns, influence
+      Medium speed (iterative)
+
+# Cautions
+cautions:
+  - "Loads entire graph into memory"
+  - "Only use for graphs under 10,000 nodes"
+  - "Betweenness can be slow on large graphs"
+
+# Parameter resolution
+parameter_mapping:
+  nodes_table: "{ontology.classes.{node_class}.sql_mapping.table}"
+  edges_table: "{ontology.relationships.{relationship}.sql_mapping.table}"
+  edge_from_col: "{ontology.relationships.{relationship}.sql_mapping.domain_key}"
+  edge_to_col: "{ontology.relationships.{relationship}.sql_mapping.range_key}"
+
+# Example instantiation
+example:
+  query: "Which facility is most critical to our logistics network?"
+  handler: centrality
+  handler_params:
+    nodes_table: facilities
+    edges_table: transport_routes
+    edge_from_col: origin_facility_id
+    edge_to_col: destination_facility_id
+    centrality_type: betweenness
+    top_n: 10
+
+  expected_output:
+    results:
+      - node: {id: 12, name: "Dallas Hub", facility_type: "distribution_center"}
+        score: 0.42
+      - node: {id: 8, name: "Denver Warehouse", facility_type: "warehouse"}
+        score: 0.31
+    interpretation: |
+      Dallas Hub has highest betweenness centrality (0.42), meaning 42% of all
+      shortest paths go through it. This makes it a critical chokepoint -
+      if it fails, many routes would be disrupted.

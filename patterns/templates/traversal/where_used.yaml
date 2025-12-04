@@ -1,0 +1,109 @@
+# Pattern Template: Where-Used Analysis
+# Generalized from raw patterns for reverse BOM navigation
+name: where_used
+description: "Find all assemblies that use a given part (reverse BOM)"
+version: "1.0"
+
+derived_from:
+  - patterns/raw/where_used_001.yaml
+
+handler: traverse
+priority: 1
+success_rate: 0.95
+
+# When this pattern applies
+applicability:
+  query_signals:
+    - "where is .* used"
+    - "what assemblies"
+    - "what products use"
+    - "contains part"
+    - "uses component"
+    - "part usage"
+    - "reverse BOM"
+    - "parent assemblies"
+  relationship_properties:
+    is_recursive: true
+    traversal_complexity: YELLOW
+
+# Ontology bindings
+ontology_bindings:
+  node_class: Part
+  edge_relationship: component_of
+  # component_of: child_part_id -> parent_part_id
+  # For where-used (child->parents), we use the natural direction
+  direction_note: |
+    Where-used traversal follows the component_of relationship naturally:
+    - Start from a component (child)
+    - Follow to all assemblies (parents) that use it
+    - Continue recursively to find top-level assemblies
+
+# Handler parameters
+handler_params:
+  nodes_table: parts
+  edges_table: bill_of_materials
+  edge_from_col: child_part_id   # Natural direction for where-used
+  edge_to_col: parent_part_id    # Natural direction for where-used
+  direction: outbound            # child -> parent
+  max_depth: 10
+  include_start: false
+
+# Variants
+variants:
+  all_uses:
+    description: "Find all assemblies using this part at any level"
+    example_queries:
+      - "Where is part X used?"
+      - "What assemblies contain component Y?"
+    handler_params:
+      max_depth: 10
+      include_start: false
+
+  direct_uses:
+    description: "Find only direct parent assemblies (1 level)"
+    example_queries:
+      - "What directly uses part X?"
+      - "Direct parents of component Y"
+    handler_params:
+      max_depth: 1
+      include_start: false
+
+  with_products:
+    description: "Find assemblies and their products"
+    example_queries:
+      - "What products use part X?"
+      - "Products affected by component Y"
+    multi_step: true
+    steps:
+      - handler: traverse
+        description: "Find all parent assemblies"
+      - sql: |
+          SELECT DISTINCT p.* FROM products p
+          JOIN product_components pc ON p.id = pc.product_id
+          WHERE pc.part_id IN ({assembly_ids})
+        description: "Find products containing those assemblies"
+
+# Parameter resolution
+parameter_mapping:
+  nodes_table: "{ontology.classes.Part.sql_mapping.table}"
+  edges_table: "{ontology.relationships.component_of.sql_mapping.table}"
+  edge_from_col: "{ontology.relationships.component_of.sql_mapping.domain_key}"  # child_part_id
+  edge_to_col: "{ontology.relationships.component_of.sql_mapping.range_key}"     # parent_part_id
+
+# Example instantiation
+example:
+  query: "Where is part PRT-000123 used?"
+  steps:
+    - description: "Find part ID"
+      sql: "SELECT id FROM parts WHERE part_number = 'PRT-000123'"
+    - description: "Traverse to parent assemblies"
+      handler: traverse
+      handler_params:
+        nodes_table: parts
+        edges_table: bill_of_materials
+        edge_from_col: child_part_id
+        edge_to_col: parent_part_id
+        start_id: "{part_id}"
+        direction: outbound
+        max_depth: 10
+        include_start: false

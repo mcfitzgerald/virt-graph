@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2024-12-04
+
+### Added
+
+#### Phase 4: Pattern Maturity
+
+**Pattern Templates**
+
+Generalized raw patterns into reusable templates organized by function:
+
+- `patterns/templates/traversal/`
+  - `tier_traversal.yaml` - Supply chain tier navigation (upstream/downstream)
+  - `bom_explosion.yaml` - Bill of materials recursive expansion
+  - `where_used.yaml` - Reverse BOM analysis (part usage)
+- `patterns/templates/pathfinding/`
+  - `shortest_path.yaml` - Optimal route finding (cost/distance/time)
+  - `all_paths.yaml` - Multiple alternative routes
+- `patterns/templates/aggregation/`
+  - `impact_analysis.yaml` - Failure impact assessment (multi-step)
+- `patterns/templates/network-analysis/`
+  - `centrality.yaml` - Node importance (degree/betweenness/closeness/PageRank)
+  - `components.yaml` - Cluster and connectivity analysis
+
+**Pattern Skill**
+
+- `.claude/skills/patterns/SKILL.md` - Skill definition for pattern matching:
+  - Query signal matching rules
+  - Pattern variant selection
+  - Ontology parameter resolution
+  - Tie-breaking rules
+  - Common pitfalls documentation
+- `.claude/skills/patterns/reference.md` - Comprehensive pattern reference:
+  - All 8 pattern templates documented
+  - Handler mapping table
+  - Pattern selection flowchart
+
+**Handler Skill**
+
+- `.claude/skills/handlers/SKILL.md` - Skill definition for handler invocation:
+  - Handler group descriptions
+  - Parameter resolution flow
+  - Safety limits documentation
+  - Quick reference for all handlers
+- `.claude/skills/handlers/reference.md` - Complete handler API reference:
+  - Full signatures and parameters
+  - Return value structures
+  - Usage examples
+  - Safety infrastructure documentation
+
+**Testing**
+
+- `tests/test_gate4_validation.py` - Gate 4 validation (43 tests):
+  - Pattern template structure validation (5 tests)
+  - Pattern matching accuracy (17 tests)
+  - Ontology resolution tests (5 tests)
+  - End-to-end integration tests (4 tests)
+  - Skill file structure tests (6 tests)
+  - Gate 4 summary test (1 test)
+
+### Gate 4 Validation Results
+
+All 43 tests passed:
+
+| Test Category | Tests | Result |
+|--------------|-------|--------|
+| Pattern Template Structure | 5 | ✅ |
+| Pattern Matching | 17 | ✅ |
+| Ontology Resolution | 5 | ✅ |
+| End-to-End Integration | 4 | ✅ |
+| Skill File Structure | 6 | ✅ |
+| Gate 4 Summary | 1 | ✅ |
+
+Key validations:
+- 8 pattern templates with required fields
+- Pattern matching selects correct templates
+- Ontology bindings resolve to valid handler parameters
+- End-to-end: Query → Pattern → Ontology → Handler → Result
+- All skill files have proper YAML frontmatter
+
+---
+
 ## [0.3.0] - 2024-12-04
 
 ### Added

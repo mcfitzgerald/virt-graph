@@ -1,0 +1,114 @@
+# Pattern Template: BOM Explosion
+# Generalized from raw patterns for bill of materials navigation
+name: bom_explosion
+description: "Explode bill of materials to find all components recursively"
+version: "1.0"
+
+derived_from:
+  - patterns/raw/bom_explosion_001.yaml
+
+handler: bom_explode  # Specialized handler with quantity aggregation
+alternative_handler: traverse  # Generic alternative
+priority: 1
+success_rate: 0.95
+
+# When this pattern applies
+applicability:
+  query_signals:
+    - "bill of materials"
+    - "BOM"
+    - "components for"
+    - "parts list"
+    - "what goes into"
+    - "full .* breakdown"
+    - "explode"
+    - "subassemblies"
+    - "all parts in"
+  relationship_properties:
+    is_recursive: true
+    traversal_complexity: YELLOW
+
+# Ontology bindings
+ontology_bindings:
+  node_class: Part
+  edge_relationship: component_of
+  # component_of: child_part_id -> parent_part_id (child is component OF parent)
+  # For explosion (parent->children), we SWAP from/to and use outbound
+  direction_note: |
+    The component_of relationship semantically means "child is component of parent".
+    For BOM explosion (finding all children of a parent), we traverse:
+    - edge_from_col: parent_part_id
+    - edge_to_col: child_part_id
+    - direction: outbound
+    This reverses the semantic relationship to get "parent contains children".
+
+# Handler parameters
+handler_params:
+  # For specialized bom_explode handler
+  max_depth: 20
+  include_quantities: true
+
+alternative_params:
+  # For generic traverse handler
+  nodes_table: parts
+  edges_table: bill_of_materials
+  edge_from_col: parent_part_id  # SWAPPED for explosion
+  edge_to_col: child_part_id     # SWAPPED for explosion
+  direction: outbound
+  max_depth: 20
+  include_start: true
+
+# Variants
+variants:
+  full_explosion:
+    description: "Get all components with quantities"
+    example_queries:
+      - "Full parts list for the Turbo Encabulator"
+      - "What components go into product X?"
+      - "BOM explosion for assembly Y"
+    handler: bom_explode
+    handler_params:
+      include_quantities: true
+
+  structure_only:
+    description: "Get component tree without quantities"
+    example_queries:
+      - "Component structure for product X"
+      - "What parts make up assembly Y?"
+    handler: traverse
+    handler_params:
+      include_quantities: false
+
+  depth_limited:
+    description: "Get only N levels of BOM"
+    example_queries:
+      - "Direct components of assembly X"
+      - "First 2 levels of BOM"
+    handler: traverse
+    handler_params:
+      max_depth: "{depth_limit}"
+
+# Parameter resolution
+parameter_mapping:
+  nodes_table: "{ontology.classes.Part.sql_mapping.table}"
+  edges_table: "{ontology.relationships.component_of.sql_mapping.table}"
+  # IMPORTANT: Swap domain/range for explosion direction
+  edge_from_col: "{ontology.relationships.component_of.sql_mapping.range_key}"  # parent_part_id
+  edge_to_col: "{ontology.relationships.component_of.sql_mapping.domain_key}"   # child_part_id
+
+# Example instantiation
+example:
+  query: "Full parts list for the Turbo Encabulator"
+  steps:
+    - description: "Find product and its top-level part"
+      sql: |
+        SELECT pc.part_id
+        FROM products p
+        JOIN product_components pc ON p.id = pc.product_id
+        WHERE p.name = 'Turbo Encabulator'
+    - description: "Explode BOM from top-level part"
+      handler: bom_explode
+      handler_params:
+        start_part_id: "{part_id}"
+        max_depth: 20
+        include_quantities: true

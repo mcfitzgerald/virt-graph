@@ -73,12 +73,15 @@ Available handlers for graph operations:
 
 ## Patterns
 
-Raw pattern recordings in `patterns/raw/`:
-- Supplier tier traversal (upstream/downstream)
-- BOM explosion and where-used analysis
-- Impact analysis for supplier failures
-- Shortest path with cost/distance/time weights
-- Centrality and connectivity analysis
+**Raw patterns** in `patterns/raw/` - discovered query patterns with recorded parameters.
+
+**Pattern templates** in `patterns/templates/` - generalized, reusable patterns:
+- `traversal/` - tier_traversal, bom_explosion, where_used
+- `pathfinding/` - shortest_path, all_paths
+- `aggregation/` - impact_analysis
+- `network-analysis/` - centrality, components
+
+Each template includes applicability signals, ontology bindings, variants, and examples.
 
 ## Critical Implementation Rules
 
@@ -109,6 +112,13 @@ Key relationship complexities:
 
 Claude Code skills in `.claude/skills/`:
 - `schema/` - Schema introspection queries and skill definition
+- `patterns/` - Pattern template matching and selection
+- `handlers/` - Handler invocation and parameter resolution
+
+Use skills to:
+1. Match queries to pattern templates (`patterns/SKILL.md`)
+2. Resolve parameters from ontology
+3. Invoke handlers with resolved parameters (`handlers/SKILL.md`)
 
 ## MCP Integration
 
