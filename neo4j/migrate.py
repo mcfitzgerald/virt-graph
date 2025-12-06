@@ -14,6 +14,7 @@ Requirements:
 """
 
 import json
+import sys
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -21,20 +22,16 @@ from pathlib import Path
 from typing import Any
 
 import psycopg2
-import yaml
 from neo4j import GraphDatabase
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from virt_graph.ontology import OntologyAccessor
 
 # Connection settings
 PG_DSN = "postgresql://virt_graph:dev_password@localhost:5432/supply_chain"
 NEO4J_URI = "bolt://localhost:7687"
 NEO4J_AUTH = ("neo4j", "dev_password")
-
-
-def load_ontology() -> dict:
-    """Load ontology as the single source of truth."""
-    ontology_path = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
-    with open(ontology_path) as f:
-        return yaml.safe_load(f)
 
 
 @dataclass
@@ -83,7 +80,7 @@ class OntologyDrivenMigrator:
         self.metrics = MigrationMetrics()
         self.pg_conn = None
         self.neo4j_driver = None
-        self.ontology = load_ontology()
+        self.ontology = OntologyAccessor()
 
     def connect(self):
         """Establish database connections."""
@@ -125,9 +122,9 @@ class OntologyDrivenMigrator:
     def create_constraints_from_ontology(self):
         """Create Neo4j constraints from ontology classes."""
         with self.neo4j_driver.session() as session:
-            for class_name, class_def in self.ontology["classes"].items():
+            for class_name in self.ontology.classes:
                 label = self._get_neo4j_label(class_name)
-                pk = class_def["sql_mapping"]["primary_key"]
+                pk = self.ontology.get_class_pk(class_name)
 
                 try:
                     session.run(
@@ -172,21 +169,21 @@ class OntologyDrivenMigrator:
 
     def migrate_nodes_from_ontology(self):
         """Migrate nodes using ontology class definitions."""
-        for class_name, class_def in self.ontology["classes"].items():
-            sql_mapping = class_def["sql_mapping"]
-            table = sql_mapping["table"]
+        for class_name in self.ontology.classes:
+            table = self.ontology.get_class_table(class_name)
             label = self._get_neo4j_label(class_name)
 
             # Get all columns for this table
             columns = self._get_table_columns(table)
 
             # Build SELECT query
-            soft_delete = class_def.get("soft_delete", False)
-            soft_delete_col = class_def.get("soft_delete_column", "deleted_at")
+            soft_delete_enabled, soft_delete_col = self.ontology.get_class_soft_delete(class_name)
+            if soft_delete_col is None:
+                soft_delete_col = "deleted_at"  # fallback default
 
             column_list = ", ".join(columns)
             query = f"SELECT {column_list} FROM {table}"
-            if soft_delete:
+            if soft_delete_enabled:
                 query += f" WHERE {soft_delete_col} IS NULL"
 
             # Fetch data from PostgreSQL
@@ -218,7 +215,7 @@ class OntologyDrivenMigrator:
             self.metrics.nodes_created[label] = count
             print(f"Migrated {count} {label} nodes from {table}")
 
-            if soft_delete:
+            if soft_delete_enabled:
                 self.metrics.decisions_made.append(
                     f"Filtered soft-deleted {class_name} ({soft_delete_col} IS NULL)"
                 )
@@ -231,15 +228,14 @@ class OntologyDrivenMigrator:
         )
 
     def migrate_relationships_from_ontology(self):
-        """Migrate relationships using ontology relationship definitions."""
-        for rel_name, rel_def in self.ontology["relationships"].items():
-            sql_mapping = rel_def["sql_mapping"]
-            table = sql_mapping["table"]
-            domain_key = sql_mapping["domain_key"]
-            range_key = sql_mapping["range_key"]
+        """Migrate relationships using ontology role definitions."""
+        for rel_name in self.ontology.roles:
+            role_sql = self.ontology.get_role_sql(rel_name)
+            table = role_sql["table"]
+            domain_key, range_key = self.ontology.get_role_keys(rel_name)
 
-            domain_class = rel_def["domain"]
-            range_class = rel_def["range"]
+            domain_class = self.ontology.get_role_domain(rel_name)
+            range_class = self.ontology.get_role_range(rel_name)
             domain_label = self._get_neo4j_label(domain_class)
             range_label = self._get_neo4j_label(range_class)
 
@@ -247,18 +243,16 @@ class OntologyDrivenMigrator:
             neo4j_rel_type = rel_name.upper()
 
             # Get additional columns to include as relationship properties
-            additional_cols = rel_def.get("additional_columns", [])
+            additional_cols = role_sql.get("additional_columns", [])
 
             # Determine if this is a junction table or FK relationship
             # Junction tables: separate table with both keys
             # FK relationships: domain_key and range_key in same table as domain
 
-            domain_sql_mapping = self.ontology["classes"][domain_class]["sql_mapping"]
-            domain_table = domain_sql_mapping["table"]
-            domain_pk = domain_sql_mapping["primary_key"]
+            domain_table = self.ontology.get_class_table(domain_class)
+            domain_pk = self.ontology.get_class_pk(domain_class)
 
-            range_sql_mapping = self.ontology["classes"][range_class]["sql_mapping"]
-            range_pk = range_sql_mapping["primary_key"]
+            range_pk = self.ontology.get_class_pk(range_class)
 
             if table == domain_table:
                 # FK relationship: Create relationships from node properties
@@ -365,8 +359,8 @@ class OntologyDrivenMigrator:
         print("\n" + "=" * 60)
         print("Ontology-Driven PostgreSQL to Neo4j Migration")
         print("=" * 60)
-        print(f"Ontology version: {self.ontology.get('version', 'unknown')}")
-        print(f"Domain: {self.ontology.get('domain', 'unknown')}")
+        print(f"Ontology version: {self.ontology.version}")
+        print(f"Domain: {self.ontology.name}")
 
         self.connect()
         print(f"Connected to PostgreSQL and Neo4j\n")
@@ -422,9 +416,9 @@ class OntologyDrivenMigrator:
         all_valid = True
 
         # Validate node counts
-        for class_name, class_def in self.ontology["classes"].items():
+        for class_name in self.ontology.classes:
             label = self._get_neo4j_label(class_name)
-            expected = class_def.get("row_count")
+            expected = self.ontology.get_class_row_count(class_name)
             actual = self.metrics.nodes_created.get(label, 0)
 
             if expected:
@@ -434,9 +428,9 @@ class OntologyDrivenMigrator:
                 print(f"  {status} {label}: {actual} (expected {expected})")
 
         # Validate relationship counts
-        for rel_name, rel_def in self.ontology["relationships"].items():
+        for rel_name in self.ontology.roles:
             neo4j_type = rel_name.upper()
-            expected = rel_def.get("row_count")
+            expected = self.ontology.get_role_row_count(rel_name)
             actual = self.metrics.relationships_created.get(neo4j_type, 0)
 
             if expected:
@@ -454,7 +448,7 @@ class OntologyDrivenMigrator:
         """Save metrics to JSON file."""
         metrics_data = {
             "duration_seconds": self.metrics.duration_seconds,
-            "ontology_version": self.ontology.get("version", "unknown"),
+            "ontology_version": self.ontology.version,
             "nodes_created": self.metrics.nodes_created,
             "relationships_created": self.metrics.relationships_created,
             "total_nodes": self.metrics.total_nodes,

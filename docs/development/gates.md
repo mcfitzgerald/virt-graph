@@ -72,14 +72,14 @@ poetry run pytest tests/test_gate1_validation.py::TestIntegrationGate1 -v -s
 
 1. **Coverage**: Every table in schema maps to a class or relationship
 2. **Correctness**: 5 simple queries using ontology mappings verify results
-3. **Completeness**: All relationships have sql_mapping, traversal_complexity, properties
+3. **Completeness**: All relationships have sql mapping, traversal_complexity, properties
 
 ### Checklist
 
-- [x] All 15 tables mapped to ontology classes/relationships
-- [x] sql_mapping includes table, domain_key, range_key
+- [x] All 15 tables mapped to ontology classes/relationships (TBox/RBox)
+- [x] sql mapping includes table, domain_key, range_key
 - [x] traversal_complexity assigned (GREEN/YELLOW/RED)
-- [x] properties include cardinality, directionality, reflexivity
+- [x] properties include OWL 2 axioms (asymmetric, acyclic, etc.)
 
 ---
 

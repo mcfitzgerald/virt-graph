@@ -13,11 +13,16 @@ Run: poetry run pytest tests/test_gate5_validation.py -v
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import psycopg2
 import pytest
 import yaml
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from virt_graph.ontology import OntologyAccessor
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -353,10 +358,9 @@ class TestOntologyDrivenMigration:
 
     @pytest.fixture
     def ontology(self):
-        """Load ontology for tests."""
+        """Load ontology using OntologyAccessor."""
         ontology_path = PROJECT_ROOT / "ontology" / "supply_chain.yaml"
-        with open(ontology_path) as f:
-            return yaml.safe_load(f)
+        return OntologyAccessor(ontology_path)
 
     @pytest.fixture
     def migration_metrics(self):
@@ -367,21 +371,20 @@ class TestOntologyDrivenMigration:
         with open(metrics_path) as f:
             return json.load(f)
 
-    def test_migration_loads_ontology(self):
-        """Verify migrate.py has load_ontology function that works."""
+    def test_migration_uses_ontology_accessor(self):
+        """Verify migrate.py uses OntologyAccessor for ontology access."""
         import importlib.util
 
         spec = importlib.util.spec_from_file_location("migrate", NEO4J_DIR / "migrate.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        # Verify load_ontology exists and returns valid structure
-        assert hasattr(module, "load_ontology"), "migrate.py missing load_ontology function"
+        # Verify OntologyDrivenMigrator exists and uses ontology
+        assert hasattr(module, "OntologyDrivenMigrator"), "migrate.py missing OntologyDrivenMigrator class"
 
-        ontology = module.load_ontology()
-        assert isinstance(ontology, dict)
-        assert "classes" in ontology, "Ontology missing 'classes'"
-        assert "relationships" in ontology, "Ontology missing 'relationships'"
+        # Verify module imports OntologyAccessor
+        assert hasattr(module, "OntologyAccessor") or "OntologyAccessor" in str(module.__dict__), \
+            "migrate.py should import OntologyAccessor"
 
     def test_node_labels_match_ontology_classes(self, ontology):
         """Verify Neo4j labels derived from ontology classes."""
@@ -395,14 +398,14 @@ class TestOntologyDrivenMigration:
         label_mapping = getattr(module, "OntologyDrivenMigrator").LABEL_MAPPING
 
         # Every ontology class should map to a label
-        for class_name in ontology["classes"]:
+        for class_name in ontology.classes:
             # Either in LABEL_MAPPING or uses class name directly
             neo4j_label = label_mapping.get(class_name, class_name)
             assert neo4j_label, f"Class {class_name} has no Neo4j label mapping"
 
     def test_relationship_types_are_upper_snake_case(self, ontology):
         """Verify relationship types convert to UPPER_SNAKE_CASE."""
-        for rel_name in ontology["relationships"]:
+        for rel_name in ontology.roles:
             expected_type = rel_name.upper()
             # Verify the naming convention is UPPER_SNAKE_CASE
             assert expected_type == expected_type.upper(), (
@@ -413,30 +416,29 @@ class TestOntologyDrivenMigration:
             )
 
     def test_sql_mappings_complete_for_classes(self, ontology):
-        """Verify each class has complete sql_mapping."""
-        required_keys = ["table", "primary_key"]
+        """Verify each class has complete sql mapping."""
+        for class_name in ontology.classes:
+            # Accessor methods will raise if missing
+            table = ontology.get_class_table(class_name)
+            assert table is not None, f"Class {class_name} missing sql.table"
 
-        for class_name, class_def in ontology["classes"].items():
-            assert "sql_mapping" in class_def, f"Class {class_name} missing sql_mapping"
-            sql_mapping = class_def["sql_mapping"]
-
-            for key in required_keys:
-                assert key in sql_mapping, (
-                    f"Class {class_name} sql_mapping missing '{key}'"
-                )
+            pk = ontology.get_class_pk(class_name)
+            assert pk is not None, f"Class {class_name} missing sql.primary_key"
 
     def test_sql_mappings_complete_for_relationships(self, ontology):
-        """Verify each relationship has complete sql_mapping."""
-        required_keys = ["table", "domain_key", "range_key"]
+        """Verify each relationship has complete sql mapping."""
+        for rel_name in ontology.roles:
+            # Accessor methods will raise if missing
+            table = ontology.get_role_table(rel_name)
+            assert table is not None, f"Relationship {rel_name} missing sql.table"
 
-        for rel_name, rel_def in ontology["relationships"].items():
-            assert "sql_mapping" in rel_def, f"Relationship {rel_name} missing sql_mapping"
-            sql_mapping = rel_def["sql_mapping"]
-
-            for key in required_keys:
-                assert key in sql_mapping, (
-                    f"Relationship {rel_name} sql_mapping missing '{key}'"
-                )
+            domain_key, range_key = ontology.get_role_keys(rel_name)
+            assert domain_key is not None, (
+                f"Relationship {rel_name} missing sql.domain_key"
+            )
+            assert range_key is not None, (
+                f"Relationship {rel_name} missing sql.range_key"
+            )
 
     def test_migration_metrics_node_counts_match_ontology(self, ontology, migration_metrics):
         """Verify migrated node counts match ontology row_count values."""
@@ -449,8 +451,8 @@ class TestOntologyDrivenMigration:
         label_mapping = getattr(module, "OntologyDrivenMigrator").LABEL_MAPPING
         nodes_created = migration_metrics.get("nodes_created", {})
 
-        for class_name, class_def in ontology["classes"].items():
-            expected_count = class_def.get("row_count")
+        for class_name in ontology.classes:
+            expected_count = ontology.get_class_row_count(class_name)
             if expected_count is None:
                 continue
 
@@ -466,8 +468,8 @@ class TestOntologyDrivenMigration:
         """Verify migrated relationship counts match ontology row_count values."""
         relationships_created = migration_metrics.get("relationships_created", {})
 
-        for rel_name, rel_def in ontology["relationships"].items():
-            expected_count = rel_def.get("row_count")
+        for rel_name in ontology.roles:
+            expected_count = ontology.get_role_row_count(rel_name)
             if expected_count is None:
                 continue
 

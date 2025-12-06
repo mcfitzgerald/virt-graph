@@ -48,40 +48,45 @@ The schema skill is invoked when Claude needs to:
 
 ## Ontology Structure
 
-The ontology maps semantic concepts to physical SQL:
+The ontology uses TBox/RBox format (Description Logic inspired, LinkML-influenced) to map semantic concepts to physical SQL:
 
-### Classes
+### Classes (TBox)
 
 ```yaml
-classes:
-  Supplier:
-    description: "Companies that provide materials/parts"
-    sql_mapping:
-      table: suppliers
-      primary_key: id
-      identifier_columns: [supplier_code, name]
-    attributes:
-      tier:
-        type: integer
-        values: [1, 2, 3]
-        description: "Supply chain tier"
+tbox:
+  classes:
+    Supplier:
+      description: "Companies that provide materials/parts"
+      sql:
+        table: suppliers
+        primary_key: id
+        identifier: [supplier_code, name]
+      slots:
+        tier:
+          range: integer
+          values: [1, 2, 3]
+          description: "Supply chain tier"
 ```
 
-### Relationships
+### Relationships (RBox)
 
 ```yaml
-relationships:
-  supplies_to:
-    domain: Supplier
-    range: Supplier
-    sql_mapping:
-      table: supplier_relationships
-      domain_key: seller_id
-      range_key: buyer_id
-    properties:
-      cardinality: many-to-many
-      is_directional: true
-    traversal_complexity: YELLOW
+rbox:
+  roles:
+    supplies_to:
+      domain: Supplier
+      range: Supplier
+      sql:
+        table: supplier_relationships
+        domain_key: seller_id
+        range_key: buyer_id
+      properties:
+        asymmetric: true
+        acyclic: true
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: YELLOW
 ```
 
 ### Traversal Complexity
@@ -201,7 +206,7 @@ TestGate2Summary: 1 passed
 
 ```python
 # "Find supplier Acme Corp"
-# Ontology lookup: Supplier.sql_mapping.table = "suppliers"
+# Ontology lookup: tbox.classes.Supplier.sql.table = "suppliers"
 # Generated SQL:
 SELECT * FROM suppliers WHERE name = 'Acme Corp';
 ```

@@ -90,10 +90,10 @@ variants:
 
 # Parameter resolution
 parameter_mapping:
-  nodes_table: "{ontology.classes.Facility.sql_mapping.table}"
-  edges_table: "{ontology.relationships.connects_to.sql_mapping.table}"
-  edge_from_col: "{ontology.relationships.connects_to.sql_mapping.domain_key}"
-  edge_to_col: "{ontology.relationships.connects_to.sql_mapping.range_key}"
+  nodes_table: "{ontology.tbox.classes.Facility.sql.table}"
+  edges_table: "{ontology.rbox.roles.connects_to.sql.table}"
+  edge_from_col: "{ontology.rbox.roles.connects_to.sql.domain_key}"
+  edge_to_col: "{ontology.rbox.roles.connects_to.sql.range_key}"
 
 # Output interpretation
 output_format:

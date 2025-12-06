@@ -94,10 +94,10 @@ use_cases:
 
 # Parameter resolution
 parameter_mapping:
-  nodes_table: "{ontology.classes.{node_class}.sql_mapping.table}"
-  edges_table: "{ontology.relationships.{relationship}.sql_mapping.table}"
-  edge_from_col: "{ontology.relationships.{relationship}.sql_mapping.domain_key}"
-  edge_to_col: "{ontology.relationships.{relationship}.sql_mapping.range_key}"
+  nodes_table: "{ontology.tbox.classes.{node_class}.sql.table}"
+  edges_table: "{ontology.rbox.roles.{relationship}.sql.table}"
+  edge_from_col: "{ontology.rbox.roles.{relationship}.sql.domain_key}"
+  edge_to_col: "{ontology.rbox.roles.{relationship}.sql.range_key}"
 
 # Example instantiation
 example:

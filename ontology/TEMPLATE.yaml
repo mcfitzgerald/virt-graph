@@ -1,0 +1,156 @@
+# Virtual Graph Ontology Template
+# Format: TBox/RBox (Description Logic inspired, LinkML-influenced)
+#
+# References:
+# - LinkML: https://linkml.io/
+# - OWL 2: https://www.w3.org/TR/owl-ref/
+# - Description Logic: https://en.wikipedia.org/wiki/Abox
+#
+# Usage:
+# 1. Copy this template to create a new ontology
+# 2. Fill in the meta section with your database details
+# 3. Define classes in tbox.classes
+# 4. Define relationships in rbox.roles
+# 5. Run validation queries to verify
+
+# =============================================================================
+# META: Ontology Metadata
+# =============================================================================
+meta:
+  name: <domain_name>              # e.g., "supply_chain"
+  version: "1.0"
+  created: <YYYY-MM-DD>
+  format: tbox-rbox
+
+  database:
+    type: postgresql
+    version: "14"
+    connection: <connection_string>  # e.g., "postgresql://user:pass@host:port/db"
+
+# =============================================================================
+# TBox: Terminological Box (Class/Concept Definitions)
+# =============================================================================
+# Classes represent entity types that map to database tables.
+# Each class defines:
+#   - description: Human-readable explanation
+#   - sql: Physical database mapping
+#   - slots: Attributes/properties of the class
+#   - soft_delete: Soft delete configuration (optional)
+#   - row_count: Estimated row count for planning
+
+tbox:
+  classes:
+    # Example class definition:
+    #
+    # ClassName:
+    #   description: "Human readable description of this entity type"
+    #   sql:
+    #     table: table_name
+    #     primary_key: id
+    #     identifier: [natural_key_col1, natural_key_col2]
+    #   slots:
+    #     attribute_name:
+    #       range: string | integer | decimal | boolean | date | timestamp
+    #       column: sql_column_name
+    #       description: "Optional description"
+    #       required: true | false
+    #       multivalued: true | false
+    #       values: [allowed, values, list]  # Optional enum
+    #   soft_delete:
+    #     enabled: true
+    #     column: deleted_at
+    #   row_count: 1000
+
+    # --- Define your classes below ---
+
+
+# =============================================================================
+# RBox: Role Box (Relationship/Property Definitions)
+# =============================================================================
+# Roles represent relationships between classes.
+# Each role defines:
+#   - description: Human-readable explanation
+#   - domain: Source class
+#   - range: Target class
+#   - sql: Physical database mapping
+#   - properties: OWL 2 axioms + Virtual Graph extensions
+#   - cardinality: Relationship cardinality
+#   - traversal_complexity: GREEN | YELLOW | RED
+#   - row_count: Estimated edge count
+
+rbox:
+  roles:
+    # Example role definition:
+    #
+    # role_name:
+    #   description: "Human readable description of this relationship"
+    #   domain: SourceClass
+    #   range: TargetClass
+    #   sql:
+    #     table: edge_table_or_fk_table
+    #     domain_key: fk_to_source
+    #     range_key: fk_to_target
+    #     additional_columns:       # Optional, for edge properties
+    #       - column_name
+    #     weight_columns:           # Optional, for weighted edges
+    #       - name: column_name
+    #         type: float | decimal
+    #   properties:
+    #     # OWL 2 Axiom Properties
+    #     transitive: false         # A→B, B→C implies A→C
+    #     symmetric: false          # A→B implies B→A
+    #     asymmetric: false         # A→B implies NOT B→A
+    #     reflexive: false          # A→A is valid
+    #     irreflexive: false        # A→A is NOT valid
+    #     functional: false         # At most one value per subject
+    #     inverse_functional: false # At most one subject per value
+    #
+    #     # Relationship Axioms
+    #     inverse_of: <role_name>   # Name of inverse role (if any)
+    #     disjoint_with: []         # Mutually exclusive roles
+    #
+    #     # Virtual Graph Extensions
+    #     acyclic: false            # No cycles allowed (DAG)
+    #     is_hierarchical: false    # Has tier/level structure
+    #     is_weighted: false        # Has numeric edge weights
+    #   cardinality:
+    #     domain: "0..*"            # How many range per domain instance
+    #     range: "0..*"             # How many domain per range instance
+    #   traversal_complexity: GREEN | YELLOW | RED
+    #   row_count: 1000
+
+    # --- Define your roles below ---
+
+
+# =============================================================================
+# REFERENCE: Property Definitions
+# =============================================================================
+#
+# OWL 2 Object Property Characteristics:
+#
+# | Property            | Definition                              | Example Use          |
+# |---------------------|----------------------------------------|----------------------|
+# | transitive          | A→B, B→C implies A→C                   | ancestor_of          |
+# | symmetric           | A→B implies B→A                        | sibling_of           |
+# | asymmetric          | A→B implies NOT B→A                    | parent_of            |
+# | reflexive           | A→A is always valid                    | knows (self)         |
+# | irreflexive         | A→A is never valid                     | component_of         |
+# | functional          | At most one value per subject          | has_mother           |
+# | inverse_functional  | At most one subject per value          | ssn_of               |
+#
+# Traversal Complexity:
+#
+# | Complexity | Description                    | Handler Required |
+# |------------|--------------------------------|------------------|
+# | GREEN      | Simple FK join, no recursion   | No (direct SQL)  |
+# | YELLOW     | Recursive traversal needed     | Yes (traverse)   |
+# | RED        | Network algorithm needed       | Yes (NetworkX)   |
+#
+# Cardinality Notation:
+#
+# | Notation | Meaning                           |
+# |----------|-----------------------------------|
+# | "1..1"   | Exactly one (required)            |
+# | "0..1"   | Zero or one (optional)            |
+# | "1..*"   | One or more                       |
+# | "0..*"   | Zero or more                      |

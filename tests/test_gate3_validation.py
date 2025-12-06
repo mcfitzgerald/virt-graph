@@ -17,13 +17,16 @@ Gate 3 Targets:
 """
 
 import os
+import sys
 import time
 from pathlib import Path
 
 import psycopg2
 import pytest
-import yaml
 
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from virt_graph.ontology import OntologyAccessor
 from virt_graph.handlers import (
     bom_explode,
     centrality,
@@ -51,10 +54,8 @@ def conn():
 
 @pytest.fixture(scope="module")
 def ontology():
-    """Load the discovered ontology."""
-    ontology_path = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
-    with open(ontology_path) as f:
-        return yaml.safe_load(f)
+    """Load the discovered ontology using OntologyAccessor."""
+    return OntologyAccessor()
 
 
 # =============================================================================
@@ -70,8 +71,7 @@ class TestGreenPath:
 
     def test_green_1_find_supplier_by_name(self, conn, ontology):
         """GREEN Query 1: Find supplier ABC Corp"""
-        supplier_class = ontology["classes"]["Supplier"]
-        table = supplier_class["sql_mapping"]["table"]
+        table = ontology.get_class_table("Supplier")
 
         start = time.time()
         with conn.cursor() as cur:
@@ -90,7 +90,7 @@ class TestGreenPath:
 
     def test_green_2_list_tier1_suppliers(self, conn, ontology):
         """GREEN Query 2: List all tier 1 suppliers"""
-        table = ontology["classes"]["Supplier"]["sql_mapping"]["table"]
+        table = ontology.get_class_table("Supplier")
 
         start = time.time()
         with conn.cursor() as cur:
@@ -104,7 +104,7 @@ class TestGreenPath:
 
     def test_green_3_parts_with_sensor(self, conn, ontology):
         """GREEN Query 3: Find all parts with 'sensor' in the name"""
-        table = ontology["classes"]["Part"]["sql_mapping"]["table"]
+        table = ontology.get_class_table("Part")
 
         start = time.time()
         with conn.cursor() as cur:
@@ -120,9 +120,8 @@ class TestGreenPath:
 
     def test_green_4_parts_from_supplier(self, conn, ontology):
         """GREEN Query 4: Parts from supplier X (using provides relationship)"""
-        provides = ontology["relationships"]["provides"]
-        parts_table = provides["sql_mapping"]["table"]
-        fk_col = provides["sql_mapping"]["domain_key"]
+        parts_table = ontology.get_role_table("provides")
+        fk_col, _ = ontology.get_role_keys("provides")
 
         # Get Acme Corp's ID first
         with conn.cursor() as cur:
@@ -143,10 +142,8 @@ class TestGreenPath:
 
     def test_green_5_products_using_part(self, conn, ontology):
         """GREEN Query 5: Products using a specific part (via product_components)"""
-        contains = ontology["relationships"]["contains_component"]
-        junction_table = contains["sql_mapping"]["table"]
-        product_fk = contains["sql_mapping"]["domain_key"]
-        part_fk = contains["sql_mapping"]["range_key"]
+        junction_table = ontology.get_role_table("contains_component")
+        product_fk, part_fk = ontology.get_role_keys("contains_component")
 
         # Get a part ID
         with conn.cursor() as cur:
@@ -172,7 +169,7 @@ class TestGreenPath:
 
     def test_green_6_facilities_by_type(self, conn, ontology):
         """GREEN Query 6: Find all warehouses"""
-        table = ontology["classes"]["Facility"]["sql_mapping"]["table"]
+        table = ontology.get_class_table("Facility")
 
         start = time.time()
         with conn.cursor() as cur:
@@ -188,7 +185,7 @@ class TestGreenPath:
 
     def test_green_7_orders_by_status(self, conn, ontology):
         """GREEN Query 7: Count orders by status"""
-        table = ontology["classes"]["Order"]["sql_mapping"]["table"]
+        table = ontology.get_class_table("Order")
 
         start = time.time()
         with conn.cursor() as cur:
@@ -204,7 +201,7 @@ class TestGreenPath:
 
     def test_green_8_customer_orders_join(self, conn, ontology):
         """GREEN Query 8: Orders for a specific customer (FK join)"""
-        placed_by = ontology["relationships"]["placed_by"]
+        # placed_by relationship - just need order and customer tables
 
         start = time.time()
         with conn.cursor() as cur:
@@ -225,7 +222,7 @@ class TestGreenPath:
 
     def test_green_9_supplier_certifications(self, conn, ontology):
         """GREEN Query 9: Certifications for Acme Corp"""
-        has_cert = ontology["relationships"]["has_certification"]
+        # has_certification relationship - direct join
 
         start = time.time()
         with conn.cursor() as cur:
@@ -245,8 +242,7 @@ class TestGreenPath:
 
     def test_green_10_alternate_suppliers_for_part(self, conn, ontology):
         """GREEN Query 10: Alternate suppliers for a part (can_supply relationship)"""
-        can_supply = ontology["relationships"]["can_supply"]
-        table = can_supply["sql_mapping"]["table"]
+        table = ontology.get_role_table("can_supply")
 
         # Get a part with alternate suppliers
         with conn.cursor() as cur:
@@ -287,7 +283,8 @@ class TestYellowPath:
 
     def test_yellow_1_tier3_suppliers_for_acme(self, conn, ontology):
         """YELLOW Query 1: Find all tier 3 suppliers for Acme Corp"""
-        supplies_to = ontology["relationships"]["supplies_to"]
+        edges_table = ontology.get_role_table("supplies_to")
+        domain_key, range_key = ontology.get_role_keys("supplies_to")
 
         # Get Acme Corp's ID
         with conn.cursor() as cur:
@@ -298,9 +295,9 @@ class TestYellowPath:
         result = traverse_collecting(
             conn,
             nodes_table="suppliers",
-            edges_table=supplies_to["sql_mapping"]["table"],
-            edge_from_col=supplies_to["sql_mapping"]["domain_key"],  # seller_id
-            edge_to_col=supplies_to["sql_mapping"]["range_key"],      # buyer_id
+            edges_table=edges_table,
+            edge_from_col=domain_key,  # seller_id
+            edge_to_col=range_key,      # buyer_id
             start_id=acme_id,
             target_condition="tier = 3",
             direction="inbound",  # upstream suppliers
@@ -314,7 +311,8 @@ class TestYellowPath:
 
     def test_yellow_2_upstream_suppliers(self, conn, ontology):
         """YELLOW Query 2: All upstream suppliers for a tier 1 company"""
-        supplies_to = ontology["relationships"]["supplies_to"]
+        edges_table = ontology.get_role_table("supplies_to")
+        domain_key, range_key = ontology.get_role_keys("supplies_to")
 
         # Get a tier 1 supplier
         with conn.cursor() as cur:
@@ -325,9 +323,9 @@ class TestYellowPath:
         result = traverse(
             conn,
             nodes_table="suppliers",
-            edges_table=supplies_to["sql_mapping"]["table"],
-            edge_from_col=supplies_to["sql_mapping"]["domain_key"],
-            edge_to_col=supplies_to["sql_mapping"]["range_key"],
+            edges_table=edges_table,
+            edge_from_col=domain_key,
+            edge_to_col=range_key,
             start_id=supplier_id,
             direction="inbound",
             max_depth=10,
@@ -340,7 +338,8 @@ class TestYellowPath:
 
     def test_yellow_3_downstream_customers(self, conn, ontology):
         """YELLOW Query 3: Downstream customers of a tier 3 supplier"""
-        supplies_to = ontology["relationships"]["supplies_to"]
+        edges_table = ontology.get_role_table("supplies_to")
+        domain_key, range_key = ontology.get_role_keys("supplies_to")
 
         # Get a tier 3 supplier
         with conn.cursor() as cur:
@@ -351,9 +350,9 @@ class TestYellowPath:
         result = traverse(
             conn,
             nodes_table="suppliers",
-            edges_table=supplies_to["sql_mapping"]["table"],
-            edge_from_col=supplies_to["sql_mapping"]["domain_key"],
-            edge_to_col=supplies_to["sql_mapping"]["range_key"],
+            edges_table=edges_table,
+            edge_from_col=domain_key,
+            edge_to_col=range_key,
             start_id=supplier_id,
             direction="outbound",
             max_depth=10,
@@ -608,8 +607,9 @@ class TestRedPath:
 
     def test_red_1_cheapest_route(self, conn, ontology):
         """RED Query 1: Cheapest route between facilities"""
-        connects_to = ontology["relationships"]["connects_to"]
-        weight_cols = connects_to["sql_mapping"]["weight_columns"]
+        # Get weight columns - in new format it's a list of {name, type} dicts
+        weight_cols = ontology.get_role_weight_columns("connects_to")
+        weight_col_map = {wc["name"]: wc["name"] for wc in weight_cols}
 
         # Get Chicago and LA facility IDs
         with conn.cursor() as cur:
@@ -634,7 +634,7 @@ class TestRedPath:
             edge_to_col="destination_facility_id",
             start_id=chicago_id,
             end_id=la_id,
-            weight_col=weight_cols["cost"],  # cost_usd
+            weight_col="cost_usd",  # cost column
             max_depth=20,
         )
         elapsed = time.time() - start
@@ -648,9 +648,6 @@ class TestRedPath:
 
     def test_red_2_shortest_distance_route(self, conn, ontology):
         """RED Query 2: Shortest distance route between facilities"""
-        connects_to = ontology["relationships"]["connects_to"]
-        weight_cols = connects_to["sql_mapping"]["weight_columns"]
-
         # Get two facilities
         with conn.cursor() as cur:
             cur.execute("SELECT id, name FROM facilities WHERE is_active = true LIMIT 2")
@@ -669,7 +666,7 @@ class TestRedPath:
             edge_to_col="destination_facility_id",
             start_id=start_id,
             end_id=end_id,
-            weight_col=weight_cols["distance"],  # distance_km
+            weight_col="distance_km",  # distance column
             max_depth=20,
         )
         elapsed = time.time() - start
@@ -809,9 +806,6 @@ class TestRedPath:
 
     def test_red_9_fastest_route(self, conn, ontology):
         """RED Query 9: Fastest route (by transit time)"""
-        connects_to = ontology["relationships"]["connects_to"]
-        weight_cols = connects_to["sql_mapping"]["weight_columns"]
-
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM facilities WHERE is_active = true LIMIT 2")
             rows = cur.fetchall()
@@ -829,7 +823,7 @@ class TestRedPath:
             edge_to_col="destination_facility_id",
             start_id=start_id,
             end_id=end_id,
-            weight_col=weight_cols["time"],  # transit_time_hours
+            weight_col="transit_time_hours",  # time column
             max_depth=20,
         )
         elapsed = time.time() - start
@@ -902,8 +896,8 @@ class TestGate3Summary:
     def test_gate3_ontology_route_coverage(self, ontology):
         """Verify ontology has routes for all complexity levels."""
         complexities = {}
-        for rel_name, rel_def in ontology["relationships"].items():
-            complexity = rel_def["traversal_complexity"]
+        for rel_name in ontology.roles:
+            complexity = ontology.get_role_complexity(rel_name)
             if complexity not in complexities:
                 complexities[complexity] = []
             complexities[complexity].append(rel_name)

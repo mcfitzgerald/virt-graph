@@ -97,8 +97,8 @@ Pattern templates use ontology references for parameters. Resolve them:
 2. Map template variables to actual values:
 
 ```yaml
-# Template reference
-nodes_table: "{ontology.classes.Supplier.sql_mapping.table}"
+# Template reference (TBox/RBox format)
+nodes_table: "{ontology.tbox.classes.Supplier.sql.table}"
 
 # Resolved value
 nodes_table: suppliers

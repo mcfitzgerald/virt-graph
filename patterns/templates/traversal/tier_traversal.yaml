@@ -92,10 +92,10 @@ variants:
 
 # Parameter resolution from ontology
 parameter_mapping:
-  nodes_table: "{ontology.classes.Supplier.sql_mapping.table}"
-  edges_table: "{ontology.relationships.supplies_to.sql_mapping.table}"
-  edge_from_col: "{ontology.relationships.supplies_to.sql_mapping.domain_key}"
-  edge_to_col: "{ontology.relationships.supplies_to.sql_mapping.range_key}"
+  nodes_table: "{ontology.tbox.classes.Supplier.sql.table}"
+  edges_table: "{ontology.rbox.roles.supplies_to.sql.table}"
+  edge_from_col: "{ontology.rbox.roles.supplies_to.sql.domain_key}"
+  edge_to_col: "{ontology.rbox.roles.supplies_to.sql.range_key}"
 
 # Example instantiation
 example:

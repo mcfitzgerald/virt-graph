@@ -90,11 +90,11 @@ variants:
 
 # Parameter resolution
 parameter_mapping:
-  nodes_table: "{ontology.classes.Part.sql_mapping.table}"
-  edges_table: "{ontology.relationships.component_of.sql_mapping.table}"
+  nodes_table: "{ontology.tbox.classes.Part.sql.table}"
+  edges_table: "{ontology.rbox.roles.component_of.sql.table}"
   # IMPORTANT: Swap domain/range for explosion direction
-  edge_from_col: "{ontology.relationships.component_of.sql_mapping.range_key}"  # parent_part_id
-  edge_to_col: "{ontology.relationships.component_of.sql_mapping.domain_key}"   # child_part_id
+  edge_from_col: "{ontology.rbox.roles.component_of.sql.range_key}"  # parent_part_id
+  edge_to_col: "{ontology.rbox.roles.component_of.sql.domain_key}"   # child_part_id
 
 # Example instantiation
 example:

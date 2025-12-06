@@ -53,31 +53,41 @@ Virtual Graph uses a layered architecture with clear separation of concerns:
 
 **Location**: `ontology/supply_chain.yaml`
 
-The ontology provides semantic mappings between business concepts and physical database objects:
+The ontology uses TBox/RBox format (Description Logic inspired, LinkML-influenced) to provide semantic mappings between business concepts and physical database objects:
 
 ```yaml
-classes:
-  Supplier:
-    description: "Companies that provide materials/parts"
-    sql_mapping:
-      table: suppliers
-      primary_key: id
-      identifier_columns: [supplier_code, name]
+tbox:
+  classes:
+    Supplier:
+      description: "Companies that provide materials/parts"
+      sql:
+        table: suppliers
+        primary_key: id
+        identifier: [supplier_code, name]
 
-relationships:
-  supplies_to:
-    domain: Supplier
-    range: Supplier
-    sql_mapping:
-      table: supplier_relationships
-      domain_key: seller_id
-      range_key: buyer_id
-    traversal_complexity: YELLOW
+rbox:
+  roles:
+    supplies_to:
+      domain: Supplier
+      range: Supplier
+      sql:
+        table: supplier_relationships
+        domain_key: seller_id
+        range_key: buyer_id
+      traversal_complexity: YELLOW
+```
+
+**Programmatic Access**: Use `OntologyAccessor` from `src/virt_graph/ontology.py`:
+
+```python
+from virt_graph.ontology import OntologyAccessor
+ontology = OntologyAccessor()
+table = ontology.get_class_table("Supplier")  # "suppliers"
 ```
 
 **Purpose**:
 - Maps business terms to SQL tables/columns
-- Defines relationship semantics (cardinality, directionality)
+- Defines relationship semantics (cardinality, OWL 2 properties)
 - Classifies traversal complexity (GREEN/YELLOW/RED)
 - Serves as "always-loaded" context for query understanding
 

@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-12-05
+
+### Added
+
+**TBox/RBox Ontology Format Migration**
+
+Migrated ontology from flat discovery-driven format to standards-based TBox/RBox format (Description Logic inspired, LinkML-influenced):
+
+**New Abstraction Layer**
+- `src/virt_graph/ontology.py` - `OntologyAccessor` class providing stable API:
+  - `get_class_table()`, `get_class_pk()`, `get_class_slots()`, `get_class_row_count()`
+  - `get_role_table()`, `get_role_keys()`, `get_role_complexity()`, `get_role_cardinality()`
+  - Properties: `classes`, `roles`, `version`, `name`, `database`
+
+**Ontology Structure Changes**
+
+| Old Path | New Path |
+|----------|----------|
+| `ontology["classes"]` | `ontology["tbox"]["classes"]` |
+| `ontology["relationships"]` | `ontology["rbox"]["roles"]` |
+| `["sql_mapping"]["table"]` | `["sql"]["table"]` |
+| `["attributes"]` | `["slots"]` |
+| `["soft_delete"]` (boolean) | `["soft_delete"]["enabled"]` |
+
+**OWL 2 Properties Added to Roles**
+- `transitive`, `symmetric`, `asymmetric`, `reflexive`, `irreflexive`
+- `functional`, `inverse_functional`, `inverse_of`
+- Virtual Graph extensions: `acyclic`, `is_hierarchical`, `is_weighted`
+
+### Changed
+
+**Infrastructure Updates**
+- `neo4j/migrate.py` - Updated to use `OntologyAccessor` instead of raw YAML access
+
+**Test File Updates (122 tests pass)**
+- `tests/test_gate2_validation.py` - 21 tests using OntologyAccessor
+- `tests/test_gate3_validation.py` - 32 tests using OntologyAccessor
+- `tests/test_gate4_validation.py` - 43 tests using OntologyAccessor
+- `tests/test_gate5_validation.py` - 26 tests using OntologyAccessor
+
+**Pattern Template Updates (8 files)**
+
+All templates updated from `{ontology.classes.*.sql_mapping.*}` to `{ontology.tbox.classes.*.sql.*}`:
+- `patterns/templates/traversal/tier_traversal.yaml`
+- `patterns/templates/traversal/bom_explosion.yaml`
+- `patterns/templates/traversal/where_used.yaml`
+- `patterns/templates/pathfinding/shortest_path.yaml`
+- `patterns/templates/pathfinding/all_paths.yaml`
+- `patterns/templates/network-analysis/centrality.yaml`
+- `patterns/templates/network-analysis/components.yaml`
+
+**Skills Documentation Updates**
+- `.claude/skills/patterns/SKILL.md` - Updated ontology path examples
+- `.claude/skills/handlers/SKILL.md` - Updated parameter resolution flow
+- `.claude/skills/schema/SKILL.md` - Updated cross-reference instructions
+
+**Project Documentation Updates**
+- `CLAUDE.md` - Added TBox/RBox structure docs and OntologyAccessor usage
+- `docs/development/phase2.md` - Updated YAML examples to TBox/RBox format
+- `docs/architecture.md` - Updated ontology examples + OntologyAccessor usage
+- `docs/development/gates.md` - Updated Gate 2 checklist terminology
+- `prompts/ontology_discovery.md` - Already in TBox/RBox format
+
+### Migration Guide
+
+For code accessing the ontology directly, replace:
+
+```python
+# OLD
+with open("ontology/supply_chain.yaml") as f:
+    ontology = yaml.safe_load(f)
+table = ontology["classes"]["Supplier"]["sql_mapping"]["table"]
+
+# NEW
+from virt_graph.ontology import OntologyAccessor
+ontology = OntologyAccessor()
+table = ontology.get_class_table("Supplier")
+```
+
+---
+
 ## [0.6.4] - 2025-12-04
 
 ### Changed

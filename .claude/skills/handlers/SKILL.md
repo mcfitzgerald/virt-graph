@@ -63,11 +63,11 @@ Read src/virt_graph/handlers/network.py     # centrality, connected_components, 
 Use the schema skill to get physical table/column names:
 
 ```python
-# From ontology
-nodes_table = "suppliers"  # from Supplier.sql_mapping.table
-edges_table = "supplier_relationships"  # from supplies_to.sql_mapping.table
-edge_from_col = "seller_id"  # from supplies_to.sql_mapping.domain_key
-edge_to_col = "buyer_id"  # from supplies_to.sql_mapping.range_key
+# From ontology (TBox/RBox format)
+nodes_table = "suppliers"  # from tbox.classes.Supplier.sql.table
+edges_table = "supplier_relationships"  # from rbox.roles.supplies_to.sql.table
+edge_from_col = "seller_id"  # from rbox.roles.supplies_to.sql.domain_key
+edge_to_col = "buyer_id"  # from rbox.roles.supplies_to.sql.range_key
 ```
 
 ### Step 4: Construct Handler Invocation
@@ -92,7 +92,7 @@ result = traverse(
 ```
 Pattern template (references ontology concepts)
         ↓
-Ontology lookup (get sql_mapping from relationship)
+Ontology lookup (get sql from tbox.classes or rbox.roles)
         ↓
 Schema introspection (verify tables/columns exist)
         ↓

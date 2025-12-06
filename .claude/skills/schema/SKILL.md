@@ -48,7 +48,7 @@ Read `.claude/skills/schema/scripts/introspect.sql` for comprehensive queries:
 ### For SQL Generation
 
 1. Run introspection queries against `information_schema`
-2. Cross-reference with ontology `sql_mapping` sections
+2. Cross-reference with ontology `tbox.classes[*].sql` and `rbox.roles[*].sql` sections
 3. Return physical details needed for SQL generation:
    - Exact table name
    - Primary key column

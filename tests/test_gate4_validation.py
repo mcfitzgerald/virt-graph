@@ -11,10 +11,15 @@ Run with: poetry run pytest tests/test_gate4_validation.py -v
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from virt_graph.ontology import OntologyAccessor
 
 
 # =============================================================================
@@ -42,9 +47,8 @@ def ontology_path(project_root):
 
 @pytest.fixture
 def ontology(ontology_path):
-    """Load ontology YAML."""
-    with open(ontology_path) as f:
-        return yaml.safe_load(f)
+    """Load ontology using OntologyAccessor."""
+    return OntologyAccessor(ontology_path)
 
 
 @pytest.fixture
@@ -242,13 +246,12 @@ class TestOntologyResolution:
     def test_ontology_has_required_classes(self, ontology):
         """Verify ontology has all required classes."""
         required_classes = ["Supplier", "Part", "Product", "Facility"]
-        classes = ontology.get("classes", {})
 
         for cls in required_classes:
-            assert cls in classes, f"Ontology missing class: {cls}"
-            assert "sql_mapping" in classes[cls], (
-                f"Class '{cls}' missing sql_mapping"
-            )
+            assert cls in ontology.classes, f"Ontology missing class: {cls}"
+            # Verify sql mapping exists via accessor
+            table = ontology.get_class_table(cls)
+            assert table is not None, f"Class '{cls}' missing sql.table"
 
     def test_ontology_has_required_relationships(self, ontology):
         """Verify ontology has all required relationships."""
@@ -260,43 +263,40 @@ class TestOntologyResolution:
             "can_supply",
             "contains_component",
         ]
-        relationships = ontology.get("relationships", {})
 
         for rel in required_relationships:
-            assert rel in relationships, (
+            assert rel in ontology.roles, (
                 f"Ontology missing relationship: {rel}"
             )
-            assert "sql_mapping" in relationships[rel], (
-                f"Relationship '{rel}' missing sql_mapping"
+            # Verify sql mapping exists via accessor
+            table = ontology.get_role_table(rel)
+            assert table is not None, (
+                f"Relationship '{rel}' missing sql.table"
             )
 
     def test_ontology_sql_mappings_complete(self, ontology):
-        """Verify all sql_mappings have required fields."""
-        relationships = ontology.get("relationships", {})
-
-        for name, rel in relationships.items():
-            sql_mapping = rel.get("sql_mapping", {})
-
-            # All relationships need table and keys
-            assert "table" in sql_mapping, (
-                f"Relationship '{name}' missing sql_mapping.table"
+        """Verify all sql mappings have required fields."""
+        for name in ontology.roles:
+            # All relationships need table and keys - accessor methods will raise if missing
+            table = ontology.get_role_table(name)
+            assert table is not None, (
+                f"Relationship '{name}' missing sql.table"
             )
-            assert "domain_key" in sql_mapping, (
-                f"Relationship '{name}' missing sql_mapping.domain_key"
+            domain_key, range_key = ontology.get_role_keys(name)
+            assert domain_key is not None, (
+                f"Relationship '{name}' missing sql.domain_key"
             )
-            assert "range_key" in sql_mapping, (
-                f"Relationship '{name}' missing sql_mapping.range_key"
+            assert range_key is not None, (
+                f"Relationship '{name}' missing sql.range_key"
             )
 
     def test_traversal_complexity_annotations(self, ontology):
         """Verify relationships have traversal_complexity."""
-        relationships = ontology.get("relationships", {})
-
-        for name, rel in relationships.items():
-            assert "traversal_complexity" in rel, (
+        for name in ontology.roles:
+            complexity = ontology.get_role_complexity(name)
+            assert complexity is not None, (
                 f"Relationship '{name}' missing traversal_complexity"
             )
-            complexity = rel["traversal_complexity"]
             assert complexity in ["GREEN", "YELLOW", "RED"], (
                 f"Relationship '{name}' has invalid complexity: {complexity}"
             )
@@ -330,19 +330,16 @@ class TestOntologyResolution:
 
         # Get node class from bindings
         node_class = bindings.get("node_class")
-        if node_class:
-            class_def = ontology["classes"].get(node_class, {})
-            resolved_nodes_table = class_def.get("sql_mapping", {}).get("table")
+        if node_class and node_class in ontology.classes:
+            resolved_nodes_table = ontology.get_class_table(node_class)
             assert resolved_nodes_table == expected_bindings["nodes_table"], (
                 f"Pattern '{pattern_name}' nodes_table resolution failed"
             )
 
         # Get relationship from bindings
         relationship = bindings.get("edge_relationship")
-        if relationship:
-            rel_def = ontology["relationships"].get(relationship, {})
-            sql_mapping = rel_def.get("sql_mapping", {})
-            resolved_edges_table = sql_mapping.get("table")
+        if relationship and relationship in ontology.roles:
+            resolved_edges_table = ontology.get_role_table(relationship)
             assert resolved_edges_table == expected_bindings["edges_table"], (
                 f"Pattern '{pattern_name}' edges_table resolution failed"
             )
@@ -381,15 +378,16 @@ class TestEndToEndIntegration:
         # Using first tier 1 supplier as starting point
 
         # Resolve from ontology
-        rel = ontology["relationships"]["supplies_to"]["sql_mapping"]
+        edges_table = ontology.get_role_table("supplies_to")
+        domain_key, range_key = ontology.get_role_keys("supplies_to")
 
         # Execute handler
         result = traverse_collecting(
             conn=db_connection,
             nodes_table="suppliers",
-            edges_table=rel["table"],
-            edge_from_col=rel["domain_key"],
-            edge_to_col=rel["range_key"],
+            edges_table=edges_table,
+            edge_from_col=domain_key,
+            edge_to_col=range_key,
             start_id=1,  # First supplier
             target_condition="tier = 3",
             direction="inbound",
@@ -458,15 +456,16 @@ class TestEndToEndIntegration:
             start_id, end_id = row[0], row[1]
 
         # Resolve from ontology
-        rel = ontology["relationships"]["connects_to"]["sql_mapping"]
+        edges_table = ontology.get_role_table("connects_to")
+        domain_key, range_key = ontology.get_role_keys("connects_to")
 
         # Execute handler
         result = shortest_path(
             conn=db_connection,
             nodes_table="facilities",
-            edges_table=rel["table"],
-            edge_from_col=rel["domain_key"],
-            edge_to_col=rel["range_key"],
+            edges_table=edges_table,
+            edge_from_col=domain_key,
+            edge_to_col=range_key,
             start_id=start_id,
             end_id=end_id,
             weight_col="cost_usd",
@@ -485,15 +484,16 @@ class TestEndToEndIntegration:
         from virt_graph.handlers.network import centrality
 
         # Resolve from ontology
-        rel = ontology["relationships"]["connects_to"]["sql_mapping"]
+        edges_table = ontology.get_role_table("connects_to")
+        domain_key, range_key = ontology.get_role_keys("connects_to")
 
         # Execute handler
         result = centrality(
             conn=db_connection,
             nodes_table="facilities",
-            edges_table=rel["table"],
-            edge_from_col=rel["domain_key"],
-            edge_to_col=rel["range_key"],
+            edges_table=edges_table,
+            edge_from_col=domain_key,
+            edge_to_col=range_key,
             centrality_type="degree",
             top_n=5,
         )
@@ -616,7 +616,7 @@ class TestGate4Summary:
         print("GATE 4 VALIDATION: PASSED")
         print("=" * 60)
         print(f"Pattern templates: {len(all_pattern_templates)}")
-        print(f"Ontology classes: {len(ontology.get('classes', {}))}")
-        print(f"Ontology relationships: {len(ontology.get('relationships', {}))}")
+        print(f"Ontology classes: {len(ontology.classes)}")
+        print(f"Ontology roles: {len(ontology.roles)}")
         print("All deliverables present and validated")
         print("=" * 60)

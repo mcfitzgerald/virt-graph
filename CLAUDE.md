@@ -113,10 +113,45 @@ Named test entities for queries:
 
 ## Ontology
 
-The discovered ontology (`ontology/supply_chain.yaml`) maps semantic concepts to physical SQL:
-- **8 Classes**: Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
-- **12 Relationships** with traversal complexity (GREEN/YELLOW/RED)
-- Use ontology mappings when generating SQL for graph queries
+The ontology (`ontology/supply_chain.yaml`) uses TBox/RBox format (Description Logic inspired, LinkML-influenced):
+- **TBox (Classes)**: 8 classes - Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
+- **RBox (Roles)**: 13 relationships with traversal complexity (GREEN/YELLOW/RED)
+
+### Accessing the Ontology
+
+Use `OntologyAccessor` from `src/virt_graph/ontology.py` for programmatic access:
+
+```python
+from virt_graph.ontology import OntologyAccessor
+
+ontology = OntologyAccessor()
+table = ontology.get_class_table("Supplier")  # "suppliers"
+domain_key, range_key = ontology.get_role_keys("supplies_to")  # ("seller_id", "buyer_id")
+complexity = ontology.get_role_complexity("connects_to")  # "RED"
+```
+
+### Ontology Structure
+
+```yaml
+tbox:
+  classes:
+    Supplier:
+      sql:
+        table: suppliers
+        primary_key: id
+      slots: {...}
+
+rbox:
+  roles:
+    supplies_to:
+      domain: Supplier
+      range: Supplier
+      sql:
+        table: supplier_relationships
+        domain_key: seller_id
+        range_key: buyer_id
+      traversal_complexity: YELLOW
+```
 
 Key relationship complexities:
 - **GREEN**: Simple FK joins (provides, can_supply, contains_component, etc.)
