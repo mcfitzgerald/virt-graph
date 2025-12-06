@@ -27,6 +27,20 @@ Phase 1 establishes the foundation for Virtual Graph with two parallel tracks:
 
 The supply chain schema includes 15 tables with realistic "enterprise messiness":
 
+### Design Note: Schema Comments and Realism
+
+The schema file includes comments using graph terminology (e.g., "weighted edges", "self-referential edges"). This is a **realism trade-off**—a truly "found" enterprise schema would not have these helpful labels.
+
+In a production deployment, this graph-awareness would come from:
+
+1. **SME annotation**: A domain expert reviews the schema and identifies which junction tables represent traversable relationships. This is low-effort work—typically a few hours for a schema of this size.
+
+2. **User input during discovery**: The Phase 2 ontology discovery session asks the user questions like "Which tables represent relationships between entities?" The LLM proposes candidates based on FK patterns; the user confirms or corrects.
+
+Either approach requires minimal lift. The structural patterns (junction tables with dual FKs, self-referential relationships) are detectable automatically; the semantic labeling ("this is a supply chain tier relationship") requires human input.
+
+For this POC, we embedded the labels in schema comments to accelerate development, but the discovery process in Phase 2 demonstrates how these patterns would be identified from raw introspection.
+
 ```
 ┌─────────────────┐      ┌─────────────────────────┐
 │    suppliers    │◄────►│  supplier_relationships │

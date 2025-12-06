@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-12-05
+
+### Added
+
+**Schema Realism Design Note**
+
+Added documentation in `docs/development/phase1.md` explaining the realism trade-off in schema comments:
+- Schema uses graph terminology ("edges", "weighted edges") for convenience
+- Real enterprise schemas would not have these labels
+- In production, this annotation would come from SME review or user input during discovery
+- Both approaches require minimal effort—structural patterns are auto-detectable, semantic labeling needs human input
+
+---
+
 ## [0.7.1] - 2025-12-05
 
 ### Changed
