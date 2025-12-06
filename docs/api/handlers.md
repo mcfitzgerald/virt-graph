@@ -49,7 +49,7 @@ def check_limits(depth: int, visited_count: int) -> None:
     """
 ```
 
-#### `estimate_reachable_nodes()`
+#### `estimate_reachable_nodes()` (DEPRECATED)
 
 ```python
 def estimate_reachable_nodes(
@@ -62,15 +62,23 @@ def estimate_reachable_nodes(
     direction: str = "outbound",
 ) -> int:
     """
-    Estimate reachable node count using sampling.
+    DEPRECATED: Use virt_graph.estimator module instead.
 
-    Samples first 3 levels and extrapolates based on
-    average branching factor.
+    This function uses naive exponential extrapolation which can
+    over-estimate significantly for DAGs with node sharing.
+
+    Migration:
+        from virt_graph.estimator import GraphSampler, estimate
+        sampler = GraphSampler(conn, edges_table, from_col, to_col)
+        sample = sampler.sample(start_id)
+        est = estimate(sample, max_depth)
 
     Returns:
         Estimated number of reachable nodes
     """
 ```
+
+> **Note**: See [Estimator API Reference](estimator.md) for the new estimation module.
 
 #### `fetch_edges_for_frontier()`
 
@@ -149,6 +157,10 @@ def traverse(
     prefilter_sql: str | None = None,
     include_start: bool = True,
     id_column: str = "id",
+    # Configurable limits (v0.8.0+)
+    max_nodes: int | None = None,
+    skip_estimation: bool = False,
+    estimation_config: EstimationConfig | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
@@ -167,12 +179,25 @@ def traverse(
         prefilter_sql: SQL WHERE clause to filter edges
         include_start: Whether to include start node in results
         id_column: Name of the ID column in nodes_table
+        max_nodes: Override default MAX_NODES limit (None = use 10,000)
+        skip_estimation: Bypass size check entirely (caller takes responsibility)
+        estimation_config: Fine-tune estimation parameters
 
     Returns:
         dict with nodes, paths, edges, depth_reached, nodes_visited, terminated_at
 
     Raises:
-        SubgraphTooLarge: If estimated traversal would exceed MAX_NODES
+        SubgraphTooLarge: If estimated traversal would exceed max_nodes limit
+
+    Examples:
+        # Normal usage with improved estimation
+        result = traverse(conn, "suppliers", "supplier_relationships", ...)
+
+        # Override limit for known-bounded graph
+        result = traverse(..., max_nodes=50_000)
+
+        # Skip estimation when you know graph is bounded
+        result = traverse(..., skip_estimation=True)
     """
 ```
 
@@ -211,6 +236,10 @@ def bom_explode(
     start_part_id: int,
     max_depth: int = 20,
     include_quantities: bool = True,
+    # Configurable limits (v0.8.0+)
+    max_nodes: int | None = None,
+    skip_estimation: bool = False,
+    estimation_config: EstimationConfig | None = None,
 ) -> dict[str, Any]:
     """
     Explode a Bill of Materials starting from a top-level part.
@@ -219,9 +248,22 @@ def bom_explode(
         start_part_id: Top-level part ID
         max_depth: Maximum BOM depth to traverse
         include_quantities: Whether to aggregate quantities
+        max_nodes: Override default MAX_NODES limit (None = use 10,000)
+        skip_estimation: Bypass size check entirely (caller takes responsibility)
+        estimation_config: Fine-tune estimation parameters
 
     Returns:
         dict with BOM tree structure and aggregated quantities
+
+    Examples:
+        # Normal usage with improved estimation
+        result = bom_explode(conn, part_id)
+
+        # Override limit for large BOMs
+        result = bom_explode(conn, part_id, max_nodes=50_000)
+
+        # Skip estimation for known-bounded BOM
+        result = bom_explode(conn, part_id, skip_estimation=True)
     """
 ```
 

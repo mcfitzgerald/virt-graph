@@ -9,12 +9,17 @@ from typing import Any
 
 from psycopg2.extensions import connection as PgConnection
 
+from ..estimator import (
+    EstimationConfig,
+    GraphSampler,
+    estimate,
+    get_table_bound,
+)
 from .base import (
     MAX_DEPTH,
     MAX_NODES,
     SubgraphTooLarge,
     check_limits,
-    estimate_reachable_nodes,
     fetch_edges_for_frontier,
     fetch_nodes,
     should_stop,
@@ -35,6 +40,10 @@ def traverse(
     prefilter_sql: str | None = None,
     include_start: bool = True,
     id_column: str = "id",
+    # NEW: Configurable limits
+    max_nodes: int | None = None,
+    skip_estimation: bool = False,
+    estimation_config: EstimationConfig | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
@@ -60,6 +69,9 @@ def traverse(
                        Example: "is_active = true"
         include_start: Whether to include the start node in results
         id_column: Name of the ID column in nodes_table
+        max_nodes: Override default MAX_NODES limit (None = use default 10,000)
+        skip_estimation: Bypass size check entirely (caller takes responsibility)
+        estimation_config: Fine-tune estimation parameters
 
     Returns:
         dict with:
@@ -71,7 +83,7 @@ def traverse(
             - terminated_at: nodes where traversal stopped due to stop_condition
 
     Raises:
-        SubgraphTooLarge: If estimated traversal would exceed MAX_NODES
+        SubgraphTooLarge: If estimated traversal would exceed max_nodes limit
 
     Example:
         >>> result = traverse(
@@ -86,25 +98,32 @@ def traverse(
         ...     stop_condition="tier = 3",
         ... )
         >>> print(f"Found {len(result['nodes'])} tier 3 suppliers")
+
+        >>> # Override limit for known-bounded graph
+        >>> result = traverse(..., max_nodes=50_000)
+
+        >>> # Skip estimation for trusted caller
+        >>> result = traverse(..., skip_estimation=True)
     """
     # Clamp to safety limit
     max_depth = min(max_depth, MAX_DEPTH)
+    effective_max_nodes = max_nodes if max_nodes is not None else MAX_NODES
 
-    # Estimate size before traversing
-    estimated = estimate_reachable_nodes(
-        conn,
-        edges_table,
-        start_id,
-        max_depth,
-        edge_from_col,
-        edge_to_col,
-        direction,
-    )
-    if estimated > MAX_NODES:
-        raise SubgraphTooLarge(
-            f"Query would touch ~{estimated:,} nodes (limit: {MAX_NODES:,}). "
-            "Consider adding filters or reducing depth."
+    # Estimate size before traversing (unless skipped)
+    if not skip_estimation:
+        sampler = GraphSampler(
+            conn, edges_table, edge_from_col, edge_to_col, direction
         )
+        sample = sampler.sample(start_id)
+        table_bound = get_table_bound(conn, edges_table, edge_from_col, edge_to_col)
+
+        estimated = estimate(sample, max_depth, table_bound, estimation_config)
+
+        if estimated > effective_max_nodes:
+            raise SubgraphTooLarge(
+                f"Query would touch ~{estimated:,} nodes (limit: {effective_max_nodes:,}). "
+                "Consider: max_nodes=N to increase limit, or skip_estimation=True to bypass."
+            )
 
     # Initialize traversal state
     frontier: set[int] = {start_id}
@@ -348,6 +367,10 @@ def bom_explode(
     start_part_id: int,
     max_depth: int = 20,
     include_quantities: bool = True,
+    # NEW: Configurable limits
+    max_nodes: int | None = None,
+    skip_estimation: bool = False,
+    estimation_config: EstimationConfig | None = None,
 ) -> dict[str, Any]:
     """
     Explode a Bill of Materials starting from a top-level part.
@@ -360,9 +383,22 @@ def bom_explode(
         start_part_id: Top-level part ID
         max_depth: Maximum BOM depth to traverse
         include_quantities: Whether to aggregate quantities
+        max_nodes: Override default MAX_NODES limit (None = use default 10,000)
+        skip_estimation: Bypass size check entirely (caller takes responsibility)
+        estimation_config: Fine-tune estimation parameters
 
     Returns:
         dict with BOM tree structure and aggregated quantities
+
+    Example:
+        >>> # Normal usage with improved estimation
+        >>> result = bom_explode(conn, part_id)
+
+        >>> # Override limit for large BOMs
+        >>> result = bom_explode(conn, part_id, max_nodes=50_000)
+
+        >>> # Skip estimation when you know BOM is bounded
+        >>> result = bom_explode(conn, part_id, skip_estimation=True)
     """
     # Use traverse with BOM-specific settings
     result = traverse(
@@ -375,6 +411,9 @@ def bom_explode(
         direction="outbound",
         max_depth=max_depth,
         include_start=True,
+        max_nodes=max_nodes,
+        skip_estimation=skip_estimation,
+        estimation_config=estimation_config,
     )
 
     if not include_quantities:

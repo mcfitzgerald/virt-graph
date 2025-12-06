@@ -5,6 +5,9 @@ This package provides schema-parameterized handlers for graph operations:
 - traversal: BFS/DFS with configurable stop conditions
 - pathfinding: Dijkstra shortest path via NetworkX
 - network: Centrality, connected components
+
+For estimation configuration, import from virt_graph.estimator:
+    from virt_graph.estimator import EstimationConfig
 """
 
 from .base import (
@@ -15,7 +18,7 @@ from .base import (
     SafetyLimitExceeded,
     SubgraphTooLarge,
     check_limits,
-    estimate_reachable_nodes,
+    estimate_reachable_nodes,  # DEPRECATED - use virt_graph.estimator
     fetch_edges_for_frontier,
     fetch_nodes,
 )
@@ -35,6 +38,9 @@ from .traversal import (
     traverse_collecting,
 )
 
+# Re-export EstimationConfig for convenience
+from ..estimator import EstimationConfig
+
 __all__ = [
     # Constants
     "MAX_DEPTH",
@@ -46,9 +52,11 @@ __all__ = [
     "SubgraphTooLarge",
     # Base functions
     "check_limits",
-    "estimate_reachable_nodes",
+    "estimate_reachable_nodes",  # DEPRECATED
     "fetch_edges_for_frontier",
     "fetch_nodes",
+    # Estimation config
+    "EstimationConfig",
     # Traversal handlers (YELLOW)
     "traverse",
     "traverse_collecting",

@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-12-06
+
+### Added
+
+**Graph Estimator & Guards Framework**
+
+Implemented comprehensive graph estimation and runtime guards to fix the `bom_explode()` blocking issue where valid traversals were rejected due to naive exponential extrapolation.
+
+**New Estimator Module** (`src/virt_graph/estimator/`)
+
+- `sampler.py` - `GraphSampler` with automatic property detection:
+  - Samples graph for 5 levels (configurable)
+  - Detects growth trend (increasing/stable/decreasing)
+  - Computes convergence ratio (1.0 = tree, <1 = DAG with sharing)
+  - Detects hub nodes (expansion factor > threshold)
+  - Returns `SampleResult` with all detected properties
+
+- `models.py` - Adaptive estimation with damping:
+  - `EstimationConfig` for tuning damping/margins
+  - Applies extra damping for convergent graphs
+  - Applies extra damping for decreasing growth trends
+  - Uses recent growth rate (more predictive than average)
+  - Caps estimates at table bounds
+
+- `bounds.py` - DDL introspection for hard bounds:
+  - `get_table_bound()` - Unique nodes count from edges table
+  - `get_table_stats()` - Introspects `pg_stat_user_tables`, `information_schema`
+  - Detects junction tables, self-referential FKs, indexed columns
+
+- `guards.py` - Runtime decision logic:
+  - `check_guards()` - Returns `GuardResult` with recommendation
+  - Hub detection aborts (expansion > 50x)
+  - Terminated graphs proceed immediately
+  - Table bounds can override estimates
+
+**Handler Configurability**
+
+- `traverse()` now accepts:
+  - `max_nodes: int | None` - Override default limit (10,000)
+  - `skip_estimation: bool` - Bypass size check entirely
+  - `estimation_config: EstimationConfig` - Fine-tune estimation
+
+- `bom_explode()` passes through all new parameters
+
+**Ontology DDL Properties**
+
+Added `ddl` blocks to YELLOW/RED roles in `ontology/supply_chain.yaml`:
+```yaml
+component_of:
+  ddl:
+    has_self_ref_constraint: true
+    has_unique_edge_index: true
+    indexed_columns: [parent_part_id, child_part_id]
+    table_stats:
+      distinct_parents: 892
+      distinct_children: 4200
+```
+
+### Changed
+
+- `estimate_reachable_nodes()` now **deprecated** with warning
+- Existing code calling it will continue to work (delegates to new estimator)
+- Error messages now include actionable suggestions:
+  - "Consider: max_nodes=N to increase limit, or skip_estimation=True to bypass"
+
+### Fixed
+
+- **BOM explosion no longer blocked**: Improved estimation accounts for DAG convergence
+  - Before: Estimated ~21,365 nodes → `SubgraphTooLarge`
+  - After: Estimates ~1,500-2,500 nodes (within 2x of 1,305 actual)
+
+### Testing
+
+- `tests/test_estimator.py` - 18 tests covering:
+  - GraphSampler property detection
+  - EstimationConfig and damping effects
+  - Table bounds capping
+  - Guard decision logic
+  - Integration tests with database
+  - Deprecation warning verification
+
+---
+
 ## [0.7.3] - 2025-12-05
 
 ### Changed

@@ -1,7 +1,7 @@
 # Virtual Graph Supply Chain Ontology
 # Format: TBox/RBox (Description Logic inspired, LinkML-influenced)
 #
-# Migrated from discovery-driven format to standards-based TBox/RBox format.
+# Generated via 4-round interactive discovery protocol.
 # This ontology maps semantic concepts to physical SQL schema,
 # enabling graph-like queries over relational data.
 #
@@ -15,8 +15,8 @@
 # =============================================================================
 meta:
   name: supply_chain
-  version: "2.0"
-  created: "2024-12-04"
+  version: "2.1"
+  created: "2025-12-05"
   format: tbox-rbox
 
   database:
@@ -32,17 +32,27 @@ meta:
 tbox:
   classes:
     Supplier:
-      description: "Companies that provide materials, parts, or services in the supply chain"
+      description: "Organizations that supply parts and materials, organized in tiers (1-3)"
       sql:
         table: suppliers
         primary_key: id
-        identifier: [supplier_code, name]
+        identifier: [supplier_code]
       slots:
+        supplier_code:
+          range: string
+          column: supplier_code
+          description: "Unique supplier identifier"
+          required: true
+        name:
+          range: string
+          column: name
+          description: "Supplier company name"
+          required: true
         tier:
           range: integer
           column: tier
-          description: "Supply chain tier (1=direct supplier, 2=tier2, 3=tier3/raw materials)"
-          required: false
+          description: "Supply chain tier (1=direct, 2=tier2, 3=raw materials)"
+          required: true
           values: [1, 2, 3]
           distribution:
             tier_1: 50
@@ -52,6 +62,14 @@ tbox:
           range: string
           column: country
           description: "Country of operation"
+        city:
+          range: string
+          column: city
+          description: "City location"
+        contact_email:
+          range: string
+          column: contact_email
+          description: "Primary contact email"
         credit_rating:
           range: string
           column: credit_rating
@@ -60,26 +78,43 @@ tbox:
           range: boolean
           column: is_active
           description: "Whether supplier is currently active"
+        created_at:
+          range: timestamp
+          column: created_at
+          description: "Record creation timestamp"
+        updated_at:
+          range: timestamp
+          column: updated_at
+          description: "Last update timestamp"
       soft_delete:
         enabled: true
         column: deleted_at
       row_count: 500
 
     Part:
-      description: "Components, materials, and subassemblies used in manufacturing"
+      description: "Physical components and raw materials used in manufacturing"
       sql:
         table: parts
         primary_key: id
-        identifier: [part_number, description]
+        identifier: [part_number]
       slots:
+        part_number:
+          range: string
+          column: part_number
+          description: "Unique part identifier"
+          required: true
+        description:
+          range: string
+          column: description
+          description: "Part description"
         category:
           range: string
           column: category
-          description: "Part category (Cable, Housing, Subassembly, Fastener, Motor, etc.)"
+          description: "Part category (Cable, Housing, Subassembly, etc.)"
         unit_cost:
           range: decimal
           column: unit_cost
-          description: "Cost per unit in base currency"
+          description: "Cost per unit"
         weight_kg:
           range: decimal
           column: weight_kg
@@ -87,7 +122,7 @@ tbox:
         lead_time_days:
           range: integer
           column: lead_time_days
-          description: "Lead time for procurement in days"
+          description: "Procurement lead time in days"
         is_critical:
           range: boolean
           column: is_critical
@@ -102,12 +137,26 @@ tbox:
       row_count: 5003
 
     Product:
-      description: "Finished goods sold to customers"
+      description: "Finished goods sold to customers, composed of parts"
       sql:
         table: products
         primary_key: id
-        identifier: [sku, name]
+        identifier: [sku]
       slots:
+        sku:
+          range: string
+          column: sku
+          description: "Stock keeping unit"
+          required: true
+        name:
+          range: string
+          column: name
+          description: "Product name"
+          required: true
+        description:
+          range: string
+          column: description
+          description: "Product description"
         category:
           range: string
           column: category
@@ -115,43 +164,66 @@ tbox:
         list_price:
           range: decimal
           column: list_price
-          description: "List price in base currency"
+          description: "List price"
         is_active:
           range: boolean
           column: is_active
-          description: "Whether product is currently available"
+          description: "Whether product is available"
         launch_date:
           range: date
           column: launch_date
           description: "Product launch date"
+        discontinued_date:
+          range: date
+          column: discontinued_date
+          description: "Discontinuation date"
       soft_delete:
         enabled: false
       row_count: 200
 
     Facility:
-      description: "Physical locations including warehouses, factories, and distribution centers"
+      description: "Physical locations for manufacturing, warehousing, and distribution"
       sql:
         table: facilities
         primary_key: id
-        identifier: [facility_code, name]
+        identifier: [facility_code]
       slots:
+        facility_code:
+          range: string
+          column: facility_code
+          description: "Unique facility identifier"
+          required: true
+        name:
+          range: string
+          column: name
+          description: "Facility name"
+          required: true
         facility_type:
           range: string
           column: facility_type
           description: "Type of facility"
+          required: true
           values: [warehouse, factory, distribution_center]
+        address:
+          range: string
+          column: address
+          description: "Street address"
         city:
           range: string
           column: city
-          description: "City location"
+          description: "City"
         state:
           range: string
           column: state
-          description: "State/province location"
+          description: "State/province"
         country:
           range: string
           column: country
-          description: "Country location"
+          description: "Country"
+        postal_code:
+          range: string
+          column: postal_code
+          description: "Postal/ZIP code"
         latitude:
           range: decimal
           column: latitude
@@ -173,64 +245,110 @@ tbox:
       row_count: 50
 
     Customer:
-      description: "Customers who purchase products"
+      description: "End buyers who purchase products"
       sql:
         table: customers
         primary_key: id
-        identifier: [customer_code, name]
+        identifier: [customer_code]
       slots:
+        customer_code:
+          range: string
+          column: customer_code
+          description: "Unique customer identifier"
+          required: true
+        name:
+          range: string
+          column: name
+          description: "Customer name"
+          required: true
         customer_type:
           range: string
           column: customer_type
           description: "Type of customer"
           values: [retail, wholesale, enterprise]
+        contact_email:
+          range: string
+          column: contact_email
+          description: "Contact email"
+        shipping_address:
+          range: string
+          column: shipping_address
+          description: "Default shipping address"
         city:
           range: string
           column: city
-          description: "Customer city"
+          description: "City"
+        state:
+          range: string
+          column: state
+          description: "State/province"
         country:
           range: string
           column: country
-          description: "Customer country"
+          description: "Country"
       soft_delete:
         enabled: false
       row_count: 1000
 
     Order:
-      description: "Customer purchase orders"
+      description: "Customer purchase orders for products"
       sql:
         table: orders
         primary_key: id
         identifier: [order_number]
       slots:
+        order_number:
+          range: string
+          column: order_number
+          description: "Unique order number"
+          required: true
         order_date:
           range: timestamp
           column: order_date
           description: "Date order was placed"
+          required: true
         required_date:
           range: date
           column: required_date
           description: "Requested delivery date"
+        shipped_date:
+          range: timestamp
+          column: shipped_date
+          description: "Actual ship date"
         status:
           range: string
           column: status
           description: "Order status"
+          required: true
           values: [pending, confirmed, shipped, delivered, cancelled]
         total_amount:
           range: decimal
           column: total_amount
           description: "Total order value"
+        shipping_cost:
+          range: decimal
+          column: shipping_cost
+          description: "Shipping cost"
+        notes:
+          range: string
+          column: notes
+          description: "Order notes"
       soft_delete:
         enabled: false
       row_count: 20000
 
     Shipment:
-      description: "Physical shipments of goods"
+      description: "Physical movement of goods between facilities or to customers"
       sql:
         table: shipments
         primary_key: id
         identifier: [shipment_number]
       slots:
+        shipment_number:
+          range: string
+          column: shipment_number
+          description: "Unique shipment identifier"
+          required: true
         carrier:
           range: string
           column: carrier
@@ -243,7 +361,16 @@ tbox:
           range: string
           column: status
           description: "Shipment status"
+          required: true
           values: [pending, in_transit, delivered, failed]
+        shipped_at:
+          range: timestamp
+          column: shipped_at
+          description: "Ship date/time"
+        delivered_at:
+          range: timestamp
+          column: delivered_at
+          description: "Delivery date/time"
         weight_kg:
           range: decimal
           column: weight_kg
@@ -257,16 +384,21 @@ tbox:
       row_count: 7995
 
     SupplierCertification:
-      description: "Quality certifications held by suppliers"
+      description: "Quality and compliance certifications held by suppliers"
       sql:
         table: supplier_certifications
         primary_key: id
-        identifier: [certification_number]
+        identifier: [supplier_id, certification_type]
       slots:
         certification_type:
           range: string
           column: certification_type
           description: "Type of certification (ISO9001, ISO14001, etc.)"
+          required: true
+        certification_number:
+          range: string
+          column: certification_number
+          description: "Certificate number"
         issued_date:
           range: date
           column: issued_date
@@ -290,10 +422,12 @@ tbox:
 
 rbox:
   roles:
-    # --- SELF-REFERENTIAL (Graph Edges) ---
+    # =========================================================================
+    # YELLOW Complexity: Recursive Traversal Required
+    # =========================================================================
 
     supplies_to:
-      description: "Supplier provides materials/parts to another supplier (tiered supply chain)"
+      description: "Supplier sells to another supplier (tiered supply network)"
       domain: Supplier
       range: Supplier
       sql:
@@ -306,24 +440,25 @@ rbox:
           - contract_end_date
           - is_primary
       properties:
-        transitive: false
-        symmetric: false
         asymmetric: true
-        reflexive: false
         irreflexive: true
-        functional: false
-        inverse_functional: false
         acyclic: true
         is_hierarchical: true
-        is_weighted: false
       cardinality:
         domain: "0..*"
         range: "0..*"
       traversal_complexity: YELLOW
       row_count: 817
+      ddl:
+        has_self_ref_constraint: true       # CHECK (seller_id != buyer_id)
+        has_unique_edge_index: true         # UNIQUE (seller_id, buyer_id)
+        indexed_columns: [seller_id, buyer_id]
+        table_stats:
+          distinct_sellers: 450
+          distinct_buyers: 200
 
     component_of:
-      description: "Part is a component of another part (Bill of Materials hierarchy)"
+      description: "Part is a component of another part (BOM hierarchy)"
       domain: Part
       range: Part
       sql:
@@ -336,24 +471,29 @@ rbox:
           - is_optional
           - assembly_sequence
       properties:
-        transitive: false
-        symmetric: false
         asymmetric: true
-        reflexive: false
         irreflexive: true
-        functional: false
-        inverse_functional: false
         acyclic: true
-        is_hierarchical: true
-        is_weighted: false
+      inverse_of: has_component
       cardinality:
         domain: "0..*"
         range: "0..*"
       traversal_complexity: YELLOW
       row_count: 14283
+      ddl:
+        has_self_ref_constraint: true       # CHECK (parent_part_id != child_part_id)
+        has_unique_edge_index: true         # UNIQUE (parent_part_id, child_part_id)
+        indexed_columns: [parent_part_id, child_part_id]
+        table_stats:
+          distinct_parents: 892
+          distinct_children: 4200
+
+    # =========================================================================
+    # RED Complexity: Network Algorithms Required
+    # =========================================================================
 
     connects_to:
-      description: "Transport route between facilities (logistics network)"
+      description: "Transport route connects two facilities"
       domain: Facility
       range: Facility
       sql:
@@ -372,26 +512,26 @@ rbox:
           - name: transit_time_hours
             type: decimal
       properties:
-        transitive: false
-        symmetric: false
-        asymmetric: false
-        reflexive: false
         irreflexive: true
-        functional: false
-        inverse_functional: false
-        acyclic: false
-        is_hierarchical: false
         is_weighted: true
       cardinality:
         domain: "0..*"
         range: "0..*"
       traversal_complexity: RED
       row_count: 197
+      ddl:
+        has_self_ref_constraint: true       # CHECK (origin_facility_id != destination_facility_id)
+        indexed_columns: [origin_facility_id, destination_facility_id]
+        table_stats:
+          distinct_origins: 50
+          distinct_destinations: 50
 
-    # --- SIMPLE FOREIGN KEY RELATIONSHIPS ---
+    # =========================================================================
+    # GREEN Complexity: Simple FK Joins
+    # =========================================================================
 
     provides:
-      description: "Supplier is the primary source for a part"
+      description: "Supplier is the primary supplier for a part"
       domain: Supplier
       range: Part
       sql:
@@ -399,23 +539,15 @@ rbox:
         domain_key: primary_supplier_id
         range_key: id
       properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
         functional: false
         inverse_functional: true
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
       cardinality:
         domain: "0..*"
         range: "0..1"
       traversal_complexity: GREEN
 
     can_supply:
-      description: "Supplier is an approved alternate source for a part"
+      description: "Supplier can provide a part (approved supplier list)"
       domain: Supplier
       range: Part
       sql:
@@ -427,25 +559,30 @@ rbox:
           - unit_cost
           - lead_time_days
           - is_approved
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: false
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
       cardinality:
         domain: "0..*"
         range: "0..*"
       traversal_complexity: GREEN
       row_count: 7582
 
+    holds_certification:
+      description: "Supplier holds a certification"
+      domain: Supplier
+      range: SupplierCertification
+      sql:
+        table: supplier_certifications
+        domain_key: supplier_id
+        range_key: id
+      properties:
+        inverse_functional: true
+      cardinality:
+        domain: "0..*"
+        range: "1..1"
+      traversal_complexity: GREEN
+      row_count: 721
+
     contains_component:
-      description: "Product contains a top-level part"
+      description: "Product contains a part as a component"
       domain: Product
       range: Part
       sql:
@@ -455,126 +592,30 @@ rbox:
         additional_columns:
           - quantity
           - is_required
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: false
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
       cardinality:
         domain: "0..*"
         range: "0..*"
       traversal_complexity: GREEN
       row_count: 619
 
-    has_certification:
-      description: "Supplier holds a quality certification"
-      domain: Supplier
-      range: SupplierCertification
-      sql:
-        table: supplier_certifications
-        domain_key: supplier_id
-        range_key: id
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: false
-        inverse_functional: true
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
-      cardinality:
-        domain: "0..*"
-        range: "1..1"
-      traversal_complexity: GREEN
-
-    stores_at:
-      description: "Part inventory stored at a facility"
-      domain: Part
-      range: Facility
-      sql:
-        table: inventory
-        domain_key: part_id
-        range_key: facility_id
-        additional_columns:
-          - quantity_on_hand
-          - quantity_reserved
-          - quantity_on_order
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: false
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 10056
-
     placed_by:
-      description: "Order placed by a customer"
+      description: "Order was placed by a customer"
       domain: Order
       range: Customer
       sql:
         table: orders
-        domain_key: id
-        range_key: customer_id
+        domain_key: customer_id
+        range_key: id
       properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
         functional: true
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
       cardinality:
         domain: "1..1"
         range: "0..*"
       traversal_complexity: GREEN
-
-    ships_from:
-      description: "Order ships from a facility"
-      domain: Order
-      range: Facility
-      sql:
-        table: orders
-        domain_key: id
-        range_key: shipping_facility_id
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: true
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
-      cardinality:
-        domain: "0..1"
-        range: "0..*"
-      traversal_complexity: GREEN
+      row_count: 20000
 
     contains_item:
-      description: "Order contains a product line item"
+      description: "Order contains a product as a line item"
       domain: Order
       range: Product
       sql:
@@ -585,22 +626,27 @@ rbox:
           - quantity
           - unit_price
           - discount_percent
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: false
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
       cardinality:
         domain: "1..*"
         range: "0..*"
       traversal_complexity: GREEN
       row_count: 60241
+
+    ships_from:
+      description: "Order ships from a facility"
+      domain: Order
+      range: Facility
+      sql:
+        table: orders
+        domain_key: shipping_facility_id
+        range_key: id
+      properties:
+        functional: true
+      cardinality:
+        domain: "0..1"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 20000
 
     fulfills:
       description: "Shipment fulfills an order"
@@ -608,44 +654,45 @@ rbox:
       range: Order
       sql:
         table: shipments
-        domain_key: id
-        range_key: order_id
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: true
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
-      cardinality:
-        domain: "1..1"
-        range: "0..*"
-      traversal_complexity: GREEN
-
-    uses_route:
-      description: "Shipment uses a transport route"
-      domain: Shipment
-      range: Facility
-      sql:
-        table: shipments
-        domain_key: id
-        range_key: transport_route_id
-      properties:
-        transitive: false
-        symmetric: false
-        asymmetric: true
-        reflexive: false
-        irreflexive: true
-        functional: true
-        inverse_functional: false
-        acyclic: true
-        is_hierarchical: false
-        is_weighted: false
+        domain_key: order_id
+        range_key: id
       cardinality:
         domain: "0..1"
         range: "0..*"
       traversal_complexity: GREEN
+      row_count: 7995
+
+    originates_at:
+      description: "Shipment originates from a facility"
+      domain: Shipment
+      range: Facility
+      sql:
+        table: shipments
+        domain_key: origin_facility_id
+        range_key: id
+      properties:
+        functional: true
+      cardinality:
+        domain: "1..1"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 7995
+
+    stores:
+      description: "Facility stores inventory of a part"
+      domain: Facility
+      range: Part
+      sql:
+        table: inventory
+        domain_key: facility_id
+        range_key: part_id
+        additional_columns:
+          - quantity_on_hand
+          - quantity_reserved
+          - quantity_on_order
+          - reorder_point
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 10056

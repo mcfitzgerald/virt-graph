@@ -230,7 +230,7 @@ def traverse(
 ```python
 # handlers/base.py
 
-# Non-negotiable limits
+# Non-negotiable limits (defaults, can be overridden per-call)
 MAX_DEPTH = 50          # Absolute traversal depth limit
 MAX_NODES = 10_000      # Max nodes to visit in single traversal
 MAX_RESULTS = 1_000     # Max rows to return
@@ -243,6 +243,51 @@ class SafetyLimitExceeded(Exception):
 class SubgraphTooLarge(Exception):
     """Raised when estimated subgraph exceeds MAX_NODES."""
     pass
+```
+
+### Estimator Module (v0.8.0+)
+
+The estimator module provides intelligent graph size estimation:
+
+```python
+# estimator/
+from virt_graph.estimator import GraphSampler, estimate, check_guards
+
+# Sample graph and detect properties
+sampler = GraphSampler(conn, "bill_of_materials", "parent_part_id", "child_part_id")
+sample = sampler.sample(start_id, depth=5)
+
+# Adaptive estimation with damping
+est = estimate(sample, max_depth=20, table_bound=5000)
+
+# Runtime guards with recommendations
+result = check_guards(sample, max_depth=20, max_nodes=10000)
+if result.safe_to_proceed:
+    # proceed with traversal
+    pass
+```
+
+Key features:
+- **Auto-detection**: Detects convergence, growth trends, hub nodes
+- **Adaptive damping**: Reduces over-estimation for DAGs with node sharing
+- **Table bounds**: Caps estimates using DDL-derived node counts
+- **Runtime guards**: Recommends action (traverse, abort, switch to NetworkX)
+
+### Configurable Limits
+
+Handlers now accept parameters to override default limits:
+
+```python
+# Override limit for known-bounded graph
+result = traverse(..., max_nodes=50_000)
+
+# Skip estimation (caller takes responsibility)
+result = traverse(..., skip_estimation=True)
+
+# Custom estimation config
+from virt_graph.estimator import EstimationConfig
+config = EstimationConfig(base_damping=0.7, safety_margin=1.5)
+result = traverse(..., estimation_config=config)
 ```
 
 ### Frontier-Batched BFS
@@ -278,7 +323,8 @@ def traverse(conn, edges_table, start_id, ...):
 
 | Handler | Route | Purpose | Key Parameters |
 |---------|-------|---------|----------------|
-| `traverse` | YELLOW | BFS/DFS traversal | direction, max_depth, stop_condition |
+| `traverse` | YELLOW | BFS/DFS traversal | direction, max_depth, stop_condition, max_nodes, skip_estimation |
+| `bom_explode` | YELLOW | BOM expansion | max_depth, include_quantities, max_nodes, skip_estimation |
 | `shortest_path` | RED | Dijkstra via NetworkX | weight_col, max_depth |
 | `centrality` | RED | Node importance | centrality_type, top_n |
 | `connected_components` | RED | Cluster detection | min_size |

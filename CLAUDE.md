@@ -69,15 +69,21 @@ Key components in `src/virt_graph/`:
 - `handlers/traversal.py` - Generic BFS traversal, schema-parameterized
 - `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX
 - `handlers/network.py` - Centrality, connected components
+- `estimator/` - Graph size estimation and runtime guards
 
 ## Handlers
 
 Available handlers for graph operations:
 
 **YELLOW (Recursive Traversal)**:
-- `traverse(conn, nodes_table, edges_table, edge_from_col, edge_to_col, start_id, direction, max_depth)` - Generic BFS traversal
+- `traverse(conn, nodes_table, edges_table, edge_from_col, edge_to_col, start_id, direction, max_depth, max_nodes, skip_estimation, estimation_config)` - Generic BFS traversal
 - `traverse_collecting(conn, ..., target_condition)` - Traverse and collect nodes matching condition
-- `bom_explode(conn, start_part_id, max_depth, include_quantities)` - BOM explosion with quantities
+- `bom_explode(conn, start_part_id, max_depth, include_quantities, max_nodes, skip_estimation, estimation_config)` - BOM explosion with quantities
+
+**Configurable Limits** (new in v0.8.0):
+- `max_nodes` - Override default 10,000 node limit per-call
+- `skip_estimation` - Bypass size check (caller takes responsibility)
+- `estimation_config` - Fine-tune estimation parameters (damping, margins)
 
 **RED (Network Algorithms)**:
 - `shortest_path(conn, nodes_table, edges_table, ..., start_id, end_id, weight_col)` - Dijkstra shortest path
@@ -99,12 +105,40 @@ Available handlers for graph operations:
 
 Each template includes applicability signals, ontology bindings, variants, and examples.
 
+## Estimator Module
+
+The estimator module (`src/virt_graph/estimator/`) provides intelligent graph size estimation:
+
+```python
+from virt_graph.estimator import GraphSampler, estimate, EstimationConfig, check_guards
+
+# Sample graph and detect properties
+sampler = GraphSampler(conn, "bill_of_materials", "parent_part_id", "child_part_id")
+sample = sampler.sample(start_id, depth=5)
+
+# Estimate with adaptive damping
+est = estimate(sample, max_depth=20, table_bound=5000)
+
+# Check guards for safe traversal
+result = check_guards(sample, max_depth=20, max_nodes=10000)
+if result.safe_to_proceed:
+    # proceed with traversal
+    pass
+```
+
+Key features:
+- **Auto-detection**: Detects convergence, growth trends, hub nodes from sampling
+- **Adaptive damping**: Reduces over-estimation for DAGs with node sharing
+- **Table bounds**: Caps estimates using DDL-derived node counts
+- **Runtime guards**: Recommends action (traverse, abort, switch to NetworkX)
+
 ## Critical Implementation Rules
 
 - **Frontier batching mandatory**: One SQL query per depth level, never per node
 - **Size guards**: Check before NetworkX load; >5K nodes must warn or fail
 - **Hybrid SQL/Python**: Python orchestrates traversal, SQL filters; never bulk load entire tables
 - **Safety limits are non-negotiable**: MAX_DEPTH=50, MAX_NODES=10,000, MAX_RESULTS=1,000, QUERY_TIMEOUT=30s
+- **Configurable limits**: Handlers accept `max_nodes`, `skip_estimation`, `estimation_config` for overrides
 
 ## Database
 
@@ -188,6 +222,7 @@ Gate validation tests in `tests/`:
 - `test_gate3_validation.py` - Pattern matching tests
 - `test_gate4_validation.py` - Pathfinding and network tests
 - `test_gate5_validation.py` - Benchmark infrastructure tests
+- `test_estimator.py` - Graph estimator and guards tests
 
 Run specific test: `poetry run pytest tests/test_gate1_validation.py::test_bom_traversal -v`
 

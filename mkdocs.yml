@@ -61,6 +61,7 @@ nav:
     - TCO Analysis: tco_analysis.md
   - API Reference:
     - Handlers: api/handlers.md
+    - Estimator: api/estimator.md
   - Development:
     - Phase 1 - Foundation: development/phase1.md
     - Phase 2 - Discovery: development/phase2.md

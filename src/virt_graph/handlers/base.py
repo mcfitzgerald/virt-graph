@@ -5,8 +5,11 @@ This module provides the foundation for all graph operation handlers:
 - Non-negotiable safety limits to prevent runaway queries
 - Frontier batching utilities for efficient traversal
 - Node estimation for proactive size checks
+
+Note: estimate_reachable_nodes is deprecated. Use the estimator module instead.
 """
 
+import warnings
 from typing import Any
 
 import psycopg2
@@ -58,10 +61,15 @@ def estimate_reachable_nodes(
     direction: str = "outbound",
 ) -> int:
     """
+    DEPRECATED: Use virt_graph.estimator module instead.
+
     Estimate reachable node count using sampling.
 
-    This provides a conservative estimate to decide if full traversal is safe.
-    We sample the first 3 levels and extrapolate based on average branching factor.
+    This function uses naive exponential extrapolation which can over-estimate
+    significantly for DAGs with node sharing. The new estimator module provides:
+    - Adaptive damping based on detected graph properties
+    - Table bounds to cap estimates
+    - Configurable estimation parameters
 
     Args:
         conn: Database connection
@@ -75,66 +83,21 @@ def estimate_reachable_nodes(
     Returns:
         Estimated number of reachable nodes
     """
-    sample_depth = min(3, max_depth)
-    frontier = {start_id}
-    visited = {start_id}
-    level_sizes = [1]  # Level 0 has 1 node (start)
+    warnings.warn(
+        "estimate_reachable_nodes is deprecated. "
+        "Use virt_graph.estimator.estimate() with GraphSampler for better accuracy.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    for _ in range(sample_depth):
-        if not frontier:
-            break
+    # Delegate to new estimator for backwards compatibility
+    from ..estimator import GraphSampler, estimate, get_table_bound
 
-        edges = fetch_edges_for_frontier(
-            conn,
-            edges_table,
-            list(frontier),
-            edge_from_col,
-            edge_to_col,
-            direction,
-        )
+    sampler = GraphSampler(conn, edges_table, edge_from_col, edge_to_col, direction)
+    sample = sampler.sample(start_id, depth=min(3, max_depth))
+    table_bound = get_table_bound(conn, edges_table, edge_from_col, edge_to_col)
 
-        next_frontier = set()
-        for from_id, to_id in edges:
-            if direction == "outbound":
-                target = to_id
-            elif direction == "inbound":
-                target = from_id
-            else:  # both
-                target = to_id if from_id in frontier else from_id
-
-            if target not in visited:
-                next_frontier.add(target)
-                visited.add(target)
-
-        frontier = next_frontier
-        level_sizes.append(len(frontier))
-
-    # Calculate average branching factor from sampled levels
-    if len(level_sizes) < 2:
-        return len(visited)
-
-    # Use geometric mean of level growth rates
-    growth_rates = []
-    for i in range(1, len(level_sizes)):
-        if level_sizes[i - 1] > 0:
-            growth_rates.append(level_sizes[i] / level_sizes[i - 1])
-
-    if not growth_rates or max(growth_rates) == 0:
-        return len(visited)
-
-    avg_growth = sum(growth_rates) / len(growth_rates)
-
-    # Extrapolate to max_depth
-    estimated = len(visited)
-    current_level_size = level_sizes[-1]
-
-    for _ in range(max_depth - sample_depth):
-        current_level_size = int(current_level_size * avg_growth)
-        estimated += current_level_size
-        if estimated > MAX_NODES * 2:  # Stop early if clearly over limit
-            break
-
-    return estimated
+    return estimate(sample, max_depth, table_bound)
 
 
 def fetch_edges_for_frontier(
