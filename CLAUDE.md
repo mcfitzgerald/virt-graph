@@ -44,6 +44,12 @@ poetry run python benchmark/run.py --system both
 # Check database status
 docker-compose -f postgres/docker-compose.yml ps
 docker-compose -f postgres/docker-compose.yml logs -f
+
+# Start Neo4j (for benchmarking)
+docker-compose -f neo4j/docker-compose.yml up -d
+
+# View Neo4j logs
+docker-compose -f neo4j/docker-compose.yml logs -f
 ```
 
 ## Project Overview

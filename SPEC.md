@@ -1,5 +1,13 @@
 # Virtual Graph Implementation Plan v3
 
+> **Note**: This document is the original v3 implementation plan (completed December 2024).
+> For current documentation, see:
+> - **[CLAUDE.md](CLAUDE.md)** - Development commands, architecture overview, handler reference
+> - **[docs/](docs/)** - Full documentation (architecture, API, benchmark results)
+>
+> The ontology format has evolved from the flat structure shown here to TBox/RBox format.
+> See `ontology/supply_chain.yaml` and `src/virt_graph/ontology.py` for current implementation.
+
 ## Executive Summary
 
 **Goal**: Compare two approaches for enabling graph-like queries over enterprise relational data:
@@ -1885,49 +1893,49 @@ docker-compose -f neo4j/docker-compose.yml down -v
 ## Complete Deliverables Checklist
 
 ### Phase 1: Foundation
-- [ ] `postgres/docker-compose.yml`
-- [ ] `postgres/schema.sql`
-- [ ] `scripts/generate_data.py`
-- [ ] `handlers/base.py`
-- [ ] `handlers/traversal.py`
+- [x] `postgres/docker-compose.yml`
+- [x] `postgres/schema.sql`
+- [x] `scripts/generate_data.py`
+- [x] `handlers/base.py`
+- [x] `handlers/traversal.py`
 
 ### Phase 2: Discovery Foundation
-- [ ] `.claude/skills/schema/SKILL.md`
-- [ ] `.claude/skills/schema/scripts/introspect.sql`
-- [ ] `ontology/supply_chain.yaml`
-- [ ] `docs/ontology_discovery_session.md`
+- [x] `.claude/skills/schema/SKILL.md`
+- [x] `.claude/skills/schema/scripts/introspect.sql`
+- [x] `ontology/supply_chain.yaml`
+- [x] `docs/ontology_discovery_session.md`
 
 ### Phase 3: Query Execution Paths
-- [ ] `handlers/pathfinding.py`
-- [ ] `handlers/network.py`
-- [ ] `patterns/raw/*.yaml` (10+ patterns)
+- [x] `handlers/pathfinding.py`
+- [x] `handlers/network.py`
+- [x] `patterns/raw/*.yaml` (10+ patterns)
 
 ### Phase 4: Pattern Maturity
-- [ ] `patterns/templates/traversal/*.yaml`
-- [ ] `patterns/templates/pathfinding/*.yaml`
-- [ ] `patterns/templates/aggregation/*.yaml`
-- [ ] `patterns/templates/network-analysis/*.yaml`
-- [ ] `patterns/transcripts/*.md`
-- [ ] `.claude/skills/patterns/SKILL.md`
-- [ ] `.claude/skills/patterns/reference.md`
-- [ ] `.claude/skills/handlers/SKILL.md`
-- [ ] `.claude/skills/handlers/reference.md`
-- [ ] `docs/pattern_discovery_guide.md`
+- [x] `patterns/templates/traversal/*.yaml`
+- [x] `patterns/templates/pathfinding/*.yaml`
+- [x] `patterns/templates/aggregation/*.yaml`
+- [x] `patterns/templates/network-analysis/*.yaml`
+- [x] `patterns/transcripts/*.md`
+- [x] `.claude/skills/patterns/SKILL.md`
+- [x] `.claude/skills/patterns/reference.md`
+- [x] `.claude/skills/handlers/SKILL.md`
+- [x] `.claude/skills/handlers/reference.md`
+- [x] `docs/pattern_discovery_guide.md`
 
 ### Phase 5: Baseline & Benchmark
-- [ ] `neo4j/docker-compose.yml`
-- [ ] `neo4j/migrate.py`
-- [ ] `neo4j/queries/*.cypher` (25 queries)
-- [ ] `benchmark/queries.yaml`
-- [ ] `benchmark/ground_truth/*.json`
-- [ ] `benchmark/run.py`
-- [ ] `benchmark/results/`
+- [x] `neo4j/docker-compose.yml`
+- [x] `neo4j/migrate.py`
+- [x] `neo4j/queries/*.cypher` (25 queries)
+- [x] `benchmark/queries.yaml`
+- [x] `benchmark/ground_truth/*.json`
+- [x] `benchmark/run.py`
+- [x] `benchmark/results/`
 
 ### Phase 6: Evaluation & Documentation
-- [ ] `docs/architecture.md`
-- [ ] `docs/traffic_light_routing.md`
-- [ ] `docs/benchmark_results.md`
-- [ ] `docs/tco_analysis.md`
+- [x] `docs/architecture.md`
+- [x] `docs/traffic_light_routing.md`
+- [x] `docs/benchmark_results.md`
+- [x] `docs/tco_analysis.md`
 
 ---
 

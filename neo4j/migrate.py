@@ -178,7 +178,7 @@ class OntologyDrivenMigrator:
 
             # Build SELECT query
             soft_delete_enabled, soft_delete_col = self.ontology.get_class_soft_delete(class_name)
-            if soft_delete_col is None:
+            if soft_delete_enabled and soft_delete_col is None:
                 soft_delete_col = "deleted_at"  # fallback default
 
             column_list = ", ".join(columns)
