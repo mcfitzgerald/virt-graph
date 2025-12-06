@@ -1,0 +1,152 @@
+# Relationship Pattern: stores (Facility → Part)
+# Discovered: Phase 1B - GREEN Relationship Patterns
+# Complexity: GREEN
+
+name: inventory_relationship_patterns
+complexity: GREEN
+description: Relationship patterns for stores role (facility inventory)
+
+ontology_bindings:
+  role: stores
+  domain: Facility
+  range: Part
+  sql:
+    table: inventory
+    domain_key: facility_id
+    range_key: part_id
+    additional_columns:
+      - quantity_on_hand
+      - quantity_reserved
+      - quantity_on_order
+      - reorder_point
+
+patterns:
+  - name: facility_inventory
+    description: "Forward traversal: Find all parts stored at a facility"
+    applicability:
+      keywords: [facility, inventory, parts, stored, stock, warehouse]
+      intent: "Find all parts in inventory at a specific facility"
+    parameters:
+      - name: facility_code
+        type: string
+        required: true
+        example: "FAC-CHI"
+    sql_template: |
+      SELECT f.facility_code, f.name as facility,
+             p.part_number, p.description,
+             i.quantity_on_hand, i.quantity_reserved, i.reorder_point
+      FROM facilities f
+      JOIN inventory i ON i.facility_id = f.id
+      JOIN parts p ON i.part_id = p.id
+      WHERE f.facility_code = {{facility_code}}
+      ORDER BY i.quantity_on_hand DESC
+      LIMIT 50
+    execution:
+      time_ms: 6.6
+
+  - name: facility_inventory_summary
+    description: "Inventory summary by facility"
+    applicability:
+      keywords: [facilities, inventory, summary, stock levels]
+      intent: "Get inventory summary for all facilities"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT f.facility_code, f.name, COUNT(i.part_id) as part_count,
+             SUM(i.quantity_on_hand) as total_inventory
+      FROM facilities f
+      JOIN inventory i ON i.facility_id = f.id
+      GROUP BY f.id, f.facility_code, f.name
+      ORDER BY total_inventory DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 6.6
+      result: "FAC-017: 1038 parts, 531K units"
+
+  - name: part_inventory_locations
+    description: "Reverse traversal: Find facilities storing a part"
+    applicability:
+      keywords: [part, inventory, locations, where, stored, stock]
+      intent: "Find all facilities that have a specific part in inventory"
+    parameters:
+      - name: part_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT p.part_number, f.facility_code, f.name as facility,
+             f.facility_type, i.quantity_on_hand, i.quantity_reserved
+      FROM parts p
+      JOIN inventory i ON i.part_id = p.id
+      JOIN facilities f ON i.facility_id = f.id
+      WHERE p.part_number = {{part_number}}
+      ORDER BY i.quantity_on_hand DESC
+    execution:
+      time_ms: 4.5
+
+  - name: part_total_inventory
+    description: "Total inventory across all locations for parts"
+    applicability:
+      keywords: [parts, total inventory, global stock, availability]
+      intent: "Find total inventory across all facilities for each part"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 20
+    sql_template: |
+      SELECT p.part_number, COUNT(DISTINCT i.facility_id) as location_count,
+             SUM(i.quantity_on_hand) as total_stock
+      FROM parts p
+      JOIN inventory i ON i.part_id = p.id
+      GROUP BY p.id, p.part_number
+      ORDER BY location_count DESC, total_stock DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 4.5
+      result: "Most parts at 1-3 facilities"
+
+  - name: low_stock_alert
+    description: "Find inventory below reorder point"
+    applicability:
+      keywords: [low stock, reorder, alert, shortage, below minimum]
+      intent: "Find parts with inventory below reorder point"
+    parameters: []
+    sql_template: |
+      SELECT p.part_number, p.description, p.is_critical,
+             f.facility_code, f.name as facility,
+             i.quantity_on_hand, i.reorder_point,
+             (i.reorder_point - i.quantity_on_hand) as shortage
+      FROM inventory i
+      JOIN parts p ON i.part_id = p.id
+      JOIN facilities f ON i.facility_id = f.id
+      WHERE i.quantity_on_hand < i.reorder_point
+      ORDER BY p.is_critical DESC, shortage DESC
+      LIMIT 50
+    execution:
+      time_ms: 0.4
+      result: "Multiple locations below reorder point"
+
+  - name: facility_named_inventory
+    description: "Inventory at named facilities (Chicago, LA)"
+    applicability:
+      keywords: [Chicago, LA, warehouse, inventory, named facility]
+      intent: "Get inventory summary for specific named facilities"
+    parameters:
+      - name: facility_codes
+        type: array
+        required: true
+        example: ["FAC-CHI", "FAC-LA"]
+    sql_template: |
+      SELECT f.name as facility, COUNT(i.part_id) as parts,
+             SUM(i.quantity_on_hand) as on_hand,
+             SUM(i.quantity_reserved) as reserved
+      FROM facilities f
+      JOIN inventory i ON i.facility_id = f.id
+      WHERE f.facility_code = ANY({{facility_codes}})
+      GROUP BY f.id, f.name
+    execution:
+      time_ms: 2.2
+      result: "Chicago Warehouse: 986 parts, 490K on hand"

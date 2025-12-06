@@ -53,36 +53,40 @@ Virtual Graph uses a layered architecture with clear separation of concerns:
 
 **Location**: `ontology/supply_chain.yaml`
 
-The ontology uses TBox/RBox format (Description Logic inspired, LinkML-influenced) to provide semantic mappings between business concepts and physical database objects:
+The ontology uses **LinkML format with Virtual Graph extensions** to provide semantic mappings between business concepts and physical database objects:
 
 ```yaml
-tbox:
-  classes:
-    Supplier:
-      description: "Companies that provide materials/parts"
-      sql:
-        table: suppliers
-        primary_key: id
-        identifier: [supplier_code, name]
+classes:
+  # Entity class (TBox)
+  Supplier:
+    description: "Companies that provide materials/parts"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: "[supplier_code]"
 
-rbox:
-  roles:
-    supplies_to:
-      domain: Supplier
-      range: Supplier
-      sql:
-        table: supplier_relationships
-        domain_key: seller_id
-        range_key: buyer_id
-      traversal_complexity: YELLOW
+  # Relationship class (RBox)
+  SuppliesTo:
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_relationships
+      vg:domain_key: seller_id
+      vg:range_key: buyer_id
+      vg:domain_class: Supplier
+      vg:range_class: Supplier
+      vg:traversal_complexity: YELLOW
 ```
 
 **Programmatic Access**: Use `OntologyAccessor` from `src/virt_graph/ontology.py`:
 
 ```python
 from virt_graph.ontology import OntologyAccessor
-ontology = OntologyAccessor()
+ontology = OntologyAccessor()  # Validates on load
 table = ontology.get_class_table("Supplier")  # "suppliers"
+domain_key, range_key = ontology.get_role_keys("SuppliesTo")  # ("seller_id", "buyer_id")
 ```
 
 **Purpose**:

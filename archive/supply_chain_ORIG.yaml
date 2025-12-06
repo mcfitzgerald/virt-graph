@@ -1,0 +1,651 @@
+# Virtual Graph Supply Chain Ontology
+# Format: TBox/RBox (Description Logic inspired, LinkML-influenced)
+#
+# Migrated from discovery-driven format to standards-based TBox/RBox format.
+# This ontology maps semantic concepts to physical SQL schema,
+# enabling graph-like queries over relational data.
+#
+# References:
+# - LinkML: https://linkml.io/
+# - OWL 2: https://www.w3.org/TR/owl-ref/
+# - Description Logic: https://en.wikipedia.org/wiki/Abox
+
+# =============================================================================
+# META: Ontology Metadata
+# =============================================================================
+meta:
+  name: supply_chain
+  version: "2.0"
+  created: "2024-12-04"
+  format: tbox-rbox
+
+  database:
+    type: postgresql
+    version: "14"
+    connection: "postgresql://virt_graph:dev_password@localhost:5432/supply_chain"
+
+# =============================================================================
+# TBox: Terminological Box (Class/Concept Definitions)
+# =============================================================================
+# Classes represent entity types that map to database tables.
+
+tbox:
+  classes:
+    Supplier:
+      description: "Companies that provide materials, parts, or services in the supply chain"
+      sql:
+        table: suppliers
+        primary_key: id
+        identifier: [supplier_code, name]
+      slots:
+        tier:
+          range: integer
+          column: tier
+          description: "Supply chain tier (1=direct supplier, 2=tier2, 3=tier3/raw materials)"
+          required: false
+          values: [1, 2, 3]
+          distribution:
+            tier_1: 50
+            tier_2: 150
+            tier_3: 300
+        country:
+          range: string
+          column: country
+          description: "Country of operation"
+        credit_rating:
+          range: string
+          column: credit_rating
+          description: "Financial credit rating"
+        is_active:
+          range: boolean
+          column: is_active
+          description: "Whether supplier is currently active"
+      soft_delete:
+        enabled: true
+        column: deleted_at
+      row_count: 500
+
+    Part:
+      description: "Components, materials, and subassemblies used in manufacturing"
+      sql:
+        table: parts
+        primary_key: id
+        identifier: [part_number, description]
+      slots:
+        category:
+          range: string
+          column: category
+          description: "Part category (Cable, Housing, Subassembly, Fastener, Motor, etc.)"
+        unit_cost:
+          range: decimal
+          column: unit_cost
+          description: "Cost per unit in base currency"
+        weight_kg:
+          range: decimal
+          column: weight_kg
+          description: "Weight in kilograms"
+        lead_time_days:
+          range: integer
+          column: lead_time_days
+          description: "Lead time for procurement in days"
+        is_critical:
+          range: boolean
+          column: is_critical
+          description: "Whether part is critical to operations"
+        min_stock_level:
+          range: integer
+          column: min_stock_level
+          description: "Minimum inventory threshold"
+      soft_delete:
+        enabled: true
+        column: deleted_at
+      row_count: 5003
+
+    Product:
+      description: "Finished goods sold to customers"
+      sql:
+        table: products
+        primary_key: id
+        identifier: [sku, name]
+      slots:
+        category:
+          range: string
+          column: category
+          description: "Product category"
+        list_price:
+          range: decimal
+          column: list_price
+          description: "List price in base currency"
+        is_active:
+          range: boolean
+          column: is_active
+          description: "Whether product is currently available"
+        launch_date:
+          range: date
+          column: launch_date
+          description: "Product launch date"
+      soft_delete:
+        enabled: false
+      row_count: 200
+
+    Facility:
+      description: "Physical locations including warehouses, factories, and distribution centers"
+      sql:
+        table: facilities
+        primary_key: id
+        identifier: [facility_code, name]
+      slots:
+        facility_type:
+          range: string
+          column: facility_type
+          description: "Type of facility"
+          values: [warehouse, factory, distribution_center]
+        city:
+          range: string
+          column: city
+          description: "City location"
+        state:
+          range: string
+          column: state
+          description: "State/province location"
+        country:
+          range: string
+          column: country
+          description: "Country location"
+        latitude:
+          range: decimal
+          column: latitude
+          description: "Geographic latitude"
+        longitude:
+          range: decimal
+          column: longitude
+          description: "Geographic longitude"
+        capacity_units:
+          range: integer
+          column: capacity_units
+          description: "Storage/processing capacity"
+        is_active:
+          range: boolean
+          column: is_active
+          description: "Whether facility is operational"
+      soft_delete:
+        enabled: false
+      row_count: 50
+
+    Customer:
+      description: "Customers who purchase products"
+      sql:
+        table: customers
+        primary_key: id
+        identifier: [customer_code, name]
+      slots:
+        customer_type:
+          range: string
+          column: customer_type
+          description: "Type of customer"
+          values: [retail, wholesale, enterprise]
+        city:
+          range: string
+          column: city
+          description: "Customer city"
+        country:
+          range: string
+          column: country
+          description: "Customer country"
+      soft_delete:
+        enabled: false
+      row_count: 1000
+
+    Order:
+      description: "Customer purchase orders"
+      sql:
+        table: orders
+        primary_key: id
+        identifier: [order_number]
+      slots:
+        order_date:
+          range: timestamp
+          column: order_date
+          description: "Date order was placed"
+        required_date:
+          range: date
+          column: required_date
+          description: "Requested delivery date"
+        status:
+          range: string
+          column: status
+          description: "Order status"
+          values: [pending, confirmed, shipped, delivered, cancelled]
+        total_amount:
+          range: decimal
+          column: total_amount
+          description: "Total order value"
+      soft_delete:
+        enabled: false
+      row_count: 20000
+
+    Shipment:
+      description: "Physical shipments of goods"
+      sql:
+        table: shipments
+        primary_key: id
+        identifier: [shipment_number]
+      slots:
+        carrier:
+          range: string
+          column: carrier
+          description: "Shipping carrier"
+        tracking_number:
+          range: string
+          column: tracking_number
+          description: "Carrier tracking number"
+        status:
+          range: string
+          column: status
+          description: "Shipment status"
+          values: [pending, in_transit, delivered, failed]
+        weight_kg:
+          range: decimal
+          column: weight_kg
+          description: "Total shipment weight"
+        cost_usd:
+          range: decimal
+          column: cost_usd
+          description: "Shipping cost"
+      soft_delete:
+        enabled: false
+      row_count: 7995
+
+    SupplierCertification:
+      description: "Quality certifications held by suppliers"
+      sql:
+        table: supplier_certifications
+        primary_key: id
+        identifier: [certification_number]
+      slots:
+        certification_type:
+          range: string
+          column: certification_type
+          description: "Type of certification (ISO9001, ISO14001, etc.)"
+        issued_date:
+          range: date
+          column: issued_date
+          description: "Date certification was issued"
+        expiry_date:
+          range: date
+          column: expiry_date
+          description: "Certification expiration date"
+        is_valid:
+          range: boolean
+          column: is_valid
+          description: "Whether certification is currently valid"
+      soft_delete:
+        enabled: false
+      row_count: 721
+
+# =============================================================================
+# RBox: Role Box (Relationship/Property Definitions)
+# =============================================================================
+# Roles represent relationships between classes.
+
+rbox:
+  roles:
+    # --- SELF-REFERENTIAL (Graph Edges) ---
+
+    supplies_to:
+      description: "Supplier provides materials/parts to another supplier (tiered supply chain)"
+      domain: Supplier
+      range: Supplier
+      sql:
+        table: supplier_relationships
+        domain_key: seller_id
+        range_key: buyer_id
+        additional_columns:
+          - relationship_type
+          - contract_start_date
+          - contract_end_date
+          - is_primary
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: true
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: YELLOW
+      row_count: 817
+
+    component_of:
+      description: "Part is a component of another part (Bill of Materials hierarchy)"
+      domain: Part
+      range: Part
+      sql:
+        table: bill_of_materials
+        domain_key: child_part_id
+        range_key: parent_part_id
+        additional_columns:
+          - quantity
+          - unit
+          - is_optional
+          - assembly_sequence
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: true
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: YELLOW
+      row_count: 14283
+
+    connects_to:
+      description: "Transport route between facilities (logistics network)"
+      domain: Facility
+      range: Facility
+      sql:
+        table: transport_routes
+        domain_key: origin_facility_id
+        range_key: destination_facility_id
+        additional_columns:
+          - transport_mode
+          - capacity_tons
+          - is_active
+        weight_columns:
+          - name: distance_km
+            type: decimal
+          - name: cost_usd
+            type: decimal
+          - name: transit_time_hours
+            type: decimal
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: false
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: false
+        is_hierarchical: false
+        is_weighted: true
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: RED
+      row_count: 197
+
+    # --- SIMPLE FOREIGN KEY RELATIONSHIPS ---
+
+    provides:
+      description: "Supplier is the primary source for a part"
+      domain: Supplier
+      range: Part
+      sql:
+        table: parts
+        domain_key: primary_supplier_id
+        range_key: id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: true
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..1"
+      traversal_complexity: GREEN
+
+    can_supply:
+      description: "Supplier is an approved alternate source for a part"
+      domain: Supplier
+      range: Part
+      sql:
+        table: part_suppliers
+        domain_key: supplier_id
+        range_key: part_id
+        additional_columns:
+          - supplier_part_number
+          - unit_cost
+          - lead_time_days
+          - is_approved
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 7582
+
+    contains_component:
+      description: "Product contains a top-level part"
+      domain: Product
+      range: Part
+      sql:
+        table: product_components
+        domain_key: product_id
+        range_key: part_id
+        additional_columns:
+          - quantity
+          - is_required
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 619
+
+    has_certification:
+      description: "Supplier holds a quality certification"
+      domain: Supplier
+      range: SupplierCertification
+      sql:
+        table: supplier_certifications
+        domain_key: supplier_id
+        range_key: id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: true
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "1..1"
+      traversal_complexity: GREEN
+
+    stores_at:
+      description: "Part inventory stored at a facility"
+      domain: Part
+      range: Facility
+      sql:
+        table: inventory
+        domain_key: part_id
+        range_key: facility_id
+        additional_columns:
+          - quantity_on_hand
+          - quantity_reserved
+          - quantity_on_order
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..*"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 10056
+
+    placed_by:
+      description: "Order placed by a customer"
+      domain: Order
+      range: Customer
+      sql:
+        table: orders
+        domain_key: id
+        range_key: customer_id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: true
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "1..1"
+        range: "0..*"
+      traversal_complexity: GREEN
+
+    ships_from:
+      description: "Order ships from a facility"
+      domain: Order
+      range: Facility
+      sql:
+        table: orders
+        domain_key: id
+        range_key: shipping_facility_id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: true
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..1"
+        range: "0..*"
+      traversal_complexity: GREEN
+
+    contains_item:
+      description: "Order contains a product line item"
+      domain: Order
+      range: Product
+      sql:
+        table: order_items
+        domain_key: order_id
+        range_key: product_id
+        additional_columns:
+          - quantity
+          - unit_price
+          - discount_percent
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: false
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "1..*"
+        range: "0..*"
+      traversal_complexity: GREEN
+      row_count: 60241
+
+    fulfills:
+      description: "Shipment fulfills an order"
+      domain: Shipment
+      range: Order
+      sql:
+        table: shipments
+        domain_key: id
+        range_key: order_id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: true
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "1..1"
+        range: "0..*"
+      traversal_complexity: GREEN
+
+    uses_route:
+      description: "Shipment uses a transport route"
+      domain: Shipment
+      range: Facility
+      sql:
+        table: shipments
+        domain_key: id
+        range_key: transport_route_id
+      properties:
+        transitive: false
+        symmetric: false
+        asymmetric: true
+        reflexive: false
+        irreflexive: true
+        functional: true
+        inverse_functional: false
+        acyclic: true
+        is_hierarchical: false
+        is_weighted: false
+      cardinality:
+        domain: "0..1"
+        range: "0..*"
+      traversal_complexity: GREEN

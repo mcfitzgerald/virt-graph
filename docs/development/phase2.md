@@ -48,45 +48,51 @@ The schema skill is invoked when Claude needs to:
 
 ## Ontology Structure
 
-The ontology uses TBox/RBox format (Description Logic inspired, LinkML-influenced) to map semantic concepts to physical SQL:
+The ontology uses **LinkML format with Virtual Graph extensions** to map semantic concepts to physical SQL:
 
-### Classes (TBox)
+### Entity Classes (TBox)
+
+Entity classes use `instantiates: [vg:SQLMappedClass]`:
 
 ```yaml
-tbox:
-  classes:
-    Supplier:
-      description: "Companies that provide materials/parts"
-      sql:
-        table: suppliers
-        primary_key: id
-        identifier: [supplier_code, name]
-      slots:
-        tier:
-          range: integer
-          values: [1, 2, 3]
-          description: "Supply chain tier"
+classes:
+  Supplier:
+    description: "Companies that provide materials/parts"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: "[supplier_code]"
+      vg:row_count: 500
+    attributes:
+      tier:
+        range: integer
+        required: true
+        description: "Supply chain tier (1=direct, 2=tier2, 3=raw materials)"
 ```
 
-### Relationships (RBox)
+### Relationship Classes (RBox)
+
+Relationship classes use `instantiates: [vg:SQLMappedRelationship]`:
 
 ```yaml
-rbox:
-  roles:
-    supplies_to:
-      domain: Supplier
-      range: Supplier
-      sql:
-        table: supplier_relationships
-        domain_key: seller_id
-        range_key: buyer_id
-      properties:
-        asymmetric: true
-        acyclic: true
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: YELLOW
+classes:
+  SuppliesTo:
+    description: "Supplier sells to another supplier"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_relationships
+      vg:domain_key: seller_id
+      vg:range_key: buyer_id
+      vg:domain_class: Supplier
+      vg:range_class: Supplier
+      vg:traversal_complexity: YELLOW
+      vg:asymmetric: true
+      vg:acyclic: true
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
 ```
 
 ### Traversal Complexity
@@ -206,23 +212,31 @@ TestGate2Summary: 1 passed
 
 ```python
 # "Find supplier Acme Corp"
-# Ontology lookup: tbox.classes.Supplier.sql.table = "suppliers"
+from virt_graph.ontology import OntologyAccessor
+ontology = OntologyAccessor()
+table = ontology.get_class_table("Supplier")  # "suppliers"
 # Generated SQL:
-SELECT * FROM suppliers WHERE name = 'Acme Corp';
+# SELECT * FROM suppliers WHERE name = 'Acme Corp';
 ```
 
 ### YELLOW Query (Recursive)
 
 ```python
 # "Find all tier 3 suppliers for Acme Corp"
-# Ontology lookup: supplies_to relationship
-# Use traverse() handler with:
+from virt_graph.ontology import OntologyAccessor
+ontology = OntologyAccessor()
+
+# Ontology lookup
+domain_key, range_key = ontology.get_role_keys("SuppliesTo")
+table = ontology.get_role_table("SuppliesTo")
+
+# Use traverse() handler with resolved params:
 traverse(
     conn=db,
     nodes_table="suppliers",
-    edges_table="supplier_relationships",
-    edge_from_col="seller_id",
-    edge_to_col="buyer_id",
+    edges_table=table,  # "supplier_relationships"
+    edge_from_col=domain_key,  # "seller_id"
+    edge_to_col=range_key,  # "buyer_id"
     start_id=1,  # Acme Corp
     direction="inbound",
     stop_condition="tier = 3"
@@ -233,17 +247,23 @@ traverse(
 
 ```python
 # "Cheapest route from Chicago to LA"
-# Ontology lookup: connects_to relationship with weight_columns.cost
+from virt_graph.ontology import OntologyAccessor
+ontology = OntologyAccessor()
+
+# Ontology lookup
+weight_cols = ontology.get_role_weight_columns("ConnectsTo")
+domain_key, range_key = ontology.get_role_keys("ConnectsTo")
+
 # Use shortest_path() handler with:
 shortest_path(
     conn=db,
     nodes_table="facilities",
     edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
+    edge_from_col=domain_key,  # "origin_facility_id"
+    edge_to_col=range_key,  # "destination_facility_id"
     start_id=1,  # Chicago
     end_id=2,    # LA
-    weight_col="cost_usd"
+    weight_col="cost_usd"  # from weight_cols
 )
 ```
 

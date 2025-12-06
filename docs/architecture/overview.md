@@ -133,3 +133,29 @@ sequenceDiagram
 | **Schema Skill** | Introspect database for physical details |
 | **Handlers** | Execute graph algorithms efficiently |
 | **LLM** | Route queries, parameterize handlers |
+
+## Ontology Format
+
+The ontology uses **LinkML format with Virtual Graph extensions**:
+
+```yaml
+# Entity classes use vg:SQLMappedClass
+Supplier:
+  instantiates: [vg:SQLMappedClass]
+  annotations:
+    vg:table: suppliers
+    vg:primary_key: id
+
+# Relationship classes use vg:SQLMappedRelationship
+SuppliesTo:
+  instantiates: [vg:SQLMappedRelationship]
+  annotations:
+    vg:edge_table: supplier_relationships
+    vg:domain_key: seller_id
+    vg:range_key: buyer_id
+    vg:traversal_complexity: YELLOW
+```
+
+Two-layer validation:
+1. **LinkML structure**: `poetry run linkml-lint --validate-only`
+2. **VG annotations**: `OntologyAccessor(validate=True)`

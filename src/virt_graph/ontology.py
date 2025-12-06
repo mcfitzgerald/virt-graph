@@ -1,44 +1,93 @@
 """
-Ontology accessor for TBox/RBox format.
+Ontology accessor for LinkML format with Virtual Graph extensions.
 
-Provides a stable API for accessing ontology data regardless of
-underlying YAML format changes.
+Provides a stable API abstracting over the LinkML structure,
+presenting logical TBox (classes) and RBox (roles) views.
+
+Includes custom validation for VG-specific annotations since LinkML's
+`instantiates` validation is not yet implemented.
 """
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
 
+@dataclass
+class ValidationError:
+    """A validation error for a schema element."""
+
+    element_type: str  # "class" or "relationship"
+    element_name: str
+    field: str
+    message: str
+
+    def __str__(self):
+        return f"{self.element_type} '{self.element_name}': {self.field} - {self.message}"
+
+
+class OntologyValidationError(Exception):
+    """Raised when ontology fails VG annotation validation."""
+
+    def __init__(self, errors: list[ValidationError]):
+        self.errors = errors
+        message = f"Ontology validation failed with {len(errors)} error(s):\n"
+        message += "\n".join(f"  - {e}" for e in errors)
+        super().__init__(message)
+
+
 class OntologyAccessor:
     """
-    Abstraction layer for accessing TBox/RBox ontology structure.
+    Abstraction layer for LinkML ontology with VG extensions.
 
-    Provides a stable API regardless of underlying YAML format changes.
-    The TBox (Terminological Box) contains class definitions.
-    The RBox (Role Box) contains relationship/role definitions.
+    Automatically distinguishes:
+    - Entity classes (instantiates vg:SQLMappedClass) → TBox
+    - Relationship classes (instantiates vg:SQLMappedRelationship) → RBox
+
+    Validates VG-specific annotations on construction.
 
     Usage:
         ontology = OntologyAccessor()  # Uses default path
         ontology = OntologyAccessor(Path("custom/ontology.yaml"))
 
-        # Access classes
+        # Access classes (TBox)
         table = ontology.get_class_table("Supplier")
         pk = ontology.get_class_pk("Supplier")
 
-        # Access roles (relationships)
-        domain_key, range_key = ontology.get_role_keys("supplies_to")
-        complexity = ontology.get_role_complexity("supplies_to")
+        # Access roles (RBox - relationships)
+        domain_key, range_key = ontology.get_role_keys("SuppliesTo")
+        complexity = ontology.get_role_complexity("SuppliesTo")
     """
 
-    def __init__(self, ontology_path: Optional[Path] = None):
+    VG_ENTITY = "vg:SQLMappedClass"
+    VG_RELATIONSHIP = "vg:SQLMappedRelationship"
+
+    # Required annotations for each extension type
+    ENTITY_REQUIRED = {"table", "primary_key"}
+    RELATIONSHIP_REQUIRED = {
+        "edge_table",
+        "domain_key",
+        "range_key",
+        "domain_class",
+        "range_class",
+        "traversal_complexity",
+    }
+    VALID_COMPLEXITIES = {"GREEN", "YELLOW", "RED"}
+
+    def __init__(self, ontology_path: Optional[Path] = None, validate: bool = True):
         """
-        Initialize the ontology accessor.
+        Load and optionally validate a LinkML ontology with VG extensions.
 
         Args:
             ontology_path: Path to ontology YAML file. If None, uses default
                            location at ontology/supply_chain.yaml
+            validate: If True, validate VG annotations on load (default: True)
+
+        Raises:
+            OntologyValidationError: If validation is enabled and fails
         """
         if ontology_path is None:
             ontology_path = (
@@ -47,43 +96,192 @@ class OntologyAccessor:
         with open(ontology_path) as f:
             self._data = yaml.safe_load(f)
 
-    # === Meta ===
-    @property
-    def name(self) -> str:
-        """Get ontology name."""
-        return self._data["meta"]["name"]
+        # Build TBox/RBox indices
+        self._tbox: dict[str, dict] = {}
+        self._rbox: dict[str, dict] = {}
+        self._index_classes()
 
-    @property
-    def version(self) -> str:
-        """Get ontology version."""
-        return self._data["meta"]["version"]
+        # Validate VG annotations
+        if validate:
+            errors = self.validate()
+            if errors:
+                raise OntologyValidationError(errors)
 
-    @property
-    def database(self) -> dict:
-        """Get database connection info."""
-        return self._data["meta"]["database"]
+    def _index_classes(self):
+        """Partition classes into TBox (entities) and RBox (relationships)."""
+        for name, cls in self._data.get("classes", {}).items():
+            instantiates = cls.get("instantiates", [])
+            if self.VG_RELATIONSHIP in instantiates:
+                self._rbox[name] = cls
+            elif self.VG_ENTITY in instantiates:
+                self._tbox[name] = cls
+            # Classes without VG instantiates are ignored or could be base classes
 
-    # === TBox: Classes ===
+        # Build snake_case aliases for backward compatibility
+        # e.g., "SuppliesTo" -> "supplies_to"
+        self._role_aliases: dict[str, str] = {}
+        for name in self._rbox:
+            snake = self._pascal_to_snake(name)
+            if snake != name:
+                self._role_aliases[snake] = name
+
+    def _pascal_to_snake(self, name: str) -> str:
+        """Convert PascalCase to snake_case."""
+        import re
+        # Insert underscore before uppercase letters and lowercase
+        s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+        return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+    def _resolve_role_name(self, name: str) -> str:
+        """Resolve role name, handling snake_case aliases."""
+        if name in self._rbox:
+            return name
+        if name in self._role_aliases:
+            return self._role_aliases[name]
+        raise KeyError(f"Unknown role: {name}")
+
+    def _get_annotation(self, cls: dict, key: str, default=None):
+        """Get a vg: annotation value."""
+        annotations = cls.get("annotations", {})
+        # Try with vg: prefix first, then without
+        return annotations.get(f"vg:{key}", annotations.get(key, default))
+
+    def _get_all_annotations(self, cls: dict) -> set[str]:
+        """Get all annotation keys (stripped of vg: prefix)."""
+        annotations = cls.get("annotations", {})
+        result = set()
+        for key in annotations:
+            if key.startswith("vg:"):
+                result.add(key[3:])  # Strip vg: prefix
+            else:
+                result.add(key)
+        return result
+
+    def _parse_json_or_value(self, value, default=None):
+        """Parse JSON string or return value as-is."""
+        if value is None:
+            return default
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return value
+        return value
+
+    # =========================================================================
+    # VALIDATION
+    # =========================================================================
+
+    def validate(self) -> list[ValidationError]:
+        """
+        Validate VG-specific annotations for all classes.
+
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        errors = []
+        errors.extend(self._validate_entities())
+        errors.extend(self._validate_relationships())
+        return errors
+
+    def _validate_entities(self) -> list[ValidationError]:
+        """Validate SQLMappedClass annotations."""
+        errors = []
+        for name, cls in self._tbox.items():
+            present = self._get_all_annotations(cls)
+            missing = self.ENTITY_REQUIRED - present
+            for field in missing:
+                errors.append(
+                    ValidationError(
+                        element_type="class",
+                        element_name=name,
+                        field=field,
+                        message=f"required annotation 'vg:{field}' is missing",
+                    )
+                )
+        return errors
+
+    def _validate_relationships(self) -> list[ValidationError]:
+        """Validate SQLMappedRelationship annotations."""
+        errors = []
+        for name, cls in self._rbox.items():
+            present = self._get_all_annotations(cls)
+
+            # Check required fields
+            missing = self.RELATIONSHIP_REQUIRED - present
+            for field in missing:
+                errors.append(
+                    ValidationError(
+                        element_type="relationship",
+                        element_name=name,
+                        field=field,
+                        message=f"required annotation 'vg:{field}' is missing",
+                    )
+                )
+
+            # Validate traversal_complexity value
+            complexity = self._get_annotation(cls, "traversal_complexity")
+            if complexity and complexity not in self.VALID_COMPLEXITIES:
+                errors.append(
+                    ValidationError(
+                        element_type="relationship",
+                        element_name=name,
+                        field="traversal_complexity",
+                        message=f"invalid value '{complexity}', must be one of {self.VALID_COMPLEXITIES}",
+                    )
+                )
+
+            # Validate domain_class references a known entity
+            domain_class = self._get_annotation(cls, "domain_class")
+            if domain_class and domain_class not in self._tbox:
+                errors.append(
+                    ValidationError(
+                        element_type="relationship",
+                        element_name=name,
+                        field="domain_class",
+                        message=f"references unknown class '{domain_class}'",
+                    )
+                )
+
+            # Validate range_class references a known entity
+            range_class = self._get_annotation(cls, "range_class")
+            if range_class and range_class not in self._tbox:
+                errors.append(
+                    ValidationError(
+                        element_type="relationship",
+                        element_name=name,
+                        field="range_class",
+                        message=f"references unknown class '{range_class}'",
+                    )
+                )
+
+        return errors
+
+    # =========================================================================
+    # TBox: Classes (Entity Tables)
+    # =========================================================================
+
     @property
     def classes(self) -> dict:
-        """Get all class definitions."""
-        return self._data["tbox"]["classes"]
+        """Get all entity class definitions (TBox)."""
+        return self._tbox
 
     def get_class(self, name: str) -> dict:
-        """Get a class definition by name."""
-        return self._data["tbox"]["classes"][name]
+        """Get an entity class definition by name."""
+        return self._tbox[name]
 
     def get_class_table(self, name: str) -> str:
         """Get the SQL table name for a class."""
-        return self._data["tbox"]["classes"][name]["sql"]["table"]
+        return self._get_annotation(self._tbox[name], "table")
 
     def get_class_pk(self, name: str) -> str:
         """Get the primary key column for a class."""
-        return self._data["tbox"]["classes"][name]["sql"]["primary_key"]
+        return self._get_annotation(self._tbox[name], "primary_key")
 
     def get_class_identifier(self, name: str) -> list[str]:
-        """Get natural key columns for a class."""
-        return self._data["tbox"]["classes"][name]["sql"].get("identifier", [])
+        """Get natural key columns for a class (may be JSON string or list)."""
+        value = self._get_annotation(self._tbox[name], "identifier", [])
+        return self._parse_json_or_value(value, [])
 
     def get_class_soft_delete(self, name: str) -> tuple[bool, Optional[str]]:
         """
@@ -92,35 +290,50 @@ class OntologyAccessor:
         Returns:
             Tuple of (enabled, column_name). Column is None if not enabled.
         """
-        cls = self._data["tbox"]["classes"][name]
-        soft_delete = cls.get("soft_delete", {})
-        return soft_delete.get("enabled", False), soft_delete.get("column")
+        column = self._get_annotation(self._tbox[name], "soft_delete_column")
+        return (column is not None, column)
 
     def get_class_slots(self, name: str) -> dict:
-        """Get attribute slots for a class."""
-        return self._data["tbox"]["classes"][name].get("slots", {})
+        """Get attribute definitions for a class."""
+        return self._tbox[name].get("attributes", {})
 
     def get_class_row_count(self, name: str) -> Optional[int]:
         """Get estimated row count for a class."""
-        return self._data["tbox"]["classes"][name].get("row_count")
+        return self._get_annotation(self._tbox[name], "row_count")
 
-    # === RBox: Roles (Relationships) ===
+    # =========================================================================
+    # RBox: Roles (Relationships)
+    # =========================================================================
+
     @property
     def roles(self) -> dict:
-        """Get all role definitions."""
-        return self._data["rbox"]["roles"]
+        """Get all relationship definitions (RBox)."""
+        return self._rbox
 
     def get_role(self, name: str) -> dict:
-        """Get a role definition by name."""
-        return self._data["rbox"]["roles"][name]
+        """Get a relationship definition by name."""
+        resolved = self._resolve_role_name(name)
+        return self._rbox[resolved]
 
     def get_role_sql(self, name: str) -> dict:
-        """Get full SQL mapping for a role."""
-        return self._data["rbox"]["roles"][name]["sql"]
+        """
+        Get SQL mapping for a role (reconstructed from annotations).
+
+        Returns dict with: table, domain_key, range_key, weight_columns
+        """
+        resolved = self._resolve_role_name(name)
+        cls = self._rbox[resolved]
+        return {
+            "table": self._get_annotation(cls, "edge_table"),
+            "domain_key": self._get_annotation(cls, "domain_key"),
+            "range_key": self._get_annotation(cls, "range_key"),
+            "weight_columns": self.get_role_weight_columns(resolved),
+        }
 
     def get_role_table(self, name: str) -> str:
         """Get the edge table name for a role."""
-        return self._data["rbox"]["roles"][name]["sql"]["table"]
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "edge_table")
 
     def get_role_keys(self, name: str) -> tuple[str, str]:
         """
@@ -129,30 +342,51 @@ class OntologyAccessor:
         Returns:
             Tuple of (domain_key, range_key)
         """
-        sql = self._data["rbox"]["roles"][name]["sql"]
-        return sql["domain_key"], sql["range_key"]
+        resolved = self._resolve_role_name(name)
+        cls = self._rbox[resolved]
+        return (
+            self._get_annotation(cls, "domain_key"),
+            self._get_annotation(cls, "range_key"),
+        )
 
     def get_role_domain(self, name: str) -> str:
-        """Get domain class for a role."""
-        return self._data["rbox"]["roles"][name]["domain"]
+        """Get domain class name for a role."""
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "domain_class")
 
     def get_role_range(self, name: str) -> str:
-        """Get range class for a role."""
-        return self._data["rbox"]["roles"][name]["range"]
+        """Get range class name for a role."""
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "range_class")
 
     def get_role_complexity(self, name: str) -> str:
         """Get traversal complexity (GREEN/YELLOW/RED) for a role."""
-        return self._data["rbox"]["roles"][name]["traversal_complexity"]
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "traversal_complexity")
 
     def get_role_properties(self, name: str) -> dict:
         """
-        Get OWL 2 properties for a role.
+        Get OWL 2 and VG extension properties for a role.
 
-        Properties include: transitive, symmetric, asymmetric, reflexive,
-        irreflexive, functional, inverse_functional, acyclic, is_hierarchical,
-        is_weighted.
+        Returns dict with boolean flags: transitive, symmetric, asymmetric,
+        reflexive, irreflexive, functional, inverse_functional, acyclic,
+        is_hierarchical, is_weighted.
         """
-        return self._data["rbox"]["roles"][name].get("properties", {})
+        resolved = self._resolve_role_name(name)
+        cls = self._rbox[resolved]
+        return {
+            "transitive": self._get_annotation(cls, "transitive", False),
+            "symmetric": self._get_annotation(cls, "symmetric", False),
+            "asymmetric": self._get_annotation(cls, "asymmetric", False),
+            "reflexive": self._get_annotation(cls, "reflexive", False),
+            "irreflexive": self._get_annotation(cls, "irreflexive", False),
+            "functional": self._get_annotation(cls, "functional", False),
+            "inverse_functional": self._get_annotation(cls, "inverse_functional", False),
+            "acyclic": self._get_annotation(cls, "acyclic", False),
+            "is_hierarchical": self._get_annotation(cls, "is_hierarchical", False),
+            "is_weighted": self._get_annotation(cls, "is_weighted", False),
+            "inverse_of": self._get_annotation(cls, "inverse_of"),
+        }
 
     def get_role_cardinality(self, name: str) -> dict:
         """
@@ -161,7 +395,12 @@ class OntologyAccessor:
         Returns:
             Dict with 'domain' and 'range' keys using notation like "0..*", "1..1"
         """
-        return self._data["rbox"]["roles"][name].get("cardinality", {})
+        resolved = self._resolve_role_name(name)
+        cls = self._rbox[resolved]
+        return {
+            "domain": self._get_annotation(cls, "cardinality_domain", "0..*"),
+            "range": self._get_annotation(cls, "cardinality_range", "0..*"),
+        }
 
     def get_role_weight_columns(self, name: str) -> list[dict]:
         """
@@ -170,38 +409,82 @@ class OntologyAccessor:
         Returns:
             List of dicts with 'name' and 'type' keys
         """
-        return self._data["rbox"]["roles"][name]["sql"].get("weight_columns", [])
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "weight_columns", [])
+        return self._parse_json_or_value(value, [])
 
     def get_role_row_count(self, name: str) -> Optional[int]:
         """Get estimated edge count for a role."""
-        return self._data["rbox"]["roles"][name].get("row_count")
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "row_count")
 
-    # === Utility Methods ===
+    # =========================================================================
+    # Utility Methods
+    # =========================================================================
+
     def is_role_transitive(self, name: str) -> bool:
         """Check if a role has transitive property."""
-        return self.get_role_properties(name).get("transitive", False)
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "transitive", False)
 
     def is_role_symmetric(self, name: str) -> bool:
         """Check if a role has symmetric property."""
-        return self.get_role_properties(name).get("symmetric", False)
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "symmetric", False)
+
+    def is_role_asymmetric(self, name: str) -> bool:
+        """Check if a role has asymmetric property."""
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "asymmetric", False)
 
     def is_role_acyclic(self, name: str) -> bool:
         """Check if a role is acyclic (DAG)."""
-        return self.get_role_properties(name).get("acyclic", False)
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "acyclic", False)
 
     def is_role_hierarchical(self, name: str) -> bool:
         """Check if a role represents a hierarchy."""
-        return self.get_role_properties(name).get("is_hierarchical", False)
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "is_hierarchical", False)
 
     def is_role_weighted(self, name: str) -> bool:
         """Check if a role has weighted edges."""
-        return self.get_role_properties(name).get("is_weighted", False)
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "is_weighted", False)
 
     def get_role_inverse(self, name: str) -> Optional[str]:
         """Get inverse role name if defined."""
-        return self.get_role_properties(name).get("inverse_of")
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "inverse_of")
 
-    # === Raw access (for advanced use) ===
+    # =========================================================================
+    # Schema-level metadata
+    # =========================================================================
+
+    @property
+    def name(self) -> str:
+        """Get ontology name."""
+        return self._data.get("name", "unknown")
+
+    @property
+    def version(self) -> str:
+        """Get ontology version."""
+        return self._data.get("version", "0.0")
+
+    @property
+    def database(self) -> dict:
+        """Get database connection info from schema annotations."""
+        annotations = self._data.get("annotations", {})
+        return {
+            "type": annotations.get("vg:database_type", "postgresql"),
+            "version": annotations.get("vg:database_version"),
+            "connection": annotations.get("vg:connection_string"),
+        }
+
+    # =========================================================================
+    # Raw access (for advanced use)
+    # =========================================================================
+
     @property
     def raw(self) -> dict:
         """Access raw ontology dict for advanced use cases."""
@@ -209,6 +492,6 @@ class OntologyAccessor:
 
 
 # Convenience function for one-off access
-def load_ontology(path: Optional[Path] = None) -> OntologyAccessor:
+def load_ontology(path: Optional[Path] = None, validate: bool = True) -> OntologyAccessor:
     """Load and return an OntologyAccessor instance."""
-    return OntologyAccessor(path)
+    return OntologyAccessor(path, validate=validate)

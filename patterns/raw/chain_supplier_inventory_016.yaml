@@ -1,0 +1,89 @@
+# Multi-Hop Chain Pattern: Supplier → Part → Inventory → Facility
+# Discovered: Phase 1C - GREEN Multi-Hop Chains
+# Complexity: GREEN
+
+name: supplier_inventory_chain
+complexity: GREEN
+description: Multi-hop chain connecting Supplier to Facilities through Parts and Inventory
+
+ontology_bindings:
+  chain:
+    - role: provides
+      direction: forward
+    - role: stores
+      direction: reverse
+  entities: [Supplier, Part, Facility]
+
+patterns:
+  - name: supplier_inventory_locations
+    description: "Where is this supplier's parts stored?"
+    applicability:
+      keywords: [supplier, inventory, locations, stored, facilities, warehouses]
+      intent: "Find facilities storing parts from a specific supplier"
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+        example: "SUP00001"
+    sql_template: |
+      SELECT s.name as supplier, f.facility_code, f.name as facility,
+             COUNT(DISTINCT pt.id) as part_types,
+             SUM(i.quantity_on_hand) as total_stock
+      FROM suppliers s
+      JOIN parts pt ON pt.primary_supplier_id = s.id
+      JOIN inventory i ON i.part_id = pt.id
+      JOIN facilities f ON i.facility_id = f.id
+      WHERE s.supplier_code = {{supplier_code}}
+      GROUP BY s.name, f.facility_code, f.name
+      ORDER BY total_stock DESC
+    execution:
+      time_ms: 1.7
+      result: "Acme Corp parts at multiple facilities"
+
+  - name: supplier_inventory_value
+    description: "Inventory value by supplier across facilities"
+    applicability:
+      keywords: [supplier, inventory, value, investment, stock value]
+      intent: "Calculate inventory value for a supplier's parts"
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+    sql_template: |
+      SELECT s.name as supplier, f.facility_code, f.name as facility,
+             SUM(i.quantity_on_hand) as units,
+             ROUND(SUM(i.quantity_on_hand * pt.unit_cost)::numeric, 2) as value
+      FROM suppliers s
+      JOIN parts pt ON pt.primary_supplier_id = s.id
+      JOIN inventory i ON i.part_id = pt.id
+      JOIN facilities f ON i.facility_id = f.id
+      WHERE s.supplier_code = {{supplier_code}}
+      GROUP BY s.name, f.facility_code, f.name
+      ORDER BY value DESC
+    execution:
+      time_ms: 1.7
+
+  - name: facility_supplier_breakdown
+    description: "Which suppliers provide parts stored at this facility?"
+    applicability:
+      keywords: [facility, suppliers, parts, breakdown, inventory sources]
+      intent: "Find suppliers of parts in a facility's inventory"
+    parameters:
+      - name: facility_code
+        type: string
+        required: true
+        example: "FAC-CHI"
+    sql_template: |
+      SELECT f.name as facility, s.supplier_code, s.name as supplier, s.tier,
+             COUNT(DISTINCT pt.id) as parts, SUM(i.quantity_on_hand) as stock
+      FROM facilities f
+      JOIN inventory i ON i.facility_id = f.id
+      JOIN parts pt ON i.part_id = pt.id
+      JOIN suppliers s ON pt.primary_supplier_id = s.id
+      WHERE f.facility_code = {{facility_code}}
+      GROUP BY f.name, s.supplier_code, s.name, s.tier
+      ORDER BY stock DESC
+      LIMIT 20
+    execution:
+      time_ms: 6.7
+      result: "Chicago Warehouse: top supplier 14 parts, 7.2K units"

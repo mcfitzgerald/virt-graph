@@ -5,6 +5,133 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2025-12-06
+
+### Added
+
+**LinkML Migration Phases 5-6: Tooling & Validation**
+
+Completed the LinkML migration with validation infrastructure and tests.
+
+**Phase 5: Tooling**
+- `Makefile` - Development task automation:
+  - `make validate-ontology` - Full two-layer validation
+  - `make validate-linkml` - Layer 1 only (linkml-lint)
+  - `make validate-vg` - Layer 2 only (VG annotations)
+  - `make gen-jsonschema` - Generate JSON-Schema from ontology
+  - Common targets: `install`, `test`, `db-up`, `serve-docs`, etc.
+- `scripts/validate_ontology.py` - Two-layer validation script:
+  - Layer 1: LinkML structure validation via linkml-lint
+  - Layer 2: VG annotation validation via OntologyAccessor
+  - Supports `--all` flag for validating all ontology files
+  - Exit code 0 on success, 1 on failure
+
+**Phase 6: Tests & Documentation**
+- New test classes in `tests/test_gate2_validation.py`:
+  - `TestLinkMLStructure` - LinkML lint validation tests
+  - `TestVGAnnotations` - VG annotation validation tests
+  - Tests verify both ontology files pass both validation layers
+- Updated documentation to reflect LinkML format:
+  - `docs/architecture/overview.md` - Added LinkML format section
+  - `docs/architecture.md` - Updated Layer 1 examples to LinkML
+  - `docs/development/phase2.md` - Updated ontology structure and usage examples
+  - `docs/development/gates.md` - Updated Gate 2 requirements for two-layer validation
+- Updated `CLAUDE.md` with:
+  - New ontology validation commands
+  - LinkML format structure examples
+  - OntologyAccessor usage with snake_case aliases
+
+### Changed
+
+- `tests/test_gate2_validation.py`:
+  - Added LinkML and VG validation test classes
+  - Fixed `test_supplier_tier_distribution` to use hardcoded expected values
+    (distribution annotation format changed in new schema)
+
+### Migration Complete
+
+All 6 phases of the LinkML migration are now complete:
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Metamodel Extension (`virt_graph.yaml`) | ✅ |
+| 2 | Supply Chain Migration | ✅ |
+| 3 | OntologyAccessor Update | ✅ |
+| 4 | Discovery Protocol Update | ✅ |
+| 5 | Tooling (Makefile, validation scripts) | ✅ |
+| 6 | Tests & Documentation | ✅ |
+
+---
+
+## [0.8.2] - 2025-12-06
+
+### Changed
+
+**LinkML Migration Phase 4: Update Discovery Protocol**
+
+Rewrote `prompts/ontology_discovery.md` for LinkML-native output:
+
+**Database-Agnostic Parameterization**
+- Session setup uses `{{connection_string}}` and `{{schema_name}}` placeholders
+- Works with any PostgreSQL database, not hardcoded to supply chain
+- Output path: `ontology/{{schema_name}}.yaml`
+
+**LinkML Output Format**
+- Round 2 (TBox): Entity classes now use `instantiates: [vg:SQLMappedClass]`
+- Round 3 (RBox): Relationship classes now use `instantiates: [vg:SQLMappedRelationship]`
+- Includes complete schema header with prefixes, imports, and annotations
+- YAML code blocks show exact output format expected
+
+**Two-Layer Validation**
+- Layer 1 - LinkML Structure: `poetry run linkml-lint --validate-only`
+- Layer 2 - VG Annotations: `OntologyAccessor(path, validate=True)`
+- Validation checklist includes both layers
+
+**Enhanced Reference Material**
+- Traversal complexity decision tree
+- Type mapping table (SQL → LinkML ranges)
+- Complete SQL queries for schema introspection
+- Example session starter template
+
+---
+
+## [0.8.1] - 2025-12-06
+
+### Added
+
+**LinkML Migration Phase 1: Virtual Graph Metamodel Extension**
+
+Created `ontology/virt_graph.yaml` - LinkML-compliant metamodel defining Virtual Graph extension classes:
+
+**Extension Classes**
+- `SQLMappedClass` - For entity tables (TBox concepts):
+  - `table`, `primary_key`, `identifier`, `soft_delete_column`, `row_count`
+- `SQLMappedRelationship` - For relationship classes (RBox roles):
+  - SQL mapping: `edge_table`, `domain_key`, `range_key`, `domain_class`, `range_class`
+  - OWL 2 axioms: `transitive`, `symmetric`, `asymmetric`, `reflexive`, `irreflexive`, `functional`, `inverse_functional`
+  - VG extensions: `acyclic`, `is_hierarchical`, `is_weighted`, `inverse_of`
+  - DDL metadata: `has_self_ref_constraint`, `has_unique_edge_index`, `indexed_columns`
+  - `weight_columns`, `row_count`, `traversal_complexity`
+- `WeightColumn` - For numeric edge weights (name, type, description, unit)
+- `DatabaseConnection` - Schema-level database metadata
+
+**Enums**
+- `TraversalComplexity` - GREEN (simple join), YELLOW (recursive), RED (network algo)
+- `Cardinality` - Standard cardinality constraints
+
+**Dependencies**
+- Added `linkml>=1.7` to project dependencies
+- Updated Python requirement to `>=3.12,<4.0` for linkml compatibility
+
+**Validation**
+- Metamodel passes `linkml-lint --validate-only` against LinkML metamodel
+
+**Note on `instantiates` Validation**
+
+Per LinkML documentation, while schemas can declare `instantiates: [vg:SQLMappedClass]` to indicate semantic intent, the LinkML validator does not yet enforce custom annotation validation. This is a planned feature. The metamodel is structurally valid and ready for Phase 2 migration.
+
+---
+
 ## [0.8.0] - 2025-12-06
 
 ### Added

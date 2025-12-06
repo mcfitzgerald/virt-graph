@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Management
+
+- Commit and push changes at logical points (e.g., completed a phase, changed functionality, etc)
+- Update `CHANGELOG.md` and `pyproject.toml` with semantic versioning on every commit
+- Run integration tests for each phase (prefer integration over unit tests)
+- Documentation lives in `docs/` - review as needed and update when comitting
+- Update `CLAUDE.md` if needed
+- Use Claude's todo list to manage complex tasks
+- Current version: see `pyproject.toml` (follows semantic versioning)
+
 ## Development Commands
 
 ```bash
@@ -50,6 +60,14 @@ docker-compose -f neo4j/docker-compose.yml up -d
 
 # View Neo4j logs
 docker-compose -f neo4j/docker-compose.yml logs -f
+
+# Ontology validation (two-layer)
+make validate-ontology                    # Full validation (both layers)
+poetry run python scripts/validate_ontology.py --all  # Alternative
+poetry run linkml-lint --validate-only ontology/supply_chain.yaml  # Layer 1 only
+
+# Generate artifacts from ontology (optional)
+make gen-jsonschema                       # Generate JSON-Schema
 ```
 
 ## Project Overview
@@ -153,9 +171,25 @@ Named test entities for queries:
 
 ## Ontology
 
-The ontology (`ontology/supply_chain.yaml`) uses TBox/RBox format (Description Logic inspired, LinkML-influenced):
-- **TBox (Classes)**: 8 classes - Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
-- **RBox (Roles)**: 13 relationships with traversal complexity (GREEN/YELLOW/RED)
+The ontology uses **LinkML format with Virtual Graph extensions** (`ontology/supply_chain.yaml`):
+- **Entity Classes (TBox)**: 8 classes - Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
+- **Relationship Classes (RBox)**: 13 relationships with traversal complexity (GREEN/YELLOW/RED)
+- **Metamodel Extension**: `ontology/virt_graph.yaml` defines VG-specific annotations
+
+### Ontology Validation
+
+Two-layer validation is required:
+
+```bash
+# Layer 1: LinkML structure (YAML syntax, schema structure)
+poetry run linkml-lint --validate-only ontology/supply_chain.yaml
+
+# Layer 2: VG annotations (required fields, valid references)
+poetry run python -c "from virt_graph.ontology import OntologyAccessor; OntologyAccessor()"
+
+# Both layers at once
+make validate-ontology
+```
 
 ### Accessing the Ontology
 
@@ -164,39 +198,51 @@ Use `OntologyAccessor` from `src/virt_graph/ontology.py` for programmatic access
 ```python
 from virt_graph.ontology import OntologyAccessor
 
-ontology = OntologyAccessor()
+ontology = OntologyAccessor()  # Validates on load by default
 table = ontology.get_class_table("Supplier")  # "suppliers"
-domain_key, range_key = ontology.get_role_keys("supplies_to")  # ("seller_id", "buyer_id")
-complexity = ontology.get_role_complexity("connects_to")  # "RED"
+domain_key, range_key = ontology.get_role_keys("SuppliesTo")  # ("seller_id", "buyer_id")
+complexity = ontology.get_role_complexity("ConnectsTo")  # "RED"
+
+# Also supports snake_case aliases for backward compatibility
+ontology.get_role_keys("supplies_to")  # Same as "SuppliesTo"
 ```
 
-### Ontology Structure
+### Ontology Structure (LinkML Format)
 
 ```yaml
-tbox:
-  classes:
-    Supplier:
-      sql:
-        table: suppliers
-        primary_key: id
-      slots: {...}
+classes:
+  # Entity class (TBox) - uses vg:SQLMappedClass
+  Supplier:
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: "[supplier_code]"
+      vg:row_count: 500
+    attributes:
+      name:
+        range: string
+        required: true
 
-rbox:
-  roles:
-    supplies_to:
-      domain: Supplier
-      range: Supplier
-      sql:
-        table: supplier_relationships
-        domain_key: seller_id
-        range_key: buyer_id
-      traversal_complexity: YELLOW
+  # Relationship class (RBox) - uses vg:SQLMappedRelationship
+  SuppliesTo:
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_relationships
+      vg:domain_key: seller_id
+      vg:range_key: buyer_id
+      vg:domain_class: Supplier
+      vg:range_class: Supplier
+      vg:traversal_complexity: YELLOW
+      vg:acyclic: true
 ```
 
 Key relationship complexities:
-- **GREEN**: Simple FK joins (provides, can_supply, contains_component, etc.)
-- **YELLOW**: Recursive traversal (supplies_to, component_of)
-- **RED**: Network algorithms with weights (connects_to)
+- **GREEN**: Simple FK joins (Provides, CanSupply, ContainsComponent, etc.)
+- **YELLOW**: Recursive traversal (SuppliesTo, ComponentOf)
+- **RED**: Network algorithms with weights (ConnectsTo)
 
 ## Skills
 
@@ -226,11 +272,4 @@ Gate validation tests in `tests/`:
 
 Run specific test: `poetry run pytest tests/test_gate1_validation.py::test_bom_traversal -v`
 
-## Project Management
 
-- Update `CHANGELOG.md` and `pyproject.toml` with semantic versioning on every commit
-- Run integration tests for each phase (prefer integration over unit tests)
-- Documentation lives in `docs/` - update when adding features
-- Update `CLAUDE.md` if needed
-- Use Claude's todo list to manage complex tasks
-- Current version: see `pyproject.toml` (follows semantic versioning)

@@ -1,0 +1,232 @@
+# Virtual Graph Metamodel Extension for LinkML
+# Defines extension classes for mapping semantic concepts to SQL schema
+#
+# This metamodel provides:
+# - SQLMappedClass: For entity classes (TBox concepts)
+# - SQLMappedRelationship: For relationship classes (RBox roles)
+# - Supporting types for traversal complexity, weight columns, etc.
+
+id: https://virt-graph.dev/metamodel
+name: virt_graph_metamodel
+version: "1.0"
+description: >-
+  Virtual Graph metamodel extension for LinkML.
+  Enables graph-like queries over relational data by mapping
+  semantic concepts to physical SQL schema.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  vg: https://virt-graph.dev/
+
+imports:
+  - linkml:types
+
+default_range: string
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enums:
+  TraversalComplexity:
+    description: >-
+      Complexity classification for relationship traversal.
+      Determines which handler/strategy to use for queries.
+    permissible_values:
+      GREEN:
+        description: "Simple FK join - direct SQL query, no special handling needed"
+      YELLOW:
+        description: "Recursive traversal - uses frontier-batched BFS via traverse() handler"
+      RED:
+        description: "Network algorithm - loads subgraph into NetworkX for pathfinding/centrality"
+
+  Cardinality:
+    description: "Cardinality constraints for relationship endpoints"
+    permissible_values:
+      ZERO_OR_ONE:
+        description: "0..1 - Optional single value"
+      EXACTLY_ONE:
+        description: "1..1 - Required single value"
+      ZERO_OR_MORE:
+        description: "0..* - Optional multiple values"
+      ONE_OR_MORE:
+        description: "1..* - Required multiple values"
+
+# =============================================================================
+# EXTENSION CLASSES
+# =============================================================================
+
+classes:
+  # ---------------------------------------------------------------------------
+  # SQLMappedClass: Extension for entity tables (TBox)
+  # ---------------------------------------------------------------------------
+  SQLMappedClass:
+    class_uri: vg:SQLMappedClass
+    description: >-
+      Extension class for entities that map to SQL tables.
+      Use this for TBox concepts (Supplier, Part, Product, etc.)
+    attributes:
+      table:
+        range: string
+        required: true
+        description: "SQL table name"
+      primary_key:
+        range: string
+        required: true
+        description: "Primary key column name"
+      identifier:
+        range: string
+        multivalued: true
+        description: "Natural key column(s) for human-readable identification"
+      soft_delete_column:
+        range: string
+        description: "Column name for soft delete timestamp (e.g., deleted_at)"
+      row_count:
+        range: integer
+        description: "Estimated row count for query planning"
+
+  # ---------------------------------------------------------------------------
+  # SQLMappedRelationship: Extension for relationships (RBox)
+  # ---------------------------------------------------------------------------
+  SQLMappedRelationship:
+    class_uri: vg:SQLMappedRelationship
+    description: >-
+      Extension class for relationships between entities.
+      Use this for RBox roles (supplies_to, component_of, connects_to, etc.)
+    attributes:
+      # === SQL Mapping ===
+      edge_table:
+        range: string
+        required: true
+        description: "Edge/junction table name (or target table for embedded FKs)"
+      domain_key:
+        range: string
+        required: true
+        description: "FK column pointing to domain class"
+      range_key:
+        range: string
+        required: true
+        description: "FK column pointing to range class (or 'id' for embedded FKs)"
+      domain_class:
+        range: string
+        required: true
+        description: "Name of the domain class"
+      range_class:
+        range: string
+        required: true
+        description: "Name of the range class"
+
+      # === Traversal ===
+      traversal_complexity:
+        range: TraversalComplexity
+        required: true
+        description: "GREEN (simple join), YELLOW (recursive), or RED (network algo)"
+
+      # === OWL 2 Role Axioms ===
+      transitive:
+        range: boolean
+        description: "R(x,y) and R(y,z) implies R(x,z)"
+      symmetric:
+        range: boolean
+        description: "R(x,y) implies R(y,x)"
+      asymmetric:
+        range: boolean
+        description: "R(x,y) implies NOT R(y,x)"
+      reflexive:
+        range: boolean
+        description: "R(x,x) always holds"
+      irreflexive:
+        range: boolean
+        description: "R(x,x) never holds (no self-loops)"
+      functional:
+        range: boolean
+        description: "Each domain element relates to at most one range element"
+      inverse_functional:
+        range: boolean
+        description: "Each range element relates to at most one domain element"
+
+      # === Virtual Graph Extensions ===
+      acyclic:
+        range: boolean
+        description: "DAG constraint - no cycles allowed"
+      is_hierarchical:
+        range: boolean
+        description: "Represents a hierarchical/tree-like structure"
+      is_weighted:
+        range: boolean
+        description: "Relationship has numeric weight columns for network algorithms"
+      inverse_of:
+        range: string
+        description: "Name of inverse relationship (e.g., component_of inverse_of has_component)"
+
+      # === Cardinality ===
+      cardinality_domain:
+        range: string
+        description: "Domain cardinality (e.g., '0..*', '1..1')"
+      cardinality_range:
+        range: string
+        description: "Range cardinality (e.g., '0..*', '1..1')"
+
+      # === DDL Metadata ===
+      has_self_ref_constraint:
+        range: boolean
+        description: "Table has CHECK constraint preventing self-references"
+      has_unique_edge_index:
+        range: boolean
+        description: "Table has unique index on (domain_key, range_key)"
+      indexed_columns:
+        range: string
+        multivalued: true
+        description: "List of indexed column names"
+
+      # === Weight Columns (for RED complexity) ===
+      weight_columns:
+        range: WeightColumn
+        multivalued: true
+        inlined_as_list: true
+        description: "Numeric columns usable as edge weights in network algorithms"
+
+      # === Statistics ===
+      row_count:
+        range: integer
+        description: "Estimated edge count for query planning"
+
+  # ---------------------------------------------------------------------------
+  # WeightColumn: Describes a numeric column usable as edge weight
+  # ---------------------------------------------------------------------------
+  WeightColumn:
+    class_uri: vg:WeightColumn
+    description: "A numeric column that can be used as an edge weight in network algorithms"
+    attributes:
+      name:
+        range: string
+        required: true
+        description: "Column name"
+      type:
+        range: string
+        required: true
+        description: "SQL data type (e.g., 'decimal', 'integer', 'float')"
+      description:
+        range: string
+        description: "Human-readable description of what this weight represents"
+      unit:
+        range: string
+        description: "Unit of measurement (e.g., 'km', 'usd', 'hours')"
+
+  # ---------------------------------------------------------------------------
+  # DatabaseConnection: Schema-level metadata for database connection
+  # ---------------------------------------------------------------------------
+  DatabaseConnection:
+    class_uri: vg:DatabaseConnection
+    description: "Database connection metadata for schema-level annotation"
+    attributes:
+      database_type:
+        range: string
+        required: true
+        description: "Database type (e.g., 'postgresql', 'mysql', 'sqlite')"
+      database_version:
+        range: string
+        description: "Database version"
+      connection_string:
+        range: string
+        description: "Connection string template (credentials should be externalized)"

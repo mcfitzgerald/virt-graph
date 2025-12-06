@@ -1,0 +1,136 @@
+# Entity Pattern: Supplier Lookup and Filtering
+# Discovered: Phase 1A - TBox Entity Patterns
+# Complexity: GREEN
+
+name: supplier_entity_patterns
+complexity: GREEN
+description: Entity lookup and filtering patterns for Supplier class
+
+ontology_bindings:
+  class: Supplier
+  table: suppliers
+  identifier: supplier_code
+
+patterns:
+  - name: supplier_by_code
+    description: "Lookup supplier by unique code"
+    applicability:
+      keywords: [supplier, find, lookup, code, SUP]
+      intent: "Find a specific supplier by their code"
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+        example: "SUP00001"
+    sql_template: |
+      SELECT id, supplier_code, name, tier, country, is_active, credit_rating
+      FROM suppliers
+      WHERE supplier_code = {{supplier_code}}
+    execution:
+      time_ms: 4.9
+      rows: 1
+
+  - name: supplier_search_by_name
+    description: "Search suppliers by name (case-insensitive)"
+    applicability:
+      keywords: [supplier, search, name, find, like]
+      intent: "Find suppliers matching a name pattern"
+    parameters:
+      - name: name_pattern
+        type: string
+        required: true
+        example: "%Acme%"
+    sql_template: |
+      SELECT id, supplier_code, name, tier, country
+      FROM suppliers
+      WHERE name ILIKE {{name_pattern}}
+      ORDER BY name
+      LIMIT 20
+    execution:
+      time_ms: 1.5
+      rows: variable
+
+  - name: suppliers_by_tier
+    description: "List suppliers filtered by supply chain tier"
+    applicability:
+      keywords: [suppliers, tier, tier1, tier2, tier3, level]
+      intent: "Find all suppliers at a specific tier level"
+    parameters:
+      - name: tier
+        type: integer
+        required: true
+        values: [1, 2, 3]
+    sql_template: |
+      SELECT id, supplier_code, name, country, credit_rating, is_active
+      FROM suppliers
+      WHERE tier = {{tier}}
+      ORDER BY name
+    execution:
+      time_ms: 0.8
+      rows: "50 (T1), 150 (T2), 300 (T3)"
+
+  - name: supplier_count_by_tier
+    description: "Aggregate supplier counts by tier"
+    applicability:
+      keywords: [count, suppliers, tier, breakdown, distribution]
+      intent: "Get count of suppliers at each tier level"
+    parameters: []
+    sql_template: |
+      SELECT tier, COUNT(*) as supplier_count
+      FROM suppliers
+      GROUP BY tier
+      ORDER BY tier
+    execution:
+      time_ms: 0.8
+      result: "Tier 1: 50, Tier 2: 150, Tier 3: 300"
+
+  - name: suppliers_by_country
+    description: "List suppliers filtered by country"
+    applicability:
+      keywords: [suppliers, country, location, region]
+      intent: "Find suppliers in a specific country"
+    parameters:
+      - name: country
+        type: string
+        required: true
+    sql_template: |
+      SELECT id, supplier_code, name, tier, city, credit_rating
+      FROM suppliers
+      WHERE country = {{country}}
+      ORDER BY tier, name
+    execution:
+      time_ms: 0.6
+
+  - name: suppliers_by_credit_rating
+    description: "List suppliers filtered by credit rating"
+    applicability:
+      keywords: [suppliers, credit, rating, financial, risk]
+      intent: "Find suppliers with a specific credit rating"
+    parameters:
+      - name: credit_rating
+        type: string
+        required: true
+        values: [AAA, AA, A, BBB, BB, B]
+    sql_template: |
+      SELECT id, supplier_code, name, tier, country
+      FROM suppliers
+      WHERE credit_rating = {{credit_rating}}
+      ORDER BY tier, name
+    execution:
+      time_ms: 0.5
+      result: "B: 94, A: 88, BBB: 87, AA: 85, AAA: 76, BB: 70"
+
+  - name: active_suppliers_by_tier
+    description: "Count active suppliers by tier"
+    applicability:
+      keywords: [active, suppliers, tier, operational]
+      intent: "Get count of active suppliers at each tier"
+    parameters: []
+    sql_template: |
+      SELECT tier, COUNT(*) as active_count
+      FROM suppliers
+      WHERE is_active = true
+      GROUP BY tier
+      ORDER BY tier
+    execution:
+      time_ms: 1.0

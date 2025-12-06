@@ -1,698 +1,756 @@
-# Virtual Graph Supply Chain Ontology
-# Format: TBox/RBox (Description Logic inspired, LinkML-influenced)
+# Virtual Graph Supply Chain Ontology (LinkML Format)
+# Migrated from TBox/RBox format to LinkML-compliant schema with VG extensions
 #
-# Generated via 4-round interactive discovery protocol.
 # This ontology maps semantic concepts to physical SQL schema,
 # enabling graph-like queries over relational data.
 #
-# References:
-# - LinkML: https://linkml.io/
-# - OWL 2: https://www.w3.org/TR/owl-ref/
-# - Description Logic: https://en.wikipedia.org/wiki/Abox
+# Validation:
+#   1. LinkML structure: poetry run linkml-lint --validate-only ontology/supply_chain_linkml.yaml
+#   2. VG annotations: OntologyAccessor(validate=True)
+
+id: https://virt-graph.dev/schemas/supply_chain
+name: supply_chain
+version: "2.1"
+description: >-
+  Supply chain domain ontology for Virtual Graph.
+  Generated via 4-round interactive discovery protocol.
+  Maps semantic concepts to physical SQL schema for graph-like queries.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  vg: https://virt-graph.dev/
+  sc: https://virt-graph.dev/schemas/supply_chain/
+
+imports:
+  - linkml:types
+
+default_range: string
 
 # =============================================================================
-# META: Ontology Metadata
+# SCHEMA-LEVEL ANNOTATIONS (Database Connection)
 # =============================================================================
-meta:
-  name: supply_chain
-  version: "2.1"
-  created: "2025-12-05"
-  format: tbox-rbox
-
-  database:
-    type: postgresql
-    version: "14"
-    connection: "postgresql://virt_graph:dev_password@localhost:5432/supply_chain"
+annotations:
+  vg:database_type: postgresql
+  vg:database_version: "14"
+  vg:connection_string: "postgresql://virt_graph:dev_password@localhost:5432/supply_chain"
 
 # =============================================================================
-# TBox: Terminological Box (Class/Concept Definitions)
+# ENUMS
 # =============================================================================
-# Classes represent entity types that map to database tables.
+enums:
+  SupplierTier:
+    description: "Supply chain tier levels"
+    permissible_values:
+      TIER_1:
+        description: "Direct suppliers"
+      TIER_2:
+        description: "Second-tier suppliers"
+      TIER_3:
+        description: "Raw materials suppliers"
 
-tbox:
-  classes:
-    Supplier:
-      description: "Organizations that supply parts and materials, organized in tiers (1-3)"
-      sql:
-        table: suppliers
-        primary_key: id
-        identifier: [supplier_code]
-      slots:
-        supplier_code:
-          range: string
-          column: supplier_code
-          description: "Unique supplier identifier"
-          required: true
-        name:
-          range: string
-          column: name
-          description: "Supplier company name"
-          required: true
-        tier:
-          range: integer
-          column: tier
-          description: "Supply chain tier (1=direct, 2=tier2, 3=raw materials)"
-          required: true
-          values: [1, 2, 3]
-          distribution:
-            tier_1: 50
-            tier_2: 150
-            tier_3: 300
-        country:
-          range: string
-          column: country
-          description: "Country of operation"
-        city:
-          range: string
-          column: city
-          description: "City location"
-        contact_email:
-          range: string
-          column: contact_email
-          description: "Primary contact email"
-        credit_rating:
-          range: string
-          column: credit_rating
-          description: "Financial credit rating"
-        is_active:
-          range: boolean
-          column: is_active
-          description: "Whether supplier is currently active"
-        created_at:
-          range: timestamp
-          column: created_at
-          description: "Record creation timestamp"
-        updated_at:
-          range: timestamp
-          column: updated_at
-          description: "Last update timestamp"
-      soft_delete:
-        enabled: true
-        column: deleted_at
-      row_count: 500
+  FacilityType:
+    description: "Types of facilities"
+    permissible_values:
+      warehouse:
+        description: "Storage facility"
+      factory:
+        description: "Manufacturing facility"
+      distribution_center:
+        description: "Distribution hub"
 
-    Part:
-      description: "Physical components and raw materials used in manufacturing"
-      sql:
-        table: parts
-        primary_key: id
-        identifier: [part_number]
-      slots:
-        part_number:
-          range: string
-          column: part_number
-          description: "Unique part identifier"
-          required: true
-        description:
-          range: string
-          column: description
-          description: "Part description"
-        category:
-          range: string
-          column: category
-          description: "Part category (Cable, Housing, Subassembly, etc.)"
-        unit_cost:
-          range: decimal
-          column: unit_cost
-          description: "Cost per unit"
-        weight_kg:
-          range: decimal
-          column: weight_kg
-          description: "Weight in kilograms"
-        lead_time_days:
-          range: integer
-          column: lead_time_days
-          description: "Procurement lead time in days"
-        is_critical:
-          range: boolean
-          column: is_critical
-          description: "Whether part is critical to operations"
-        min_stock_level:
-          range: integer
-          column: min_stock_level
-          description: "Minimum inventory threshold"
-      soft_delete:
-        enabled: true
-        column: deleted_at
-      row_count: 5003
+  CustomerType:
+    description: "Types of customers"
+    permissible_values:
+      retail:
+        description: "Retail customer"
+      wholesale:
+        description: "Wholesale customer"
+      enterprise:
+        description: "Enterprise customer"
 
-    Product:
-      description: "Finished goods sold to customers, composed of parts"
-      sql:
-        table: products
-        primary_key: id
-        identifier: [sku]
-      slots:
-        sku:
-          range: string
-          column: sku
-          description: "Stock keeping unit"
-          required: true
-        name:
-          range: string
-          column: name
-          description: "Product name"
-          required: true
-        description:
-          range: string
-          column: description
-          description: "Product description"
-        category:
-          range: string
-          column: category
-          description: "Product category"
-        list_price:
-          range: decimal
-          column: list_price
-          description: "List price"
-        is_active:
-          range: boolean
-          column: is_active
-          description: "Whether product is available"
-        launch_date:
-          range: date
-          column: launch_date
-          description: "Product launch date"
-        discontinued_date:
-          range: date
-          column: discontinued_date
-          description: "Discontinuation date"
-      soft_delete:
-        enabled: false
-      row_count: 200
+  OrderStatus:
+    description: "Order lifecycle states"
+    permissible_values:
+      pending:
+        description: "Order placed, awaiting confirmation"
+      confirmed:
+        description: "Order confirmed"
+      shipped:
+        description: "Order shipped"
+      delivered:
+        description: "Order delivered"
+      cancelled:
+        description: "Order cancelled"
 
-    Facility:
-      description: "Physical locations for manufacturing, warehousing, and distribution"
-      sql:
-        table: facilities
-        primary_key: id
-        identifier: [facility_code]
-      slots:
-        facility_code:
-          range: string
-          column: facility_code
-          description: "Unique facility identifier"
-          required: true
-        name:
-          range: string
-          column: name
-          description: "Facility name"
-          required: true
-        facility_type:
-          range: string
-          column: facility_type
-          description: "Type of facility"
-          required: true
-          values: [warehouse, factory, distribution_center]
-        address:
-          range: string
-          column: address
-          description: "Street address"
-        city:
-          range: string
-          column: city
-          description: "City"
-        state:
-          range: string
-          column: state
-          description: "State/province"
-        country:
-          range: string
-          column: country
-          description: "Country"
-        postal_code:
-          range: string
-          column: postal_code
-          description: "Postal/ZIP code"
-        latitude:
-          range: decimal
-          column: latitude
-          description: "Geographic latitude"
-        longitude:
-          range: decimal
-          column: longitude
-          description: "Geographic longitude"
-        capacity_units:
-          range: integer
-          column: capacity_units
-          description: "Storage/processing capacity"
-        is_active:
-          range: boolean
-          column: is_active
-          description: "Whether facility is operational"
-      soft_delete:
-        enabled: false
-      row_count: 50
-
-    Customer:
-      description: "End buyers who purchase products"
-      sql:
-        table: customers
-        primary_key: id
-        identifier: [customer_code]
-      slots:
-        customer_code:
-          range: string
-          column: customer_code
-          description: "Unique customer identifier"
-          required: true
-        name:
-          range: string
-          column: name
-          description: "Customer name"
-          required: true
-        customer_type:
-          range: string
-          column: customer_type
-          description: "Type of customer"
-          values: [retail, wholesale, enterprise]
-        contact_email:
-          range: string
-          column: contact_email
-          description: "Contact email"
-        shipping_address:
-          range: string
-          column: shipping_address
-          description: "Default shipping address"
-        city:
-          range: string
-          column: city
-          description: "City"
-        state:
-          range: string
-          column: state
-          description: "State/province"
-        country:
-          range: string
-          column: country
-          description: "Country"
-      soft_delete:
-        enabled: false
-      row_count: 1000
-
-    Order:
-      description: "Customer purchase orders for products"
-      sql:
-        table: orders
-        primary_key: id
-        identifier: [order_number]
-      slots:
-        order_number:
-          range: string
-          column: order_number
-          description: "Unique order number"
-          required: true
-        order_date:
-          range: timestamp
-          column: order_date
-          description: "Date order was placed"
-          required: true
-        required_date:
-          range: date
-          column: required_date
-          description: "Requested delivery date"
-        shipped_date:
-          range: timestamp
-          column: shipped_date
-          description: "Actual ship date"
-        status:
-          range: string
-          column: status
-          description: "Order status"
-          required: true
-          values: [pending, confirmed, shipped, delivered, cancelled]
-        total_amount:
-          range: decimal
-          column: total_amount
-          description: "Total order value"
-        shipping_cost:
-          range: decimal
-          column: shipping_cost
-          description: "Shipping cost"
-        notes:
-          range: string
-          column: notes
-          description: "Order notes"
-      soft_delete:
-        enabled: false
-      row_count: 20000
-
-    Shipment:
-      description: "Physical movement of goods between facilities or to customers"
-      sql:
-        table: shipments
-        primary_key: id
-        identifier: [shipment_number]
-      slots:
-        shipment_number:
-          range: string
-          column: shipment_number
-          description: "Unique shipment identifier"
-          required: true
-        carrier:
-          range: string
-          column: carrier
-          description: "Shipping carrier"
-        tracking_number:
-          range: string
-          column: tracking_number
-          description: "Carrier tracking number"
-        status:
-          range: string
-          column: status
-          description: "Shipment status"
-          required: true
-          values: [pending, in_transit, delivered, failed]
-        shipped_at:
-          range: timestamp
-          column: shipped_at
-          description: "Ship date/time"
-        delivered_at:
-          range: timestamp
-          column: delivered_at
-          description: "Delivery date/time"
-        weight_kg:
-          range: decimal
-          column: weight_kg
-          description: "Total shipment weight"
-        cost_usd:
-          range: decimal
-          column: cost_usd
-          description: "Shipping cost"
-      soft_delete:
-        enabled: false
-      row_count: 7995
-
-    SupplierCertification:
-      description: "Quality and compliance certifications held by suppliers"
-      sql:
-        table: supplier_certifications
-        primary_key: id
-        identifier: [supplier_id, certification_type]
-      slots:
-        certification_type:
-          range: string
-          column: certification_type
-          description: "Type of certification (ISO9001, ISO14001, etc.)"
-          required: true
-        certification_number:
-          range: string
-          column: certification_number
-          description: "Certificate number"
-        issued_date:
-          range: date
-          column: issued_date
-          description: "Date certification was issued"
-        expiry_date:
-          range: date
-          column: expiry_date
-          description: "Certification expiration date"
-        is_valid:
-          range: boolean
-          column: is_valid
-          description: "Whether certification is currently valid"
-      soft_delete:
-        enabled: false
-      row_count: 721
+  ShipmentStatus:
+    description: "Shipment tracking states"
+    permissible_values:
+      pending:
+        description: "Awaiting pickup"
+      in_transit:
+        description: "In transit"
+      delivered:
+        description: "Delivered"
+      failed:
+        description: "Delivery failed"
 
 # =============================================================================
-# RBox: Role Box (Relationship/Property Definitions)
+# CLASSES
 # =============================================================================
-# Roles represent relationships between classes.
+classes:
+  # ===========================================================================
+  # ENTITY CLASSES (TBox) - instantiate vg:SQLMappedClass
+  # ===========================================================================
 
-rbox:
-  roles:
-    # =========================================================================
-    # YELLOW Complexity: Recursive Traversal Required
-    # =========================================================================
+  Supplier:
+    description: "Organizations that supply parts and materials, organized in tiers (1-3)"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: "[supplier_code]"
+      vg:soft_delete_column: deleted_at
+      vg:row_count: 500
+    attributes:
+      supplier_code:
+        range: string
+        required: true
+        description: "Unique supplier identifier"
+      name:
+        range: string
+        required: true
+        description: "Supplier company name"
+      tier:
+        range: integer
+        required: true
+        description: "Supply chain tier (1=direct, 2=tier2, 3=raw materials)"
+        annotations:
+          vg:allowed_values: "[1, 2, 3]"
+          vg:distribution: "{tier_1: 50, tier_2: 150, tier_3: 300}"
+      country:
+        range: string
+        description: "Country of operation"
+      city:
+        range: string
+        description: "City location"
+      contact_email:
+        range: string
+        description: "Primary contact email"
+      credit_rating:
+        range: string
+        description: "Financial credit rating"
+      is_active:
+        range: boolean
+        description: "Whether supplier is currently active"
+      created_at:
+        range: datetime
+        description: "Record creation timestamp"
+      updated_at:
+        range: datetime
+        description: "Last update timestamp"
 
-    supplies_to:
-      description: "Supplier sells to another supplier (tiered supply network)"
-      domain: Supplier
-      range: Supplier
-      sql:
-        table: supplier_relationships
-        domain_key: seller_id
-        range_key: buyer_id
-        additional_columns:
-          - relationship_type
-          - contract_start_date
-          - contract_end_date
-          - is_primary
-      properties:
-        asymmetric: true
-        irreflexive: true
-        acyclic: true
-        is_hierarchical: true
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: YELLOW
-      row_count: 817
-      ddl:
-        has_self_ref_constraint: true       # CHECK (seller_id != buyer_id)
-        has_unique_edge_index: true         # UNIQUE (seller_id, buyer_id)
-        indexed_columns: [seller_id, buyer_id]
-        table_stats:
-          distinct_sellers: 450
-          distinct_buyers: 200
+  Part:
+    description: "Physical components and raw materials used in manufacturing"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: parts
+      vg:primary_key: id
+      vg:identifier: "[part_number]"
+      vg:soft_delete_column: deleted_at
+      vg:row_count: 5003
+    attributes:
+      part_number:
+        range: string
+        required: true
+        description: "Unique part identifier"
+      description:
+        range: string
+        description: "Part description"
+      category:
+        range: string
+        description: "Part category (Cable, Housing, Subassembly, etc.)"
+      unit_cost:
+        range: decimal
+        description: "Cost per unit"
+      weight_kg:
+        range: decimal
+        description: "Weight in kilograms"
+      lead_time_days:
+        range: integer
+        description: "Procurement lead time in days"
+      is_critical:
+        range: boolean
+        description: "Whether part is critical to operations"
+      min_stock_level:
+        range: integer
+        description: "Minimum inventory threshold"
 
-    component_of:
-      description: "Part is a component of another part (BOM hierarchy)"
-      domain: Part
-      range: Part
-      sql:
-        table: bill_of_materials
-        domain_key: child_part_id
-        range_key: parent_part_id
-        additional_columns:
-          - quantity
-          - unit
-          - is_optional
-          - assembly_sequence
-      properties:
-        asymmetric: true
-        irreflexive: true
-        acyclic: true
-      inverse_of: has_component
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: YELLOW
-      row_count: 14283
-      ddl:
-        has_self_ref_constraint: true       # CHECK (parent_part_id != child_part_id)
-        has_unique_edge_index: true         # UNIQUE (parent_part_id, child_part_id)
-        indexed_columns: [parent_part_id, child_part_id]
-        table_stats:
-          distinct_parents: 892
-          distinct_children: 4200
+  Product:
+    description: "Finished goods sold to customers, composed of parts"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: products
+      vg:primary_key: id
+      vg:identifier: "[sku]"
+      vg:row_count: 200
+    attributes:
+      sku:
+        range: string
+        required: true
+        description: "Stock keeping unit"
+      name:
+        range: string
+        required: true
+        description: "Product name"
+      description:
+        range: string
+        description: "Product description"
+      category:
+        range: string
+        description: "Product category"
+      list_price:
+        range: decimal
+        description: "List price"
+      is_active:
+        range: boolean
+        description: "Whether product is available"
+      launch_date:
+        range: date
+        description: "Product launch date"
+      discontinued_date:
+        range: date
+        description: "Discontinuation date"
 
-    # =========================================================================
-    # RED Complexity: Network Algorithms Required
-    # =========================================================================
+  Facility:
+    description: "Physical locations for manufacturing, warehousing, and distribution"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: facilities
+      vg:primary_key: id
+      vg:identifier: "[facility_code]"
+      vg:row_count: 50
+    attributes:
+      facility_code:
+        range: string
+        required: true
+        description: "Unique facility identifier"
+      name:
+        range: string
+        required: true
+        description: "Facility name"
+      facility_type:
+        range: FacilityType
+        required: true
+        description: "Type of facility"
+      address:
+        range: string
+        description: "Street address"
+      city:
+        range: string
+        description: "City"
+      state:
+        range: string
+        description: "State/province"
+      country:
+        range: string
+        description: "Country"
+      postal_code:
+        range: string
+        description: "Postal/ZIP code"
+      latitude:
+        range: decimal
+        description: "Geographic latitude"
+      longitude:
+        range: decimal
+        description: "Geographic longitude"
+      capacity_units:
+        range: integer
+        description: "Storage/processing capacity"
+      is_active:
+        range: boolean
+        description: "Whether facility is operational"
 
-    connects_to:
-      description: "Transport route connects two facilities"
-      domain: Facility
-      range: Facility
-      sql:
-        table: transport_routes
-        domain_key: origin_facility_id
-        range_key: destination_facility_id
-        additional_columns:
-          - transport_mode
-          - capacity_tons
-          - is_active
-        weight_columns:
-          - name: distance_km
-            type: decimal
-          - name: cost_usd
-            type: decimal
-          - name: transit_time_hours
-            type: decimal
-      properties:
-        irreflexive: true
-        is_weighted: true
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: RED
-      row_count: 197
-      ddl:
-        has_self_ref_constraint: true       # CHECK (origin_facility_id != destination_facility_id)
-        indexed_columns: [origin_facility_id, destination_facility_id]
-        table_stats:
-          distinct_origins: 50
-          distinct_destinations: 50
+  Customer:
+    description: "End buyers who purchase products"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: customers
+      vg:primary_key: id
+      vg:identifier: "[customer_code]"
+      vg:row_count: 1000
+    attributes:
+      customer_code:
+        range: string
+        required: true
+        description: "Unique customer identifier"
+      name:
+        range: string
+        required: true
+        description: "Customer name"
+      customer_type:
+        range: CustomerType
+        description: "Type of customer"
+      contact_email:
+        range: string
+        description: "Contact email"
+      shipping_address:
+        range: string
+        description: "Default shipping address"
+      city:
+        range: string
+        description: "City"
+      state:
+        range: string
+        description: "State/province"
+      country:
+        range: string
+        description: "Country"
 
-    # =========================================================================
-    # GREEN Complexity: Simple FK Joins
-    # =========================================================================
+  Order:
+    description: "Customer purchase orders for products"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: orders
+      vg:primary_key: id
+      vg:identifier: "[order_number]"
+      vg:row_count: 20000
+    attributes:
+      order_number:
+        range: string
+        required: true
+        description: "Unique order number"
+      order_date:
+        range: datetime
+        required: true
+        description: "Date order was placed"
+      required_date:
+        range: date
+        description: "Requested delivery date"
+      shipped_date:
+        range: datetime
+        description: "Actual ship date"
+      status:
+        range: OrderStatus
+        required: true
+        description: "Order status"
+      total_amount:
+        range: decimal
+        description: "Total order value"
+      shipping_cost:
+        range: decimal
+        description: "Shipping cost"
+      notes:
+        range: string
+        description: "Order notes"
 
-    provides:
-      description: "Supplier is the primary supplier for a part"
-      domain: Supplier
-      range: Part
-      sql:
-        table: parts
-        domain_key: primary_supplier_id
-        range_key: id
-      properties:
-        functional: false
-        inverse_functional: true
-      cardinality:
-        domain: "0..*"
-        range: "0..1"
-      traversal_complexity: GREEN
+  Shipment:
+    description: "Physical movement of goods between facilities or to customers"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipments
+      vg:primary_key: id
+      vg:identifier: "[shipment_number]"
+      vg:row_count: 7995
+    attributes:
+      shipment_number:
+        range: string
+        required: true
+        description: "Unique shipment identifier"
+      carrier:
+        range: string
+        description: "Shipping carrier"
+      tracking_number:
+        range: string
+        description: "Carrier tracking number"
+      status:
+        range: ShipmentStatus
+        required: true
+        description: "Shipment status"
+      shipped_at:
+        range: datetime
+        description: "Ship date/time"
+      delivered_at:
+        range: datetime
+        description: "Delivery date/time"
+      weight_kg:
+        range: decimal
+        description: "Total shipment weight"
+      cost_usd:
+        range: decimal
+        description: "Shipping cost"
 
-    can_supply:
-      description: "Supplier can provide a part (approved supplier list)"
-      domain: Supplier
-      range: Part
-      sql:
-        table: part_suppliers
-        domain_key: supplier_id
-        range_key: part_id
-        additional_columns:
-          - supplier_part_number
-          - unit_cost
-          - lead_time_days
-          - is_approved
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 7582
+  SupplierCertification:
+    description: "Quality and compliance certifications held by suppliers"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: supplier_certifications
+      vg:primary_key: id
+      vg:identifier: "[supplier_id, certification_type]"
+      vg:row_count: 721
+    attributes:
+      certification_type:
+        range: string
+        required: true
+        description: "Type of certification (ISO9001, ISO14001, etc.)"
+      certification_number:
+        range: string
+        description: "Certificate number"
+      issued_date:
+        range: date
+        description: "Date certification was issued"
+      expiry_date:
+        range: date
+        description: "Certification expiration date"
+      is_valid:
+        range: boolean
+        description: "Whether certification is currently valid"
 
-    holds_certification:
-      description: "Supplier holds a certification"
-      domain: Supplier
-      range: SupplierCertification
-      sql:
-        table: supplier_certifications
-        domain_key: supplier_id
-        range_key: id
-      properties:
-        inverse_functional: true
-      cardinality:
-        domain: "0..*"
-        range: "1..1"
-      traversal_complexity: GREEN
-      row_count: 721
+  # ===========================================================================
+  # RELATIONSHIP CLASSES (RBox) - instantiate vg:SQLMappedRelationship
+  # ===========================================================================
 
-    contains_component:
-      description: "Product contains a part as a component"
-      domain: Product
-      range: Part
-      sql:
-        table: product_components
-        domain_key: product_id
-        range_key: part_id
-        additional_columns:
-          - quantity
-          - is_required
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 619
+  # ---------------------------------------------------------------------------
+  # YELLOW Complexity: Recursive Traversal Required
+  # ---------------------------------------------------------------------------
 
-    placed_by:
-      description: "Order was placed by a customer"
-      domain: Order
-      range: Customer
-      sql:
-        table: orders
-        domain_key: customer_id
-        range_key: id
-      properties:
-        functional: true
-      cardinality:
-        domain: "1..1"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 20000
+  SuppliesTo:
+    description: "Supplier sells to another supplier (tiered supply network)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      # SQL mapping
+      vg:edge_table: supplier_relationships
+      vg:domain_key: seller_id
+      vg:range_key: buyer_id
+      vg:domain_class: Supplier
+      vg:range_class: Supplier
+      # Traversal
+      vg:traversal_complexity: YELLOW
+      # OWL 2 axioms
+      vg:asymmetric: true
+      vg:irreflexive: true
+      vg:acyclic: true
+      vg:is_hierarchical: true
+      # Cardinality
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      # DDL metadata
+      vg:has_self_ref_constraint: true
+      vg:has_unique_edge_index: true
+      vg:indexed_columns: "[seller_id, buyer_id]"
+      # Statistics
+      vg:row_count: 817
+    attributes:
+      relationship_type:
+        range: string
+        description: "Type of supplier relationship"
+      contract_start_date:
+        range: date
+        description: "Contract start date"
+      contract_end_date:
+        range: date
+        description: "Contract end date"
+      is_primary:
+        range: boolean
+        description: "Whether this is the primary relationship"
 
-    contains_item:
-      description: "Order contains a product as a line item"
-      domain: Order
-      range: Product
-      sql:
-        table: order_items
-        domain_key: order_id
-        range_key: product_id
-        additional_columns:
-          - quantity
-          - unit_price
-          - discount_percent
-      cardinality:
-        domain: "1..*"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 60241
+  ComponentOf:
+    description: "Part is a component of another part (BOM hierarchy)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      # SQL mapping
+      vg:edge_table: bill_of_materials
+      vg:domain_key: child_part_id
+      vg:range_key: parent_part_id
+      vg:domain_class: Part
+      vg:range_class: Part
+      # Traversal
+      vg:traversal_complexity: YELLOW
+      # OWL 2 axioms
+      vg:asymmetric: true
+      vg:irreflexive: true
+      vg:acyclic: true
+      vg:inverse_of: HasComponent
+      # Cardinality
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      # DDL metadata
+      vg:has_self_ref_constraint: true
+      vg:has_unique_edge_index: true
+      vg:indexed_columns: "[parent_part_id, child_part_id]"
+      # Statistics
+      vg:row_count: 14283
+    attributes:
+      quantity:
+        range: integer
+        description: "Number of components required"
+      unit:
+        range: string
+        description: "Unit of measurement"
+      is_optional:
+        range: boolean
+        description: "Whether component is optional"
+      assembly_sequence:
+        range: integer
+        description: "Order in assembly sequence"
 
-    ships_from:
-      description: "Order ships from a facility"
-      domain: Order
-      range: Facility
-      sql:
-        table: orders
-        domain_key: shipping_facility_id
-        range_key: id
-      properties:
-        functional: true
-      cardinality:
-        domain: "0..1"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 20000
+  # ---------------------------------------------------------------------------
+  # RED Complexity: Network Algorithms Required
+  # ---------------------------------------------------------------------------
 
-    fulfills:
-      description: "Shipment fulfills an order"
-      domain: Shipment
-      range: Order
-      sql:
-        table: shipments
-        domain_key: order_id
-        range_key: id
-      cardinality:
-        domain: "0..1"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 7995
+  ConnectsTo:
+    description: "Transport route connects two facilities"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      # SQL mapping
+      vg:edge_table: transport_routes
+      vg:domain_key: origin_facility_id
+      vg:range_key: destination_facility_id
+      vg:domain_class: Facility
+      vg:range_class: Facility
+      # Traversal
+      vg:traversal_complexity: RED
+      # OWL 2 axioms
+      vg:irreflexive: true
+      vg:is_weighted: true
+      # Cardinality
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      # DDL metadata
+      vg:has_self_ref_constraint: true
+      vg:indexed_columns: "[origin_facility_id, destination_facility_id]"
+      # Weight columns
+      vg:weight_columns: '[{"name": "distance_km", "type": "decimal"}, {"name": "cost_usd", "type": "decimal"}, {"name": "transit_time_hours", "type": "decimal"}]'
+      # Statistics
+      vg:row_count: 197
+    attributes:
+      transport_mode:
+        range: string
+        description: "Mode of transport (truck, rail, air, sea)"
+      distance_km:
+        range: decimal
+        description: "Route distance in kilometers"
+      cost_usd:
+        range: decimal
+        description: "Transport cost in USD"
+      transit_time_hours:
+        range: decimal
+        description: "Transit time in hours"
+      capacity_tons:
+        range: decimal
+        description: "Route capacity in tons"
+      is_active:
+        range: boolean
+        description: "Whether route is active"
 
-    originates_at:
-      description: "Shipment originates from a facility"
-      domain: Shipment
-      range: Facility
-      sql:
-        table: shipments
-        domain_key: origin_facility_id
-        range_key: id
-      properties:
-        functional: true
-      cardinality:
-        domain: "1..1"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 7995
+  # ---------------------------------------------------------------------------
+  # GREEN Complexity: Simple FK Joins
+  # ---------------------------------------------------------------------------
 
-    stores:
-      description: "Facility stores inventory of a part"
-      domain: Facility
-      range: Part
-      sql:
-        table: inventory
-        domain_key: facility_id
-        range_key: part_id
-        additional_columns:
-          - quantity_on_hand
-          - quantity_reserved
-          - quantity_on_order
-          - reorder_point
-      cardinality:
-        domain: "0..*"
-        range: "0..*"
-      traversal_complexity: GREEN
-      row_count: 10056
+  Provides:
+    description: "Supplier is the primary supplier for a part"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: parts
+      vg:domain_key: primary_supplier_id
+      vg:range_key: id
+      vg:domain_class: Supplier
+      vg:range_class: Part
+      vg:traversal_complexity: GREEN
+      vg:functional: false
+      vg:inverse_functional: true
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..1"
+
+  CanSupply:
+    description: "Supplier can provide a part (approved supplier list)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: part_suppliers
+      vg:domain_key: supplier_id
+      vg:range_key: part_id
+      vg:domain_class: Supplier
+      vg:range_class: Part
+      vg:traversal_complexity: GREEN
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 7582
+    attributes:
+      supplier_part_number:
+        range: string
+        description: "Supplier's part number"
+      unit_cost:
+        range: decimal
+        description: "Unit cost from this supplier"
+      lead_time_days:
+        range: integer
+        description: "Lead time in days"
+      is_approved:
+        range: boolean
+        description: "Whether supplier is approved for this part"
+
+  HoldsCertification:
+    description: "Supplier holds a certification"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_certifications
+      vg:domain_key: supplier_id
+      vg:range_key: id
+      vg:domain_class: Supplier
+      vg:range_class: SupplierCertification
+      vg:traversal_complexity: GREEN
+      vg:inverse_functional: true
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "1..1"
+      vg:row_count: 721
+
+  ContainsComponent:
+    description: "Product contains a part as a component"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: product_components
+      vg:domain_key: product_id
+      vg:range_key: part_id
+      vg:domain_class: Product
+      vg:range_class: Part
+      vg:traversal_complexity: GREEN
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 619
+    attributes:
+      quantity:
+        range: integer
+        description: "Number of parts required"
+      is_required:
+        range: boolean
+        description: "Whether part is required"
+
+  PlacedBy:
+    description: "Order was placed by a customer"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: customer_id
+      vg:range_key: id
+      vg:domain_class: Order
+      vg:range_class: Customer
+      vg:traversal_complexity: GREEN
+      vg:functional: true
+      vg:cardinality_domain: "1..1"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 20000
+
+  ContainsItem:
+    description: "Order contains a product as a line item"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: order_items
+      vg:domain_key: order_id
+      vg:range_key: product_id
+      vg:domain_class: Order
+      vg:range_class: Product
+      vg:traversal_complexity: GREEN
+      vg:cardinality_domain: "1..*"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 60241
+    attributes:
+      quantity:
+        range: integer
+        description: "Quantity ordered"
+      unit_price:
+        range: decimal
+        description: "Unit price at time of order"
+      discount_percent:
+        range: decimal
+        description: "Discount percentage"
+
+  ShipsFrom:
+    description: "Order ships from a facility"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: shipping_facility_id
+      vg:range_key: id
+      vg:domain_class: Order
+      vg:range_class: Facility
+      vg:traversal_complexity: GREEN
+      vg:functional: true
+      vg:cardinality_domain: "0..1"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 20000
+
+  Fulfills:
+    description: "Shipment fulfills an order"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: order_id
+      vg:range_key: id
+      vg:domain_class: Shipment
+      vg:range_class: Order
+      vg:traversal_complexity: GREEN
+      vg:cardinality_domain: "0..1"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 7995
+
+  OriginatesAt:
+    description: "Shipment originates from a facility"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: origin_facility_id
+      vg:range_key: id
+      vg:domain_class: Shipment
+      vg:range_class: Facility
+      vg:traversal_complexity: GREEN
+      vg:functional: true
+      vg:cardinality_domain: "1..1"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 7995
+
+  Stores:
+    description: "Facility stores inventory of a part"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: facility_id
+      vg:range_key: part_id
+      vg:domain_class: Facility
+      vg:range_class: Part
+      vg:traversal_complexity: GREEN
+      vg:cardinality_domain: "0..*"
+      vg:cardinality_range: "0..*"
+      vg:row_count: 10056
+    attributes:
+      quantity_on_hand:
+        range: integer
+        description: "Current quantity in stock"
+      quantity_reserved:
+        range: integer
+        description: "Quantity reserved for orders"
+      quantity_on_order:
+        range: integer
+        description: "Quantity on order from suppliers"
+      reorder_point:
+        range: integer
+        description: "Quantity at which to reorder"

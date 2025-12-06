@@ -70,16 +70,20 @@ poetry run pytest tests/test_gate1_validation.py::TestIntegrationGate1 -v -s
 
 ### Requirements
 
-1. **Coverage**: Every table in schema maps to a class or relationship
-2. **Correctness**: 5 simple queries using ontology mappings verify results
-3. **Completeness**: All relationships have sql mapping, traversal_complexity, properties
+1. **LinkML Structure**: Ontology passes `linkml-lint --validate-only`
+2. **VG Annotations**: Required annotations present and valid
+3. **Coverage**: Every table in schema maps to a class or relationship
+4. **Correctness**: 5 simple queries using ontology mappings verify results
 
 ### Checklist
 
-- [x] All 15 tables mapped to ontology classes/relationships (TBox/RBox)
-- [x] sql mapping includes table, domain_key, range_key
+- [x] All 15 tables mapped to ontology classes/relationships (LinkML format)
+- [x] Entity classes use `instantiates: [vg:SQLMappedClass]` with required annotations
+- [x] Relationship classes use `instantiates: [vg:SQLMappedRelationship]` with required annotations
 - [x] traversal_complexity assigned (GREEN/YELLOW/RED)
-- [x] properties include OWL 2 axioms (asymmetric, acyclic, etc.)
+- [x] Two-layer validation passes:
+  - Layer 1: `poetry run linkml-lint --validate-only ontology/supply_chain.yaml`
+  - Layer 2: `OntologyAccessor(validate=True)` succeeds
 
 ---
 

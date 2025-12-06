@@ -1,0 +1,107 @@
+# Relationship Pattern: contains_component (Product → Part)
+# Discovered: Phase 1B - GREEN Relationship Patterns
+# Complexity: GREEN
+
+name: product_component_relationship_patterns
+complexity: GREEN
+description: Relationship patterns for contains_component role (Product BOM top level)
+
+ontology_bindings:
+  role: contains_component
+  domain: Product
+  range: Part
+  sql:
+    table: product_components
+    domain_key: product_id
+    range_key: part_id
+    additional_columns:
+      - quantity
+      - is_required
+
+patterns:
+  - name: product_components
+    description: "Forward traversal: Find all components of a product"
+    applicability:
+      keywords: [product, components, parts, BOM, bill of materials, contains]
+      intent: "Find all direct components of a product"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+        example: "TURBO-001"
+    sql_template: |
+      SELECT pr.sku, pr.name as product,
+             p.part_number, p.description, p.category,
+             pc.quantity, pc.is_required
+      FROM products pr
+      JOIN product_components pc ON pc.product_id = pr.id
+      JOIN parts p ON pc.part_id = p.id
+      WHERE pr.sku = {{sku}}
+      ORDER BY pc.is_required DESC, pc.quantity DESC
+    execution:
+      time_ms: 1.1
+      result: "Turbo Encabulator: 5 components"
+
+  - name: product_component_summary
+    description: "Component count and quantity summary by product"
+    applicability:
+      keywords: [products, components, count, summary, complexity]
+      intent: "Get component summary for all products"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT pr.sku, pr.name, COUNT(pc.part_id) as component_count,
+             SUM(pc.quantity) as total_quantity
+      FROM products pr
+      JOIN product_components pc ON pc.product_id = pr.id
+      GROUP BY pr.id, pr.sku, pr.name
+      ORDER BY component_count DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 3.0
+      result: "Max: 5 components per product"
+
+  - name: part_used_in_products
+    description: "Reverse traversal: Find products using a part"
+    applicability:
+      keywords: [part, products, used in, where used, impact]
+      intent: "Find all products that use a specific part"
+    parameters:
+      - name: part_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT p.part_number, pr.sku, pr.name as product,
+             pc.quantity, pc.is_required
+      FROM parts p
+      JOIN product_components pc ON pc.part_id = p.id
+      JOIN products pr ON pc.product_id = pr.id
+      WHERE p.part_number = {{part_number}}
+      ORDER BY pc.quantity DESC
+    execution:
+      time_ms: 1.1
+
+  - name: most_used_parts
+    description: "Find parts used in the most products"
+    applicability:
+      keywords: [parts, most used, common, shared, reuse]
+      intent: "Find parts that appear in the most products"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT p.part_number, p.description, p.category,
+             COUNT(DISTINCT pc.product_id) as product_count
+      FROM parts p
+      JOIN product_components pc ON pc.part_id = p.id
+      GROUP BY p.id, p.part_number, p.description, p.category
+      ORDER BY product_count DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 1.1
+      result: "PRT-004906: 10 products, PRT-004963: 8 products"

@@ -1,0 +1,160 @@
+# Entity Pattern: Order and Customer Lookup
+# Discovered: Phase 1A - TBox Entity Patterns
+# Complexity: GREEN
+
+name: order_customer_entity_patterns
+complexity: GREEN
+description: Entity lookup and filtering patterns for Order and Customer classes
+
+ontology_bindings:
+  - class: Order
+    table: orders
+    identifier: order_number
+  - class: Customer
+    table: customers
+    identifier: customer_code
+
+patterns:
+  # Order patterns
+  - name: order_by_number
+    description: "Lookup order by order number"
+    applicability:
+      keywords: [order, find, lookup, number, ORD]
+      intent: "Find a specific order by its order number"
+    parameters:
+      - name: order_number
+        type: string
+        required: true
+        example: "ORD-00000001"
+    sql_template: |
+      SELECT id, order_number, order_date, required_date, shipped_date,
+             status, total_amount, shipping_cost, customer_id
+      FROM orders
+      WHERE order_number = {{order_number}}
+    execution:
+      time_ms: 1.5
+
+  - name: orders_by_status
+    description: "List orders filtered by status"
+    applicability:
+      keywords: [orders, status, pending, confirmed, shipped, delivered, cancelled]
+      intent: "Find all orders with a specific status"
+    parameters:
+      - name: status
+        type: string
+        required: true
+        values: [pending, confirmed, shipped, delivered, cancelled]
+    sql_template: |
+      SELECT id, order_number, order_date, total_amount, customer_id
+      FROM orders
+      WHERE status = {{status}}
+      ORDER BY order_date DESC
+      LIMIT 100
+    execution:
+      time_ms: 4.9
+      result: "confirmed: 4018, shipped: 4001, pending: 3998, delivered: 3994, cancelled: 3989"
+
+  - name: orders_by_month
+    description: "Order count by month"
+    applicability:
+      keywords: [orders, month, date, time, trend, volume]
+      intent: "Get order counts grouped by month"
+    parameters:
+      - name: months
+        type: integer
+        required: false
+        default: 6
+    sql_template: |
+      SELECT DATE_TRUNC('month', order_date) as month,
+             COUNT(*) as order_count
+      FROM orders
+      GROUP BY 1
+      ORDER BY 1 DESC
+      LIMIT {{months}}
+    execution:
+      time_ms: 7.4
+
+  - name: order_revenue_by_status
+    description: "Total revenue by order status"
+    applicability:
+      keywords: [revenue, orders, status, total, sales]
+      intent: "Get total revenue grouped by order status"
+    parameters: []
+    sql_template: |
+      SELECT status,
+             ROUND(SUM(total_amount)::numeric, 2) as total_revenue
+      FROM orders
+      GROUP BY status
+      ORDER BY total_revenue DESC
+    execution:
+      time_ms: 3.7
+      result: "shipped: $16.8M, confirmed: $16.7M, pending: $16.4M"
+
+  - name: average_order_value
+    description: "Calculate average order value"
+    applicability:
+      keywords: [average, order, value, AOV, mean]
+      intent: "Get the average order value"
+    parameters: []
+    sql_template: |
+      SELECT ROUND(AVG(total_amount)::numeric, 2) as avg_order_value
+      FROM orders
+    execution:
+      time_ms: 1.9
+      result: "$4,115.17"
+
+  # Customer patterns
+  - name: customer_by_code
+    description: "Lookup customer by code"
+    applicability:
+      keywords: [customer, find, lookup, code, CUST]
+      intent: "Find a specific customer by their code"
+    parameters:
+      - name: customer_code
+        type: string
+        required: true
+        example: "CUST-00001"
+    sql_template: |
+      SELECT id, customer_code, name, customer_type,
+             city, state, country, contact_email
+      FROM customers
+      WHERE customer_code = {{customer_code}}
+    execution:
+      time_ms: 2.0
+
+  - name: customers_by_type
+    description: "List customers filtered by type"
+    applicability:
+      keywords: [customers, type, retail, wholesale, enterprise]
+      intent: "Find all customers of a specific type"
+    parameters:
+      - name: customer_type
+        type: string
+        required: true
+        values: [retail, wholesale, enterprise]
+    sql_template: |
+      SELECT id, customer_code, name, city, country
+      FROM customers
+      WHERE customer_type = {{customer_type}}
+      ORDER BY name
+    execution:
+      time_ms: 1.4
+      result: "retail: 354, wholesale: 350, enterprise: 296"
+
+  - name: customers_by_country
+    description: "List customers filtered by country"
+    applicability:
+      keywords: [customers, country, location, region]
+      intent: "Find all customers in a specific country"
+    parameters:
+      - name: country
+        type: string
+        required: true
+    sql_template: |
+      SELECT id, customer_code, name, customer_type, city
+      FROM customers
+      WHERE country = {{country}}
+      ORDER BY customer_type, name
+    execution:
+      time_ms: 0.7
+      result: "France: 232, Germany: 200, UK: 199, Canada: 187, USA: 182"

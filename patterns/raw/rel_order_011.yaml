@@ -1,0 +1,197 @@
+# Relationship Patterns: Order relationships
+# Discovered: Phase 1B - GREEN Relationship Patterns
+# Complexity: GREEN
+
+name: order_relationship_patterns
+complexity: GREEN
+description: Relationship patterns for placed_by, contains_item, and ships_from roles
+
+ontology_bindings:
+  - role: placed_by
+    domain: Order
+    range: Customer
+    sql:
+      table: orders
+      domain_key: customer_id
+      range_key: id
+  - role: contains_item
+    domain: Order
+    range: Product
+    sql:
+      table: order_items
+      domain_key: order_id
+      range_key: product_id
+  - role: ships_from
+    domain: Order
+    range: Facility
+    sql:
+      table: orders
+      domain_key: shipping_facility_id
+      range_key: id
+
+patterns:
+  # placed_by patterns
+  - name: order_customer
+    description: "Forward traversal: Find customer who placed an order"
+    applicability:
+      keywords: [order, customer, placed by, buyer, who]
+      intent: "Find the customer who placed a specific order"
+    parameters:
+      - name: order_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT o.order_number, o.order_date, o.total_amount, o.status,
+             c.customer_code, c.name as customer, c.customer_type
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      WHERE o.order_number = {{order_number}}
+    execution:
+      time_ms: 3.7
+
+  - name: customer_orders
+    description: "Reverse traversal: Find all orders for a customer"
+    applicability:
+      keywords: [customer, orders, history, purchases]
+      intent: "Find all orders placed by a specific customer"
+    parameters:
+      - name: customer_code
+        type: string
+        required: true
+    sql_template: |
+      SELECT o.order_number, o.order_date, o.status, o.total_amount
+      FROM customers c
+      JOIN orders o ON o.customer_id = c.id
+      WHERE c.customer_code = {{customer_code}}
+      ORDER BY o.order_date DESC
+    execution:
+      time_ms: 11.8
+
+  - name: top_spending_customers
+    description: "Find customers with highest total spending"
+    applicability:
+      keywords: [customers, top, spending, revenue, best, VIP]
+      intent: "Find customers ranked by total order value"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT c.customer_code, c.name, COUNT(o.id) as order_count,
+             ROUND(SUM(o.total_amount)::numeric, 2) as total_spent
+      FROM customers c
+      JOIN orders o ON o.customer_id = c.id
+      GROUP BY c.id, c.customer_code, c.name
+      ORDER BY total_spent DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 11.8
+      result: "Top: CUST-00924 $157,953, CUST-00833 $156,240"
+
+  # contains_item patterns
+  - name: order_items
+    description: "Forward traversal: Find all products in an order"
+    applicability:
+      keywords: [order, items, products, contains, line items]
+      intent: "Find all products contained in a specific order"
+    parameters:
+      - name: order_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT o.order_number, p.sku, p.name as product,
+             oi.quantity, oi.unit_price, oi.discount_percent,
+             ROUND((oi.quantity * oi.unit_price * (1 - oi.discount_percent/100))::numeric, 2) as line_total
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      JOIN products p ON oi.product_id = p.id
+      WHERE o.order_number = {{order_number}}
+      ORDER BY line_total DESC
+    execution:
+      time_ms: 3.4
+
+  - name: product_orders
+    description: "Reverse traversal: Find all orders containing a product"
+    applicability:
+      keywords: [product, orders, sold, demand, sales]
+      intent: "Find all orders that contain a specific product"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+    sql_template: |
+      SELECT p.sku, p.name, o.order_number, o.order_date,
+             oi.quantity, oi.unit_price
+      FROM products p
+      JOIN order_items oi ON oi.product_id = p.id
+      JOIN orders o ON oi.order_id = o.id
+      WHERE p.sku = {{sku}}
+      ORDER BY o.order_date DESC
+      LIMIT 50
+    execution:
+      time_ms: 21.3
+
+  - name: bestselling_products
+    description: "Find products with highest sales volume"
+    applicability:
+      keywords: [products, bestselling, popular, top, sales, volume]
+      intent: "Find products ranked by total units sold"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT p.sku, p.name, COUNT(DISTINCT oi.order_id) as order_count,
+             SUM(oi.quantity) as total_sold,
+             ROUND(SUM(oi.quantity * oi.unit_price)::numeric, 2) as total_revenue
+      FROM products p
+      JOIN order_items oi ON oi.product_id = p.id
+      GROUP BY p.id, p.sku, p.name
+      ORDER BY total_sold DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 21.3
+      result: "Turbo Encabulator: 266 orders, 1492 sold, $369K revenue"
+
+  # ships_from patterns
+  - name: order_shipping_facility
+    description: "Forward traversal: Find facility an order ships from"
+    applicability:
+      keywords: [order, ships from, facility, warehouse, origin]
+      intent: "Find the shipping facility for a specific order"
+    parameters:
+      - name: order_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT o.order_number, o.status,
+             f.facility_code, f.name as facility, f.facility_type, f.city
+      FROM orders o
+      JOIN facilities f ON o.shipping_facility_id = f.id
+      WHERE o.order_number = {{order_number}}
+    execution:
+      time_ms: 6.5
+
+  - name: facility_order_volume
+    description: "Reverse traversal: Order volume by shipping facility"
+    applicability:
+      keywords: [facility, orders, throughput, volume, shipping]
+      intent: "Find order volume processed by each facility"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT f.facility_code, f.name, COUNT(o.id) as order_count,
+             ROUND(SUM(o.total_amount)::numeric, 2) as total_value
+      FROM facilities f
+      JOIN orders o ON o.shipping_facility_id = f.id
+      GROUP BY f.id, f.facility_code, f.name
+      ORDER BY order_count DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 9.7
+      result: "FAC-043: 438 orders, $1.78M"

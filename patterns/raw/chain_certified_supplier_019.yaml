@@ -1,0 +1,92 @@
+# Multi-Hop Chain Pattern: Supplier + Certification → Part → Product
+# Discovered: Phase 1C - GREEN Multi-Hop Chains
+# Complexity: GREEN
+
+name: certified_supplier_products_chain
+complexity: GREEN
+description: Multi-hop chain connecting certified Suppliers to Products
+
+ontology_bindings:
+  chain:
+    - role: holds_certification
+      direction: forward
+    - role: provides
+      direction: forward
+    - role: contains_component
+      direction: reverse
+  entities: [Supplier, SupplierCertification, Part, Product]
+
+patterns:
+  - name: products_by_supplier_certification
+    description: "Which products use parts from certified suppliers?"
+    applicability:
+      keywords: [products, certification, certified suppliers, ISO, quality, compliance]
+      intent: "Find products with parts from suppliers holding a specific certification"
+    parameters:
+      - name: certification_type
+        type: string
+        required: true
+        values: [ISO9001, ISO14001, AS9100, IATF16949, ISO27001]
+    sql_template: |
+      SELECT sc.certification_type, pr.sku, pr.name as product,
+             COUNT(DISTINCT pt.id) as certified_parts,
+             COUNT(DISTINCT s.id) as certified_suppliers
+      FROM supplier_certifications sc
+      JOIN suppliers s ON sc.supplier_id = s.id
+      JOIN parts pt ON pt.primary_supplier_id = s.id
+      JOIN product_components pc ON pc.part_id = pt.id
+      JOIN products pr ON pc.product_id = pr.id
+      WHERE sc.certification_type = {{certification_type}}
+        AND sc.is_valid = true
+      GROUP BY sc.certification_type, pr.sku, pr.name
+      ORDER BY certified_parts DESC
+      LIMIT 20
+    execution:
+      time_ms: 3.8
+
+  - name: certification_product_coverage
+    description: "Product coverage by certification type"
+    applicability:
+      keywords: [certification, products, coverage, compliance, breakdown]
+      intent: "Get product coverage summary by certification type"
+    parameters: []
+    sql_template: |
+      SELECT sc.certification_type,
+             COUNT(DISTINCT pr.id) as product_count,
+             COUNT(DISTINCT pt.id) as part_count,
+             COUNT(DISTINCT s.id) as supplier_count
+      FROM supplier_certifications sc
+      JOIN suppliers s ON sc.supplier_id = s.id
+      JOIN parts pt ON pt.primary_supplier_id = s.id
+      JOIN product_components pc ON pc.part_id = pt.id
+      JOIN products pr ON pc.product_id = pr.id
+      WHERE sc.is_valid = true
+      GROUP BY sc.certification_type
+      ORDER BY product_count DESC
+    execution:
+      time_ms: 3.8
+      result: "AS9100: 140 products, IATF16949: 130 products"
+
+  - name: product_certification_coverage
+    description: "Certification coverage for a specific product"
+    applicability:
+      keywords: [product, certifications, compliance, supplier quality]
+      intent: "Find which certifications cover parts in a product"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+    sql_template: |
+      SELECT pr.name as product, sc.certification_type,
+             COUNT(DISTINCT pt.id) as parts_covered,
+             ARRAY_AGG(DISTINCT s.name) as suppliers
+      FROM products pr
+      JOIN product_components pc ON pc.product_id = pr.id
+      JOIN parts pt ON pc.part_id = pt.id
+      JOIN suppliers s ON pt.primary_supplier_id = s.id
+      JOIN supplier_certifications sc ON sc.supplier_id = s.id
+      WHERE pr.sku = {{sku}} AND sc.is_valid = true
+      GROUP BY pr.name, sc.certification_type
+      ORDER BY parts_covered DESC
+    execution:
+      time_ms: 1.6

@@ -1,0 +1,85 @@
+# Multi-Hop Chain Pattern: Product → Part → Supplier
+# Discovered: Phase 1C - GREEN Multi-Hop Chains
+# Complexity: GREEN
+
+name: product_supply_chain
+complexity: GREEN
+description: Multi-hop chain connecting Product to Suppliers through Parts
+
+ontology_bindings:
+  chain:
+    - role: contains_component
+      direction: forward
+    - role: provides
+      direction: reverse
+  entities: [Product, Part, Supplier]
+
+patterns:
+  - name: product_suppliers
+    description: "Who supplies the parts for this product?"
+    applicability:
+      keywords: [product, suppliers, parts, supply chain, who supplies]
+      intent: "Find all suppliers for parts used in a product"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+        example: "TURBO-001"
+    sql_template: |
+      SELECT p.name as product, pt.part_number, pt.description,
+             s.supplier_code, s.name as supplier, s.tier,
+             pc.quantity, pt.is_critical
+      FROM products p
+      JOIN product_components pc ON pc.product_id = p.id
+      JOIN parts pt ON pc.part_id = pt.id
+      JOIN suppliers s ON pt.primary_supplier_id = s.id
+      WHERE p.sku = {{sku}}
+      ORDER BY pc.quantity DESC
+    execution:
+      time_ms: 1.6
+      result: "Turbo Encabulator: 5 parts from 5 suppliers"
+
+  - name: product_supplier_tiers
+    description: "Supplier tier distribution for a product"
+    applicability:
+      keywords: [product, supplier, tiers, distribution, breakdown]
+      intent: "Get supplier tier breakdown for parts in a product"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+    sql_template: |
+      SELECT p.name as product, s.tier,
+             COUNT(DISTINCT pt.id) as part_count,
+             COUNT(DISTINCT s.id) as supplier_count
+      FROM products p
+      JOIN product_components pc ON pc.product_id = p.id
+      JOIN parts pt ON pc.part_id = pt.id
+      JOIN suppliers s ON pt.primary_supplier_id = s.id
+      WHERE p.sku = {{sku}}
+      GROUP BY p.name, s.tier
+      ORDER BY s.tier
+    execution:
+      time_ms: 1.6
+
+  - name: supplier_products
+    description: "Which products use parts from this supplier?"
+    applicability:
+      keywords: [supplier, products, supplies to, impact, dependency]
+      intent: "Find all products that depend on a specific supplier"
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+    sql_template: |
+      SELECT s.name as supplier, pr.sku, pr.name as product,
+             COUNT(pt.id) as parts_used, SUM(pc.quantity) as total_qty
+      FROM suppliers s
+      JOIN parts pt ON pt.primary_supplier_id = s.id
+      JOIN product_components pc ON pc.part_id = pt.id
+      JOIN products pr ON pc.product_id = pr.id
+      WHERE s.supplier_code = {{supplier_code}}
+      GROUP BY s.name, pr.sku, pr.name
+      ORDER BY parts_used DESC
+    execution:
+      time_ms: 1.6

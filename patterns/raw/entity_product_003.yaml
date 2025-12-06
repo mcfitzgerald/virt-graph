@@ -1,0 +1,109 @@
+# Entity Pattern: Product Lookup and Filtering
+# Discovered: Phase 1A - TBox Entity Patterns
+# Complexity: GREEN
+
+name: product_entity_patterns
+complexity: GREEN
+description: Entity lookup and filtering patterns for Product class
+
+ontology_bindings:
+  class: Product
+  table: products
+  identifier: sku
+
+patterns:
+  - name: product_by_sku
+    description: "Lookup product by SKU"
+    applicability:
+      keywords: [product, find, lookup, sku, SKU]
+      intent: "Find a specific product by its SKU"
+    parameters:
+      - name: sku
+        type: string
+        required: true
+        example: "TURBO-001"
+    sql_template: |
+      SELECT id, sku, name, description, category,
+             list_price, is_active, launch_date
+      FROM products
+      WHERE sku = {{sku}}
+    execution:
+      time_ms: 2.2
+      rows: 1
+    named_entities:
+      - "TURBO-001 (Turbo Encabulator)"
+      - "FLUX-001 (Flux Capacitor)"
+
+  - name: product_search_by_name
+    description: "Search products by name (case-insensitive)"
+    applicability:
+      keywords: [product, search, name, find]
+      intent: "Find products matching a name pattern"
+    parameters:
+      - name: name_pattern
+        type: string
+        required: true
+    sql_template: |
+      SELECT id, sku, name, category, list_price, is_active
+      FROM products
+      WHERE name ILIKE {{name_pattern}}
+      ORDER BY name
+      LIMIT 20
+    execution:
+      time_ms: 0.8
+
+  - name: products_by_category
+    description: "List products filtered by category"
+    applicability:
+      keywords: [products, category, Industrial, Medical, Automotive, Electronics, Consumer]
+      intent: "Find all products in a specific category"
+    parameters:
+      - name: category
+        type: string
+        required: true
+        values: [Industrial, Medical, Automotive, Electronics, Consumer]
+    sql_template: |
+      SELECT id, sku, name, list_price, is_active
+      FROM products
+      WHERE category = {{category}}
+      ORDER BY name
+    execution:
+      time_ms: 0.9
+      result: "Industrial: 45, Medical: 41, Automotive: 40, Electronics: 39, Consumer: 35"
+
+  - name: active_products
+    description: "List all active products"
+    applicability:
+      keywords: [active, products, available, current]
+      intent: "Find all currently active products"
+    parameters: []
+    sql_template: |
+      SELECT id, sku, name, category, list_price
+      FROM products
+      WHERE is_active = true
+      ORDER BY category, name
+    execution:
+      time_ms: 0.7
+      rows: 182
+
+  - name: products_by_price_range
+    description: "Aggregate products by price range"
+    applicability:
+      keywords: [products, price, range, expensive, premium]
+      intent: "Get distribution of products by price range"
+    parameters: []
+    sql_template: |
+      SELECT
+        CASE
+          WHEN list_price < 100 THEN 'under_100'
+          WHEN list_price < 500 THEN '100_to_500'
+          WHEN list_price < 1000 THEN '500_to_1000'
+          ELSE 'over_1000'
+        END as price_range,
+        COUNT(*)
+      FROM products
+      GROUP BY 1
+      ORDER BY 1
+    execution:
+      time_ms: 0.9
+      result: "over_1000: 178, 500-1000: 14, 100-500: 5, <100: 3"

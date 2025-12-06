@@ -1,0 +1,60 @@
+# Multi-Hop Chain Pattern: Order → Shipment → Facility
+# Discovered: Phase 1C - GREEN Multi-Hop Chains
+# Complexity: GREEN
+
+name: order_fulfillment_chain
+complexity: GREEN
+description: Multi-hop chain connecting Order to Facility through Shipment
+
+ontology_bindings:
+  chain:
+    - role: fulfills
+      direction: reverse
+    - role: originates_at
+      direction: forward
+  entities: [Order, Shipment, Facility]
+
+patterns:
+  - name: order_fulfillment_details
+    description: "Order fulfillment chain: shipment and origin facility"
+    applicability:
+      keywords: [order, fulfillment, shipment, origin, facility, tracking]
+      intent: "Find complete fulfillment chain for an order"
+    parameters:
+      - name: order_number
+        type: string
+        required: true
+    sql_template: |
+      SELECT o.order_number, o.status as order_status,
+             sh.shipment_number, sh.status as ship_status, sh.carrier,
+             f.facility_code, f.name as origin_facility, f.city
+      FROM orders o
+      JOIN shipments sh ON sh.order_id = o.id
+      JOIN facilities f ON sh.origin_facility_id = f.id
+      WHERE o.order_number = {{order_number}}
+    execution:
+      time_ms: 6.5
+
+  - name: facility_fulfillment_metrics
+    description: "Fulfillment metrics by origin facility"
+    applicability:
+      keywords: [facility, fulfillment, metrics, shipments, performance]
+      intent: "Get shipment fulfillment metrics by facility"
+    parameters:
+      - name: limit
+        type: integer
+        required: false
+        default: 10
+    sql_template: |
+      SELECT f.facility_code, f.name,
+             COUNT(sh.id) as shipments,
+             COUNT(DISTINCT o.id) as orders_fulfilled,
+             ROUND(AVG(sh.cost_usd)::numeric, 2) as avg_ship_cost
+      FROM facilities f
+      JOIN shipments sh ON sh.origin_facility_id = f.id
+      JOIN orders o ON sh.order_id = o.id
+      GROUP BY f.id, f.facility_code, f.name
+      ORDER BY shipments DESC
+      LIMIT {{limit}}
+    execution:
+      time_ms: 6.5

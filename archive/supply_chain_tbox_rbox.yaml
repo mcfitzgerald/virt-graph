@@ -449,6 +449,13 @@ rbox:
         range: "0..*"
       traversal_complexity: YELLOW
       row_count: 817
+      ddl:
+        has_self_ref_constraint: true       # CHECK (seller_id != buyer_id)
+        has_unique_edge_index: true         # UNIQUE (seller_id, buyer_id)
+        indexed_columns: [seller_id, buyer_id]
+        table_stats:
+          distinct_sellers: 450
+          distinct_buyers: 200
 
     component_of:
       description: "Part is a component of another part (BOM hierarchy)"
@@ -473,6 +480,13 @@ rbox:
         range: "0..*"
       traversal_complexity: YELLOW
       row_count: 14283
+      ddl:
+        has_self_ref_constraint: true       # CHECK (parent_part_id != child_part_id)
+        has_unique_edge_index: true         # UNIQUE (parent_part_id, child_part_id)
+        indexed_columns: [parent_part_id, child_part_id]
+        table_stats:
+          distinct_parents: 892
+          distinct_children: 4200
 
     # =========================================================================
     # RED Complexity: Network Algorithms Required
@@ -505,6 +519,12 @@ rbox:
         range: "0..*"
       traversal_complexity: RED
       row_count: 197
+      ddl:
+        has_self_ref_constraint: true       # CHECK (origin_facility_id != destination_facility_id)
+        indexed_columns: [origin_facility_id, destination_facility_id]
+        table_stats:
+          distinct_origins: 50
+          distinct_destinations: 50
 
     # =========================================================================
     # GREEN Complexity: Simple FK Joins

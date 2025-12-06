@@ -1,0 +1,234 @@
+# YELLOW Pattern: supplies_to (Supplier → Supplier) Traversal
+# Discovered: Phase 2A - YELLOW Recursive Traversal
+# Complexity: YELLOW
+# Handler: traverse()
+
+name: supplier_tier_traversal_patterns
+complexity: YELLOW
+description: Recursive traversal patterns for supplier tier network
+
+ontology_bindings:
+  role: supplies_to
+  domain: Supplier
+  range: Supplier
+  sql:
+    table: supplier_relationships
+    domain_key: seller_id
+    range_key: buyer_id
+  properties:
+    acyclic: true
+    is_hierarchical: true
+
+structure:
+  total_edges: 817
+  tier_flow: "T3 → T2 → T1 (strictly hierarchical)"
+  max_depth: 2
+  root_suppliers: 303  # T3 sellers only
+  leaf_suppliers: 50   # T1 buyers only
+
+patterns:
+  - name: supplier_downstream_traversal
+    description: "Find all downstream buyers from a supplier (seller → buyers)"
+    applicability:
+      keywords: [supplier, downstream, buyers, sells to, customers, tier]
+      intent: "Find all suppliers that buy from this supplier (directly or indirectly)"
+    direction: downstream
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+      - name: max_depth
+        type: integer
+        required: false
+        default: 5
+    handler:
+      name: traverse
+      config:
+        nodes_table: suppliers
+        edges_table: supplier_relationships
+        edge_from_col: seller_id
+        edge_to_col: buyer_id
+        direction: downstream
+    sql_template: |
+      WITH RECURSIVE downstream AS (
+        SELECT sr.seller_id, sr.buyer_id, s.supplier_code, s.name, s.tier,
+               1 as depth, ARRAY[sr.seller_id] as path
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.buyer_id = s.id
+        JOIN suppliers start ON sr.seller_id = start.id
+        WHERE start.supplier_code = {{supplier_code}}
+
+        UNION ALL
+
+        SELECT sr.seller_id, sr.buyer_id, s.supplier_code, s.name, s.tier,
+               d.depth + 1, d.path || sr.seller_id
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.buyer_id = s.id
+        JOIN downstream d ON sr.seller_id = d.buyer_id
+        WHERE d.depth < {{max_depth}}
+        AND NOT sr.seller_id = ANY(d.path)
+      )
+      SELECT depth, supplier_code, name, tier
+      FROM downstream
+      ORDER BY depth, tier
+    execution:
+      time_ms: 2.6
+      handler_verified: true
+      result: "SUP00007 (T3): 5 downstream nodes across 2 levels"
+
+  - name: supplier_upstream_traversal
+    description: "Find all upstream sellers to a supplier (buyer → sellers)"
+    applicability:
+      keywords: [supplier, upstream, sellers, buys from, sources, supply chain]
+      intent: "Find all suppliers that sell to this supplier (directly or indirectly)"
+    direction: upstream
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+      - name: max_depth
+        type: integer
+        required: false
+        default: 5
+    handler:
+      name: traverse
+      config:
+        nodes_table: suppliers
+        edges_table: supplier_relationships
+        edge_from_col: buyer_id
+        edge_to_col: seller_id
+        direction: upstream
+    sql_template: |
+      WITH RECURSIVE upstream AS (
+        SELECT sr.seller_id, sr.buyer_id, s.supplier_code, s.name, s.tier,
+               1 as depth, ARRAY[sr.buyer_id] as path
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.seller_id = s.id
+        JOIN suppliers start ON sr.buyer_id = start.id
+        WHERE start.supplier_code = {{supplier_code}}
+
+        UNION ALL
+
+        SELECT sr.seller_id, sr.buyer_id, s.supplier_code, s.name, s.tier,
+               u.depth + 1, u.path || sr.buyer_id
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.seller_id = s.id
+        JOIN upstream u ON sr.buyer_id = u.seller_id
+        WHERE u.depth < {{max_depth}}
+        AND NOT sr.buyer_id = ANY(u.path)
+      )
+      SELECT depth, supplier_code, name, tier
+      FROM upstream
+      ORDER BY depth, tier DESC
+    execution:
+      time_ms: 5.3
+      handler_verified: true
+      result: "SUP00041 (T1): 52 upstream nodes, depth 3"
+
+  - name: supplier_tier_impact_analysis
+    description: "Which T1 suppliers are affected if a T3 supplier fails?"
+    applicability:
+      keywords: [impact, risk, failure, affected, T1, T3, disruption]
+      intent: "Analyze supply chain impact of supplier failure"
+    direction: downstream
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+        description: "T3 supplier to analyze"
+    handler:
+      name: traverse_collecting
+      config:
+        target_condition: "tier = 1"
+    sql_template: |
+      WITH RECURSIVE downstream AS (
+        SELECT sr.buyer_id, 1 as depth, ARRAY[sr.seller_id] as path
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.seller_id = s.id
+        WHERE s.supplier_code = {{supplier_code}}
+
+        UNION ALL
+
+        SELECT sr.buyer_id, d.depth + 1, d.path || sr.seller_id
+        FROM supplier_relationships sr
+        JOIN downstream d ON sr.seller_id = d.buyer_id
+        WHERE d.depth < 10
+        AND NOT sr.seller_id = ANY(d.path)
+      )
+      SELECT s.supplier_code, s.name, s.tier, MIN(d.depth) as min_hops
+      FROM downstream d
+      JOIN suppliers s ON d.buyer_id = s.id
+      WHERE s.tier = 1
+      GROUP BY s.id, s.supplier_code, s.name, s.tier
+      ORDER BY min_hops
+    execution:
+      time_ms: 1.3
+      result: "SUP00007 failure affects 2 T1 suppliers"
+
+  - name: supplier_tier_by_country
+    description: "Find upstream suppliers in a specific country"
+    applicability:
+      keywords: [suppliers, country, upstream, sourcing, region, location]
+      intent: "Find all upstream suppliers located in a specific country"
+    direction: upstream
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+      - name: country
+        type: string
+        required: true
+    sql_template: |
+      WITH RECURSIVE upstream AS (
+        SELECT sr.seller_id, 1 as depth
+        FROM supplier_relationships sr
+        JOIN suppliers start ON sr.buyer_id = start.id
+        WHERE start.supplier_code = {{supplier_code}}
+
+        UNION ALL
+
+        SELECT sr.seller_id, u.depth + 1
+        FROM supplier_relationships sr
+        JOIN upstream u ON sr.buyer_id = u.seller_id
+        WHERE u.depth < 10
+      )
+      SELECT DISTINCT s.supplier_code, s.name, s.tier, s.country, MIN(u.depth) as hops
+      FROM upstream u
+      JOIN suppliers s ON u.seller_id = s.id
+      WHERE s.country = {{country}}
+      GROUP BY s.id, s.supplier_code, s.name, s.tier, s.country
+      ORDER BY hops, s.tier DESC
+    execution:
+      time_ms: 2.0
+
+  - name: supplier_network_summary
+    description: "Summary statistics for supplier network from a starting point"
+    applicability:
+      keywords: [supplier, network, summary, statistics, count, tiers]
+      intent: "Get summary of upstream/downstream supplier network"
+    parameters:
+      - name: supplier_code
+        type: string
+        required: true
+    sql_template: |
+      WITH RECURSIVE downstream AS (
+        SELECT sr.buyer_id, s.tier, 1 as depth
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.buyer_id = s.id
+        JOIN suppliers start ON sr.seller_id = start.id
+        WHERE start.supplier_code = {{supplier_code}}
+
+        UNION ALL
+
+        SELECT sr.buyer_id, s.tier, d.depth + 1
+        FROM supplier_relationships sr
+        JOIN suppliers s ON sr.buyer_id = s.id
+        JOIN downstream d ON sr.seller_id = d.buyer_id
+        WHERE d.depth < 10
+      )
+      SELECT 'downstream' as direction, tier, COUNT(DISTINCT buyer_id) as suppliers
+      FROM downstream
+      GROUP BY tier
+      ORDER BY tier
+    execution:
+      time_ms: 1.5
