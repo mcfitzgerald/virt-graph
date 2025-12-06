@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2025-12-05
+
+### Changed
+
+**Pattern Discovery Prompt - Ontology-Driven Exploration**
+
+Restructured `prompts/pattern_discovery.md` to ensure near-exhaustive coverage of the ontological space:
+
+- **Pre-Discovery phase**: Load ontology and enumerate all TBox classes and RBox roles as exploration checklist
+- **Phase 1 (GREEN)**: For each TBox class → entity patterns; for each GREEN role → relationship patterns
+- **Phase 2 (YELLOW)**: For each YELLOW role → recursive traversal patterns (upstream/downstream)
+- **Phase 3 (RED)**: For each RED role → network algorithm patterns using weight_columns
+- **Phase 4 (MIXED)**: New phase for cross-complexity patterns (GREEN+YELLOW, GREEN+RED combinations)
+- **Validation checklist**: Verify coverage against enumerated ontology
+
+Key design principle: Generic ontology references ("for each class in TBox") rather than hardcoded lists. This keeps the prompt from getting stale if the ontology changes and encourages genuine exploration.
+
+---
+
 ## [0.7.2] - 2025-12-05
 
 ### Added
