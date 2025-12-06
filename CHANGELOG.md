@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2025-12-05
+
+### Changed
+
+**Streamlined Discovery Prompts**
+
+Refactored all three discovery/migration prompts to be directive-based session starters:
+
+| Prompt | Before | After | Reduction |
+|--------|--------|-------|-----------|
+| `ontology_discovery.md` | 354 lines | 145 lines | -59% |
+| `pattern_discovery.md` | 327 lines | 150 lines | -54% |
+| `neo4j_migration.md` | 235 lines | 114 lines | -51% |
+
+Key changes:
+- Removed all embedded SQL/Cypher/bash commands (Claude derives queries from directives)
+- Added session starter instructions ("Begin with Round 1...")
+- Each round/phase/step ends with "Pause for human review"
+- Compact quick-reference tables replace verbose documentation
+- Prompts now reference `ontology/TEMPLATE.yaml` for format details
+
+These prompts can now be loaded into a fresh Claude session to start interactive discovery workflows.
+
+---
+
 ## [0.7.0] - 2025-12-05
 
 ### Added
