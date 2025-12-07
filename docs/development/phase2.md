@@ -12,8 +12,10 @@ Phase 2 establishes the ontology discovery foundation that enables Virtual Graph
 |-------------|-------------|
 | `.claude/skills/schema/scripts/introspect.sql` | Schema introspection queries |
 | `.claude/skills/schema/SKILL.md` | Schema skill definition |
-| `ontology/supply_chain.yaml` | Discovered ontology |
-| `docs/ontology_discovery_session.md` | Discovery session transcript |
+| `ontology/virt_graph.yaml` | VG metamodel extension (defines annotation types) |
+| `ontology/TEMPLATE.yaml` | Starter template for new ontologies |
+| `ontology/supply_chain.yaml` | Discovered domain ontology |
+| `prompts/ontology_discovery.md` | 4-round discovery protocol |
 
 ## Schema Introspection
 
@@ -45,6 +47,41 @@ The schema skill is invoked when Claude needs to:
 2. **Resolve relationships**: Find FK columns for `supplies_to` relationship
 3. **Validate queries**: Check column types before generating WHERE clauses
 4. **Understand patterns**: Identify soft deletes, audit columns, etc.
+
+## Ontology Files
+
+Virtual Graph uses three ontology files with distinct purposes:
+
+```
+ontology/
+  virt_graph.yaml     # Metamodel - defines extension types
+  TEMPLATE.yaml       # Template - starter for new ontologies
+  supply_chain.yaml   # Instance - domain-specific ontology
+```
+
+### File Relationships
+
+| File | Purpose | When to Use |
+|------|---------|-------------|
+| `virt_graph.yaml` | Defines `SQLMappedClass`, `SQLMappedRelationship`, `TraversalComplexity` enum, `WeightColumn` | Reference when understanding available annotations |
+| `TEMPLATE.yaml` | Commented examples showing how to use each annotation | Copy when creating a new domain ontology |
+| `supply_chain.yaml` | Actual domain ontology with real tables, columns, row counts | Load via `OntologyAccessor` for queries |
+
+### Metamodel Extension (`virt_graph.yaml`)
+
+Defines the abstract types that domain ontologies instantiate:
+
+- **SQLMappedClass**: For entity tables (TBox)
+  - Required: `vg:table`, `vg:primary_key`
+  - Optional: `vg:identifier`, `vg:soft_delete_column`, `vg:row_count`
+
+- **SQLMappedRelationship**: For relationship edges (RBox)
+  - Required: `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:domain_class`, `vg:range_class`, `vg:traversal_complexity`
+  - Optional: OWL 2 axioms (`vg:transitive`, `vg:symmetric`, etc.), cardinality, weight columns
+
+- **TraversalComplexity**: GREEN | YELLOW | RED
+
+- **WeightColumn**: For RED complexity edges with numeric weights
 
 ## Ontology Structure
 
@@ -107,30 +144,42 @@ Each relationship is classified by query complexity:
 
 ## Discovery Process
 
-The ontology was discovered through a 3-round process:
+The ontology is discovered through a **4-round interactive protocol** (see `prompts/ontology_discovery.md`):
 
 ### Round 1: Schema Introspection
 
 - Query `information_schema` for tables, columns, constraints
 - Identify foreign key relationships
 - Detect self-referential patterns (graph edges)
-- Generate initial ontology draft with questions
+- Identify patterns: `deleted_at` (soft delete), `_id` suffix (FKs), unique constraints (natural keys)
+- **Pause for human review**
 
-### Round 2: Business Context Interview
+### Round 2: Entity Class Discovery (TBox)
 
-Required questions for each relationship:
+- Propose LinkML classes with `instantiates: [vg:SQLMappedClass]`
+- Determine required annotations (`vg:table`, `vg:primary_key`)
+- Query `COUNT(*)` for row counts
+- **Pause for human corrections**
 
-1. **Cardinality**: One-to-many or many-to-many?
-2. **Directionality**: Is this strictly one-way?
-3. **Reflexivity**: Can entities relate to themselves?
-4. **Optionality**: Required or optional?
+### Round 3: Relationship Class Discovery (RBox)
 
-Example for `supplier_relationships`:
+- Propose relationship classes with `instantiates: [vg:SQLMappedRelationship]`
+- Determine traversal complexity (GREEN/YELLOW/RED)
+- Set OWL 2 axioms for self-referential relationships
+- **Pause for human corrections**
+
+Example questions for `supplier_relationships`:
 
 > Q: What does seller_id → buyer_id represent?
 > A: Tiered supply chain - seller supplies to buyer
 
-### Round 3: Data Validation
+### Round 4: Draft, Validate & Finalize
+
+1. Write complete ontology to `ontology/<schema_name>.yaml`
+2. Run two-layer validation (see below)
+3. Fix any validation errors
+4. Run gate tests
+5. **Human approves or requests changes**
 
 Verify discovered structure against actual data:
 
@@ -145,6 +194,43 @@ FROM supplier_relationships sr
 JOIN suppliers s1 ON sr.seller_id = s1.id
 JOIN suppliers s2 ON sr.buyer_id = s2.id
 GROUP BY s1.tier, s2.tier;
+```
+
+## Two-Layer Validation
+
+LinkML doesn't validate custom `vg:` annotations, so Virtual Graph uses two-layer validation:
+
+### Layer 1: LinkML Structure
+
+Validates YAML syntax and LinkML schema structure:
+
+```bash
+poetry run linkml-lint --validate-only ontology/supply_chain.yaml
+```
+
+### Layer 2: VG Annotations
+
+Validates Virtual Graph-specific requirements:
+
+```bash
+poetry run python -c "from virt_graph.ontology import OntologyAccessor; OntologyAccessor()"
+```
+
+**What Layer 2 validates:**
+
+- Entity classes have required `vg:table`, `vg:primary_key`
+- Relationship classes have required `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:domain_class`, `vg:range_class`, `vg:traversal_complexity`
+- `vg:traversal_complexity` is GREEN, YELLOW, or RED
+- `vg:domain_class` and `vg:range_class` reference valid entity classes
+
+### Running Both Layers
+
+```bash
+# Full two-layer validation
+make validate-ontology
+
+# Or run the validation script directly
+poetry run python scripts/validate_ontology.py
 ```
 
 ## Discovered Entities

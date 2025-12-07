@@ -2,7 +2,8 @@
 # Common development tasks and validation scripts
 
 .PHONY: help install test validate-ontology validate-linkml validate-vg \
-        gen-jsonschema serve-docs db-up db-down db-reset neo4j-up neo4j-down
+        show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
+        db-up db-down db-reset neo4j-up neo4j-down
 
 # Default target
 help:
@@ -17,10 +18,13 @@ help:
 	@echo "  make test-gate1       Run Gate 1 tests"
 	@echo "  make test-gate2       Run Gate 2 tests (ontology)"
 	@echo ""
-	@echo "Ontology Validation:"
+	@echo "Ontology:"
 	@echo "  make validate-ontology   Run full two-layer validation"
 	@echo "  make validate-linkml     Run LinkML structure validation only"
 	@echo "  make validate-vg         Run VG annotation validation only"
+	@echo "  make show-ontology       Show TBox/RBox definitions"
+	@echo "  make show-tbox           Show entity classes only"
+	@echo "  make show-rbox           Show relationships only"
 	@echo ""
 	@echo "Code Generation:"
 	@echo "  make gen-jsonschema   Generate JSON-Schema from ontology"
@@ -60,6 +64,15 @@ validate-linkml:
 
 validate-vg:
 	@poetry run python -c "from virt_graph.ontology import OntologyAccessor; o = OntologyAccessor(); print(f'✓ VG validation passed: {len(o.classes)} classes, {len(o.roles)} roles')"
+
+show-ontology:
+	@poetry run python scripts/show_ontology.py
+
+show-tbox:
+	@poetry run python scripts/show_ontology.py --tbox-only
+
+show-rbox:
+	@poetry run python scripts/show_ontology.py --rbox-only
 
 # Code Generation (reference only - not required for operation)
 gen-jsonschema:

@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2025-12-06
+
+### Added
+
+**Ontology Documentation & Tooling**
+
+- **`docs/architecture/ontology.md`** - Comprehensive ontology documentation covering:
+  - Three-file structure (metamodel, template, instance)
+  - TBox/RBox concepts with annotation references
+  - End-to-end discovery workflow diagram
+  - Two-layer validation process
+  - `OntologyAccessor` API reference
+  - Supply chain ontology quick reference
+
+- **`scripts/show_ontology.py`** - TBox/RBox extraction utility:
+  - `make show-ontology` - Display full TBox + RBox definitions
+  - `make show-tbox` - Entity classes only
+  - `make show-rbox` - Relationships only (grouped by complexity)
+  - `--json` flag for programmatic access
+
+### Changed
+
+- **`README.md`** - Added `TEMPLATE.yaml` to project structure
+
+- **`docs/development/phase2.md`** - Major update:
+  - Added ontology files section (metamodel/template/instance)
+  - Fixed discovery process from 3 to 4 rounds (matching prompt)
+  - Added two-layer validation documentation
+  - Updated deliverables table
+
+- **`CLAUDE.md`** - Added:
+  - Ontology files table with purposes
+  - New make commands (`show-ontology`, `show-tbox`, `show-rbox`)
+
+- **`Makefile`** - Added ontology display targets
+
+---
+
 ## [0.8.4] - 2025-12-06
 
 ### Added

@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Commit and push changes at logical points (e.g., completed a phase, changed functionality, etc)
 - Update `CHANGELOG.md` and `pyproject.toml` with semantic versioning on every commit
-- Run integration tests for each phase (prefer integration over unit tests)
-- Documentation lives in `docs/` - review as needed and update when comitting
+- Run integration tests for new code components (prefer integration over unit tests)
+- Update tests when code changes and new test added
+- Create and maintain robust documentation using mkdocs. Documentation lives in `docs/` - review frequently and update when comitting
 - Update `CLAUDE.md` if needed
 - Use Claude's todo list to manage complex tasks
 - Current version: see `pyproject.toml` (follows semantic versioning)
@@ -30,20 +31,34 @@ poetry run pytest
 # Run single test
 poetry run pytest tests/test_file.py::test_function -v
 
-# Start PostgreSQL database
-docker-compose -f postgres/docker-compose.yml up -d
+# Makefile shortcuts (recommended)
+make help                 # Show all available commands
+make test                 # Run all tests
+make test-gate1           # Run Gate 1 tests
+make test-gate2           # Run Gate 2 tests (ontology)
+make db-up                # Start PostgreSQL
+make db-down              # Stop PostgreSQL
+make db-reset             # Reset database (regenerate data)
+make db-logs              # View database logs
+make neo4j-up             # Start Neo4j (for benchmarking)
+make neo4j-down           # Stop Neo4j
+make neo4j-logs           # View Neo4j logs
+make serve-docs           # Serve documentation locally
+make validate-ontology    # Full two-layer validation
+make validate-linkml      # Layer 1 only (LinkML structure)
+make validate-vg          # Layer 2 only (VG annotations)
+make show-ontology        # Show TBox/RBox definitions
+make show-tbox            # Show entity classes only
+make show-rbox            # Show relationships only
+make gen-jsonschema       # Generate JSON-Schema from ontology
 
-# View database logs
-docker-compose -f postgres/docker-compose.yml logs -f
-
-# Reset database (regenerate data)
-docker-compose -f postgres/docker-compose.yml down -v && docker-compose -f postgres/docker-compose.yml up -d
+# Database (raw commands)
+docker-compose -f postgres/docker-compose.yml up -d      # Start PostgreSQL
+docker-compose -f postgres/docker-compose.yml logs -f    # View logs
+docker-compose -f postgres/docker-compose.yml down -v && docker-compose -f postgres/docker-compose.yml up -d  # Reset
 
 # Regenerate seed data
 poetry run python scripts/generate_data.py
-
-# Serve documentation
-poetry run mkdocs serve
 
 # Run benchmark suite (requires Neo4j running)
 docker-compose -f neo4j/docker-compose.yml up -d
@@ -51,23 +66,8 @@ poetry run python neo4j/migrate.py
 poetry run python benchmark/generate_ground_truth.py
 poetry run python benchmark/run.py --system both
 
-# Check database status
-docker-compose -f postgres/docker-compose.yml ps
-docker-compose -f postgres/docker-compose.yml logs -f
-
-# Start Neo4j (for benchmarking)
-docker-compose -f neo4j/docker-compose.yml up -d
-
-# View Neo4j logs
-docker-compose -f neo4j/docker-compose.yml logs -f
-
-# Ontology validation (two-layer)
-make validate-ontology                    # Full validation (both layers)
-poetry run python scripts/validate_ontology.py --all  # Alternative
-poetry run linkml-lint --validate-only ontology/supply_chain.yaml  # Layer 1 only
-
-# Generate artifacts from ontology (optional)
-make gen-jsonschema                       # Generate JSON-Schema
+# Archive benchmark results before fresh runs
+./scripts/archive_benchmark.sh
 ```
 
 ## Project Overview
@@ -88,6 +88,15 @@ Key components in `src/virt_graph/`:
 - `handlers/pathfinding.py` - Dijkstra shortest path via NetworkX
 - `handlers/network.py` - Centrality, connected components
 - `estimator/` - Graph size estimation and runtime guards
+
+## Session Prompts
+
+Three-phase workflow session starters in `prompts/`:
+- `ontology_discovery.md` - Database introspection and ontology creation
+- `pattern_discovery.md` - Query pattern exploration and recording
+- `analysis_session.md` - Interactive data analysis with ontology
+
+Start a fresh Claude session with: `cat prompts/analysis_session.md`
 
 ## Handlers
 
@@ -171,10 +180,26 @@ Named test entities for queries:
 
 ## Ontology
 
-The ontology uses **LinkML format with Virtual Graph extensions** (`ontology/supply_chain.yaml`):
+The ontology uses **LinkML format with Virtual Graph extensions**. Three files work together:
+
+```
+ontology/
+  virt_graph.yaml     # Metamodel - defines SQLMappedClass, SQLMappedRelationship
+  TEMPLATE.yaml       # Template - copy to create new domain ontologies
+  supply_chain.yaml   # Instance - the supply chain domain ontology
+```
+
+| File | Purpose | When to Use |
+|------|---------|-------------|
+| `virt_graph.yaml` | Defines extension types and available annotations | Reference for annotation meanings |
+| `TEMPLATE.yaml` | Commented examples of all annotation patterns | Copy when creating new ontology |
+| `supply_chain.yaml` | Actual domain ontology | Load via `OntologyAccessor` |
+
+**Supply Chain Ontology Summary:**
 - **Entity Classes (TBox)**: 8 classes - Supplier, Part, Product, Facility, Customer, Order, Shipment, SupplierCertification
 - **Relationship Classes (RBox)**: 13 relationships with traversal complexity (GREEN/YELLOW/RED)
-- **Metamodel Extension**: `ontology/virt_graph.yaml` defines VG-specific annotations
+
+View current definitions: `make show-ontology` (or `make show-tbox` / `make show-rbox`)
 
 ### Ontology Validation
 
