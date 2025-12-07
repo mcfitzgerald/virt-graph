@@ -281,11 +281,13 @@ class OntologyDrivenMigrator:
     ) -> int:
         """Migrate FK-based relationships using Neo4j node properties."""
         with self.neo4j_driver.session() as session:
+            # domain_key is the FK column on domain nodes (e.g., facility_id)
+            # range_pk is the PK column on range nodes (e.g., id)
             result = session.run(
                 f"""
                 MATCH (d:{domain_label})
-                WHERE d.{range_key} IS NOT NULL
-                MATCH (r:{range_label} {{{range_pk}: d.{range_key}}})
+                WHERE d.{domain_key} IS NOT NULL
+                MATCH (r:{range_label} {{{range_pk}: d.{domain_key}}})
                 CREATE (d)-[:{neo4j_rel_type}]->(r)
                 RETURN count(*) as count
                 """

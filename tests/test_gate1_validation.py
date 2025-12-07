@@ -125,26 +125,24 @@ class TestTraverseLogic:
         """Depth is clamped to MAX_DEPTH."""
         mock_conn = MagicMock()
 
-        # Mock estimate to return small number (no size issue)
+        # Use skip_estimation=True to bypass size check
+        # Mock fetch_edges to return empty (immediate termination)
         with patch(
-            "virt_graph.handlers.traversal.estimate_reachable_nodes", return_value=10
+            "virt_graph.handlers.traversal.fetch_edges_for_frontier", return_value=[]
         ):
-            # Mock fetch_edges to return empty (immediate termination)
             with patch(
-                "virt_graph.handlers.traversal.fetch_edges_for_frontier", return_value=[]
+                "virt_graph.handlers.traversal.fetch_nodes", return_value=[{"id": 1}]
             ):
-                with patch(
-                    "virt_graph.handlers.traversal.fetch_nodes", return_value=[{"id": 1}]
-                ):
-                    result = traverse(
-                        mock_conn,
-                        "nodes",
-                        "edges",
-                        "from_col",
-                        "to_col",
-                        start_id=1,
-                        max_depth=100,  # Over MAX_DEPTH
-                    )
+                result = traverse(
+                    mock_conn,
+                    "nodes",
+                    "edges",
+                    "from_col",
+                    "to_col",
+                    start_id=1,
+                    max_depth=100,  # Over MAX_DEPTH
+                    skip_estimation=True,  # Bypass estimation for unit test
+                )
 
         # Should complete without error (depth clamped internally)
         assert "nodes" in result
@@ -153,47 +151,55 @@ class TestTraverseLogic:
         """SubgraphTooLarge raised when estimate exceeds MAX_NODES."""
         mock_conn = MagicMock()
 
+        # Mock the estimator module functions used by traverse
+        mock_sampler = MagicMock()
+        mock_sampler.sample.return_value = {}
         with patch(
-            "virt_graph.handlers.traversal.estimate_reachable_nodes",
-            return_value=MAX_NODES + 1,
-        ):
-            with pytest.raises(SubgraphTooLarge, match="would touch"):
-                traverse(
-                    mock_conn,
-                    "nodes",
-                    "edges",
-                    "from_col",
-                    "to_col",
-                    start_id=1,
-                )
-
-    def test_traverse_returns_expected_structure(self):
-        """Traverse returns dict with expected keys."""
-        mock_conn = MagicMock()
-
-        with patch(
-            "virt_graph.handlers.traversal.estimate_reachable_nodes", return_value=5
+            "virt_graph.handlers.traversal.GraphSampler", return_value=mock_sampler
         ):
             with patch(
-                "virt_graph.handlers.traversal.fetch_edges_for_frontier",
-                return_value=[(1, 2), (1, 3)],
+                "virt_graph.handlers.traversal.get_table_bound", return_value=None
             ):
                 with patch(
-                    "virt_graph.handlers.traversal.fetch_nodes",
-                    return_value=[{"id": 1}, {"id": 2}, {"id": 3}],
+                    "virt_graph.handlers.traversal.estimate",
+                    return_value=MAX_NODES + 1,
                 ):
-                    with patch(
-                        "virt_graph.handlers.traversal.should_stop", return_value=False
-                    ):
-                        result = traverse(
+                    with pytest.raises(SubgraphTooLarge, match="would touch"):
+                        traverse(
                             mock_conn,
                             "nodes",
                             "edges",
                             "from_col",
                             "to_col",
                             start_id=1,
-                            max_depth=1,
                         )
+
+    def test_traverse_returns_expected_structure(self):
+        """Traverse returns dict with expected keys."""
+        mock_conn = MagicMock()
+
+        # Use skip_estimation=True to bypass size check
+        with patch(
+            "virt_graph.handlers.traversal.fetch_edges_for_frontier",
+            return_value=[(1, 2), (1, 3)],
+        ):
+            with patch(
+                "virt_graph.handlers.traversal.fetch_nodes",
+                return_value=[{"id": 1}, {"id": 2}, {"id": 3}],
+            ):
+                with patch(
+                    "virt_graph.handlers.traversal.should_stop", return_value=False
+                ):
+                    result = traverse(
+                        mock_conn,
+                        "nodes",
+                        "edges",
+                        "from_col",
+                        "to_col",
+                        start_id=1,
+                        max_depth=1,
+                        skip_estimation=True,  # Bypass estimation for unit test
+                    )
 
         assert "nodes" in result
         assert "paths" in result

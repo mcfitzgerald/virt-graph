@@ -334,7 +334,7 @@ class TestOntologyQueries:
     def test_green_query_parts_from_supplier(self, db_connection, ontology):
         """GREEN query: Find parts from a specific supplier."""
         parts_table = ontology.get_class_table("Part")
-        domain_key, _ = ontology.get_role_keys("provides")
+        domain_key, _ = ontology.get_role_keys("PrimarySupplier")
 
         with db_connection.cursor() as cur:
             # Find parts where primary_supplier_id = 1 (Acme Corp)

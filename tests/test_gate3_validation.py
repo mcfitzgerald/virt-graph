@@ -119,9 +119,9 @@ class TestGreenPath:
         print(f"\n✓ GREEN Query 3: {elapsed*1000:.1f}ms - Found {len(results)} parts with 'sensor'")
 
     def test_green_4_parts_from_supplier(self, conn, ontology):
-        """GREEN Query 4: Parts from supplier X (using provides relationship)"""
-        parts_table = ontology.get_role_table("provides")
-        fk_col, _ = ontology.get_role_keys("provides")
+        """GREEN Query 4: Parts from supplier X (using PrimarySupplier relationship)"""
+        parts_table = ontology.get_role_table("PrimarySupplier")
+        fk_col, _ = ontology.get_role_keys("PrimarySupplier")
 
         # Get Acme Corp's ID first
         with conn.cursor() as cur:

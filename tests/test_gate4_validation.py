@@ -255,13 +255,14 @@ class TestOntologyResolution:
 
     def test_ontology_has_required_relationships(self, ontology):
         """Verify ontology has all required relationships."""
+        # Use PascalCase names as stored in ontology.roles
         required_relationships = [
-            "supplies_to",
-            "component_of",
-            "connects_to",
-            "provides",
-            "can_supply",
-            "contains_component",
+            "SuppliesTo",
+            "ComponentOf",
+            "ConnectsTo",
+            "PrimarySupplier",
+            "CanSupply",
+            "ContainsComponent",
         ]
 
         for rel in required_relationships:

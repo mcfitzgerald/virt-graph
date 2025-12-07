@@ -473,6 +473,7 @@ class TestOntologyDrivenMigration:
             if expected_count is None:
                 continue
 
+            # Migration script uses rel_name.upper() for Neo4j relationship types
             neo4j_type = rel_name.upper()
             actual_count = relationships_created.get(neo4j_type, 0)
 
