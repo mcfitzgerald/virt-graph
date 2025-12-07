@@ -275,6 +275,6 @@ Answer these questions:
 
 If Virtual Graph fits your needs:
 
-1. **Setup**: Follow [Installation](../infrastructure/installation.md)
+1. **Setup**: Follow [Supply Chain Setup](../examples/supply-chain/setup.md)
 2. **Learn the workflow**: Read [Workflow Overview](../workflow/overview.md)
 3. **Try the example**: Work through [Supply Chain Example](../examples/supply-chain/overview.md)

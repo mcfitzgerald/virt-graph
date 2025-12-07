@@ -13,6 +13,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.7] - 2025-12-07
+
+### Added
+
+**Documentation Overhaul Phase 7: Navigation & Landing Page**
+
+Completed documentation restructure with mkdocs.yml and landing page:
+
+**mkdocs.yml** - Complete navigation configuration:
+- Material theme with light/dark mode toggle
+- Tabbed navigation with sections: Concepts, Workflow, Examples, Evaluation, Reference
+- Mermaid diagram support for architecture visualizations
+- Code copy buttons and syntax highlighting
+- Search functionality
+
+**docs/index.md** - New landing page:
+- Project overview and research question
+- Traffic light routing summary table
+- Quick navigation cards for two audience tracks (Developers / Evaluators)
+- Benchmark results summary
+- Project status table
+- Quick start commands
+
+### Fixed
+
+- Broken link in `concepts/when-to-use.md` (referenced non-existent infrastructure/installation.md)
+- Broken link in `reference/api/ontology.md` (referenced non-existent components/ontology/overview.md)
+
+---
+
+## [0.8.6] - 2025-12-07
+
+### Added
+
+**Documentation Overhaul Phase 6: Reference Documentation**
+
+Created comprehensive API reference and project history documentation:
+
+**API References** (`docs/reference/api/`)
+
+- `handlers.md` - Complete handler API reference (657 lines):
+  - Base module: safety limits, exceptions, utility functions
+  - Traversal module: `traverse()`, `traverse_collecting()`, `bom_explode()`
+  - Pathfinding module: `shortest_path()`, `all_shortest_paths()`
+  - Network module: `centrality()`, `connected_components()`, `graph_density()`, `neighbors()`
+  - Parameter tables, return value structures, usage examples
+  - Import shortcuts and cross-references
+
+- `ontology.md` - Ontology accessor API reference (629 lines):
+  - `OntologyAccessor` class documentation
+  - TBox methods: `get_class_table()`, `get_class_pk()`, `get_class_identifier()`, etc.
+  - RBox methods: `get_role_table()`, `get_role_keys()`, `get_role_complexity()`, etc.
+  - Two-layer validation documentation
+  - Supply chain ontology quick reference
+  - Complete usage examples
+
+- `estimator.md` - Estimator module API reference (604 lines):
+  - Sampler: `GraphSampler`, `SampleResult`
+  - Models: `EstimationConfig`, `estimate()`
+  - Bounds: `TableStats`, `get_table_bound()`, `get_cardinality_stats()`
+  - Guards: `GuardResult`, `check_guards()`, `should_use_networkx()`
+  - Handler integration documentation
+
+**Project History** (`docs/reference/history.md`)
+
+- Distilled 6 development phases into single-page history (325 lines):
+  - Timeline overview with key deliverables per phase
+  - Phase summaries: Foundation → Discovery → Execution → Patterns → Baseline → Evaluation
+  - Key architectural decisions with rationale
+  - Version history table
+  - Lessons learned and future directions
+
+---
+
 ## [0.8.5] - 2025-12-06
 
 ### Added
