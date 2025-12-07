@@ -1,0 +1,6 @@
+version: "v2025-12-06_0.8.3"
+date: "2025-12-06"
+virt_graph_version: "0.8.3"
+git_commit: "dcd98e3"
+notes: |
+  Archived benchmark results.

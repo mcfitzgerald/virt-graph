@@ -59,6 +59,7 @@ nav:
   - Evaluation:
     - Benchmark Results: benchmark_results.md
     - TCO Analysis: tco_analysis.md
+    - Enterprise TCO Framework: tco_framework.md
   - API Reference:
     - Handlers: api/handlers.md
     - Estimator: api/estimator.md

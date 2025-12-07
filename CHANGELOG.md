@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2025-12-06
+
+### Added
+
+**Analysis Session Prompt** (`prompts/analysis_session.md`)
+
+New interactive analysis session protocol completing the three-phase workflow:
+- Session setup with ontology loading and domain summary
+- 5-step analysis loop: Classify → Match Pattern → Resolve Params → Execute → Present
+- Safety awareness section with limit handling and suggestions
+- Common analysis patterns (supplier risk, logistics, BOM)
+- Conversation flow examples
+- Quick reference for ontology API and handlers
+
+**Enterprise TCO Framework** (`docs/tco_framework.md`)
+
+Comprehensive TCO model for enterprise contexts beyond tech company assumptions:
+- **Planning & Governance**: 6-12 months pre-implementation overhead for traditional enterprises
+- **Change Management**: Training, documentation, runbooks, on-call setup
+- **Knowledge Management**: Architecture docs, decision records, troubleshooting guides
+- **Hidden Costs**: Opportunity cost of waiting, cognitive load on lean teams, integration complexity
+- **Organization Calibration**: Self-assessment questionnaire for accurate estimation
+- Year 1 Enterprise TCO: $145,800 (VG) vs $306,600 (Neo4j)
+
+**Benchmark Versioning Infrastructure**
+
+- `benchmark/archive/` - Historical benchmark results with versioning
+- `benchmark/archive/README.md` - Versioning scheme documentation
+- `scripts/archive_benchmark.sh` - Script to archive results before fresh runs
+- `docs/archive/` - Historical TCO analyses
+- Archived v0.8.3 benchmark results for fresh baseline
+
+### Changed
+
+- **README.md** - Complete rewrite with:
+  - Research hypothesis from scope document
+  - Architecture diagram
+  - Three-phase workflow (ontology discovery → pattern discovery → analysis sessions)
+  - Benchmark results and TCO comparison summary
+  - Development commands and project status
+
+- **docs/index.md** - Updated to match README with full workflow documentation
+
+- **docs/tco_analysis.md** - Added note about prototype status and link to enterprise framework
+
+- **mkdocs.yml** - Added Enterprise TCO Framework to navigation
+
+---
+
 ## [0.8.3] - 2025-12-06
 
 ### Added

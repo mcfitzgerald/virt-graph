@@ -1,10 +1,5 @@
 # Total Cost of Ownership Analysis
 
-> **Note**: This analysis is from the initial prototype (v0.7.0, December 2024) and uses tech company assumptions. For enterprise contexts with governance overhead, change management, and lean IT considerations, see the [Enterprise TCO Framework](tco_framework.md).
->
-> **Status**: Pending fresh benchmark run with v0.8.x improvements.
-> Previous results archived to: `docs/archive/v2024-12-04_tco_analysis.md`
-
 This document compares the Total Cost of Ownership (TCO) between Virtual Graph and a traditional Neo4j graph database migration for enterprises with existing SQL infrastructure.
 
 ## Executive Summary
