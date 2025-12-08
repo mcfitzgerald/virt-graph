@@ -3,7 +3,7 @@
 
 .PHONY: help install test validate-ontology validate-linkml validate-vg \
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
-        db-up db-down db-reset neo4j-up neo4j-down
+        db-up db-down db-reset neo4j-up neo4j-down benchmark benchmark-vg
 
 # Default target
 help:
@@ -37,6 +37,10 @@ help:
 	@echo "Neo4j (benchmarking):"
 	@echo "  make neo4j-up         Start Neo4j"
 	@echo "  make neo4j-down       Stop Neo4j"
+	@echo ""
+	@echo "Benchmarking:"
+	@echo "  make benchmark        Run full benchmark (VG + Neo4j)"
+	@echo "  make benchmark-vg     Run Virtual Graph benchmark only"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make serve-docs       Serve documentation locally"
@@ -103,6 +107,17 @@ neo4j-down:
 
 neo4j-logs:
 	docker-compose -f neo4j/docker-compose.yml logs -f
+
+# Benchmarking
+benchmark:
+	poetry run python benchmark/run.py --system both
+	@echo ""
+	@echo "Results saved to benchmark/results/ and docs/evaluation/"
+
+benchmark-vg:
+	poetry run python benchmark/run.py --system vg
+	@echo ""
+	@echo "Results saved to benchmark/results/ and docs/evaluation/"
 
 # Documentation
 serve-docs:

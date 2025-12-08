@@ -51,6 +51,8 @@ make show-ontology        # Show TBox/RBox definitions
 make show-tbox            # Show entity classes only
 make show-rbox            # Show relationships only
 make gen-jsonschema       # Generate JSON-Schema from ontology
+make benchmark            # Run full benchmark (VG + Neo4j), updates docs
+make benchmark-vg         # Run Virtual Graph benchmark only, updates docs
 
 # Database (raw commands)
 docker-compose -f postgres/docker-compose.yml up -d      # Start PostgreSQL
@@ -60,7 +62,11 @@ docker-compose -f postgres/docker-compose.yml down -v && docker-compose -f postg
 # Regenerate seed data
 poetry run python scripts/generate_data.py
 
-# Run benchmark suite (requires Neo4j running)
+# Run benchmark suite (preferred method - uses Makefile)
+make benchmark            # Run full benchmark (VG + Neo4j)
+make benchmark-vg         # Run Virtual Graph only
+
+# Run benchmark suite (manual - requires Neo4j running)
 docker-compose -f neo4j/docker-compose.yml up -d
 poetry run python neo4j/migrate.py
 poetry run python benchmark/generate_ground_truth.py

@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.8] - 2025-12-07
+
+### Added
+
+**Benchmark Auto-Update Infrastructure**
+
+- `benchmark/run.py` now outputs results to both:
+  - `benchmark/results/` (raw benchmark data)
+  - `docs/evaluation/benchmark-results-latest.md` (documentation-ready format)
+- New `generate_docs_report()` function creates cleaner markdown for docs
+- Makefile targets:
+  - `make benchmark` - Run full benchmark (VG + Neo4j)
+  - `make benchmark-vg` - Run Virtual Graph benchmark only
+
+**Documentation Audit**
+
+- `fix_docs.md` - Comprehensive documentation improvement plan:
+  - 14 ASCII diagrams identified for Mermaid conversion
+  - 8 files with redundant benchmark metrics
+  - Execution checklist for systematic fixes
+
+### Changed
+
+- Benchmark results now auto-update `docs/evaluation/benchmark-results-latest.md` when running `make benchmark`
+- This ensures documentation metrics stay current with code changes
+
+---
+
 ## [0.8.7] - 2025-12-07
 
 ### Added
