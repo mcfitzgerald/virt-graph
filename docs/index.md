@@ -51,8 +51,6 @@ flowchart LR
 
 **The core idea**: An ontology maps business concepts to SQL tables. Handlers generate efficient queries based on complexity. No graph database required.
 
-Virtual Graph routes queries through three paths:
-
 | Route | Complexity | Handler | Example |
 |-------|------------|---------|---------|
 | **GREEN** | Simple SQL | Direct query | "Find supplier Acme Corp" |
@@ -61,39 +59,18 @@ Virtual Graph routes queries through three paths:
 
 ---
 
-## Quick Navigation
+## Documentation
 
-| Section | Description | Start Here |
-|---------|-------------|------------|
-| **[Concepts](concepts/overview.md)** | Vision, architecture, when to use | [Overview](concepts/overview.md) |
-| **[Workflow](workflow/overview.md)** | Three-phase process | [Workflow Overview](workflow/overview.md) |
-| **[Supply Chain Example](examples/supply-chain/overview.md)** | Complete worked example | [Get Started](examples/supply-chain/setup.md) |
-| **[Evaluation](evaluation/benchmark-results.md)** | Benchmarks, TCO, findings | [Results](evaluation/benchmark-results.md) |
-| **[Reference](reference/api/handlers.md)** | API docs, history | [Handlers API](reference/api/handlers.md) |
-
----
-
-## Two Audience Tracks
-
-### For Domain Developers
-
-Build graph-like query capabilities over your existing databases:
-
-1. **Start with Concepts** → [Overview](concepts/overview.md) → [Architecture](concepts/architecture.md)
-2. **Learn the Workflow** → [Ontology Discovery](workflow/ontology-discovery.md) → [Pattern Discovery](workflow/pattern-discovery.md)
-3. **Follow the Example** → [Supply Chain Setup](examples/supply-chain/setup.md) → [Query Walkthroughs](examples/supply-chain/queries.md)
-
-### For Research Evaluators
-
-Assess whether the Virtual Graph approach meets your needs:
-
-1. **Understand the Hypothesis** → [Concepts Overview](concepts/overview.md)
-2. **Review Methodology** → [Evaluation Methodology](evaluation/methodology.md)
-3. **Examine Results** → [Benchmark Results](evaluation/benchmark-results.md) → [TCO Framework](evaluation/tco-framework.md)
+| Section | Description |
+|---------|-------------|
+| [Getting Started](getting-started.md) | Setup, installation, first queries |
+| [Architecture](architecture.md) | System design, handlers, safety |
+| [Ontology Guide](ontology-guide.md) | Creating and using ontologies |
+| [Benchmark Report](benchmark-report.md) | Evaluation methodology and results |
 
 ---
 
-## Benchmark Results
+## Key Results
 
 Virtual Graph achieved **92% accuracy** on a 25-query benchmark:
 
@@ -104,28 +81,11 @@ Virtual Graph achieved **92% accuracy** on a 25-query benchmark:
 | RED (Network) | 85.7% | 80% | **PASS** |
 | **Overall** | **92%** | 85% | **PASS** |
 
-*Includes 5 queries correctly blocked by safety limits
+*Includes queries correctly blocked by safety limits
 
-**Key Findings:**
+**Performance**: Sub-10ms latency on all queries, **26x faster** than Neo4j.
 
-- Sub-10ms latency on all queries
-- 88% cost reduction vs Neo4j migration
-- Safety limits correctly prevent runaway queries
-
-→ [Full Benchmark Results](evaluation/benchmark-results.md)
-
----
-
-## Project Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Database Infrastructure | ✅ Complete | PostgreSQL 14, 15-table schema |
-| Handler Core | ✅ Complete | traverse, pathfinding, network |
-| Ontology System | ✅ Complete | LinkML format with VG extensions |
-| Pattern Templates | ✅ Complete | 8 templates across 4 categories |
-| Benchmark Suite | ✅ Complete | 25 queries, Neo4j comparison |
-| Documentation | ✅ Complete | Full docs overhaul |
+**TCO**: 52-77% cost savings vs graph database migration.
 
 ---
 
@@ -133,25 +93,33 @@ Virtual Graph achieved **92% accuracy** on a 25-query benchmark:
 
 ```bash
 # Clone repository
-git clone https://github.com/anthropics/virt-graph.git
+git clone https://github.com/mcfitzgerald/virt-graph.git
 cd virt-graph
 
 # Install dependencies
 poetry install
 
 # Start PostgreSQL
-docker-compose -f postgres/docker-compose.yml up -d
+make db-up
 
 # Run tests
-poetry run pytest tests/test_gate1_validation.py -v
+make test
 ```
 
-→ [Full Installation Guide](examples/supply-chain/setup.md)
+---
+
+## Project Status
+
+| Component | Status |
+|-----------|--------|
+| Database Infrastructure | Complete |
+| Handler Core | Complete |
+| Ontology System | Complete |
+| Benchmark Suite | Complete |
+| Documentation | Complete |
 
 ---
 
 ## Links
 
-- [GitHub Repository](https://github.com/anthropics/virt-graph)
-- [API Reference](reference/api/handlers.md)
-- [Project History](reference/history.md)
+- [GitHub Repository](https://github.com/mcfitzgerald/virt-graph)

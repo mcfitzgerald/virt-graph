@@ -10,23 +10,7 @@ For enterprises with existing SQL infrastructure, Virtual Graph delivers **92% o
 
 ## How It Works
 
-Virtual Graph operates in three phases:
-
-```
-1. OFFLINE: Ontology Discovery
-   Claude introspects the database schema and creates a LinkML ontology
-   mapping semantic concepts to SQL tables/columns.
-
-2. OFFLINE: Pattern Discovery
-   Claude explores the ontology space, discovering and recording
-   query patterns for complex graph-like operations.
-
-3. INTERACTIVE: Analysis Sessions
-   Users query data through Claude, which routes requests through
-   a traffic light system based on complexity.
-```
-
-### Query Routing (Traffic Light System)
+Virtual Graph routes queries through three paths based on complexity:
 
 | Route | Description | Example | Handler |
 |-------|-------------|---------|---------|
@@ -34,14 +18,16 @@ Virtual Graph operates in three phases:
 | YELLOW | Recursive traversal | "All tier 3 suppliers for Acme" | `traverse()` |
 | RED | Network algorithms | "Cheapest route from A to B" | NetworkX |
 
+An ontology maps business concepts to SQL tables. Handlers generate efficient queries. No graph database required.
+
 ## Quick Start
 
 ```bash
-# Start PostgreSQL
-make db-up
-
 # Install dependencies
 poetry install
+
+# Start PostgreSQL
+make db-up
 
 # Run tests
 make test
@@ -50,36 +36,17 @@ make test
 make serve-docs
 ```
 
-### Running Analysis Sessions
-
-```bash
-# Start a Claude Code session with the analysis prompt
-cat prompts/analysis_session.md
-```
-
 ## Project Structure
 
 ```
 virt-graph/
   src/virt_graph/
     handlers/           # GREEN/YELLOW/RED handlers
-      base.py           # Safety limits, frontier batching
-      traversal.py      # BFS traversal (YELLOW)
-      pathfinding.py    # Dijkstra (RED)
-      network.py        # Centrality, components (RED)
     estimator/          # Graph size estimation
     ontology.py         # OntologyAccessor API
   ontology/
     supply_chain.yaml   # Domain ontology (LinkML)
-    virt_graph.yaml     # VG metamodel extension
-    TEMPLATE.yaml       # Starter template for new ontologies
   prompts/              # Claude Code session starters
-    ontology_discovery.md
-    pattern_discovery.md
-    analysis_session.md
-  patterns/             # Query patterns
-    templates/          # Generalized templates
-    raw/                # Discovered patterns
   benchmark/            # VG vs Neo4j comparison
   docs/                 # MkDocs documentation
 ```
@@ -89,8 +56,7 @@ virt-graph/
 - **No Migration Required**: Query existing PostgreSQL data as a graph
 - **Safety Limits**: Built-in guards prevent runaway queries (MAX_NODES=10,000)
 - **Frontier Batching**: Efficient traversal with one query per depth level
-- **Schema Parameterized**: Handlers work with any table structure
-- **Adaptive Estimation**: Intelligent graph size prediction prevents memory exhaustion
+- **26x Faster**: No network hop to a separate database
 
 ## Benchmark Results
 
@@ -105,53 +71,32 @@ Virtual Graph achieves **92% accuracy** compared to Neo4j baseline:
 
 *YELLOW includes queries that correctly triggered safety limits.
 
-Virtual Graph is **26x faster** on average due to no network hop to a separate database.
-
 ## TCO Comparison
 
-| Scenario | Virtual Graph | Neo4j |
-|----------|--------------|-------|
-| Tech Startup (Year 1) | $1,500 | $12,400 |
-| Enterprise (Year 1) | $145,800 | $306,600 |
-| Setup Time | 4 hours | 44 hours |
+| Scenario | Virtual Graph | Neo4j | Savings |
+|----------|--------------|-------|---------|
+| Tech Startup | $15,200 | $67,600 | 77% |
+| Enterprise | $145,800 | $306,600 | 52% |
 
-See [docs/tco_framework.md](docs/tco_framework.md) for enterprise considerations.
+## Documentation
+
+- [Getting Started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Ontology Guide](docs/ontology-guide.md)
+- [Benchmark Report](docs/benchmark-report.md)
 
 ## Development
 
 ```bash
-# Run specific test gate
-make test-gate1
-make test-gate2
-
-# Validate ontology (two-layer)
-make validate-ontology
-
-# Run Neo4j comparison benchmark
-make neo4j-up
-poetry run python neo4j/migrate.py
-poetry run python benchmark/run.py --system both
+make test-gate1         # Database and core handlers
+make test-gate2         # Ontology and traversal
+make validate-ontology  # Two-layer validation
+make benchmark          # Run full benchmark
 ```
 
-## Documentation
+## Version
 
-- [Architecture Overview](docs/architecture.md)
-- [Traffic Light Routing](docs/traffic_light_routing.md)
-- [Benchmark Results](docs/benchmark_results.md)
-- [TCO Analysis](docs/tco_analysis.md)
-
-## Project Status
-
-All phases complete. Current version: **0.8.4**
-
-| Phase | Description |
-|-------|-------------|
-| Phase 1 | Foundation - Database + Handlers |
-| Phase 2 | Discovery - Ontology + Schema Skill |
-| Phase 3 | Query Paths - GREEN/YELLOW/RED |
-| Phase 4 | Pattern Maturity |
-| Phase 5 | Neo4j Baseline + Benchmark |
-| Phase 6 | Evaluation + Documentation |
+Current version: **0.9.0** (Lean Academic Publication)
 
 ## License
 

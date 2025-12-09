@@ -3,7 +3,7 @@ site_description: Graph-like queries over relational data using LLM reasoning
 site_url: https://virt-graph.dev
 
 repo_name: virt-graph
-repo_url: https://github.com/anthropics/virt-graph
+repo_url: https://github.com/mcfitzgerald/virt-graph
 
 theme:
   name: material
@@ -21,15 +21,10 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - navigation.tabs
     - navigation.sections
-    - navigation.expand
-    - navigation.path
     - navigation.top
     - search.suggest
-    - search.highlight
     - content.code.copy
-    - content.code.annotate
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -39,13 +34,8 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.details
   - admonition
   - tables
-  - attr_list
-  - md_in_html
   - toc:
       permalink: true
 
@@ -54,47 +44,7 @@ plugins:
 
 nav:
   - Home: index.md
-
-  - Concepts:
-    - Overview: concepts/overview.md
-    - Architecture: concepts/architecture.md
-    - When to Use Virtual Graph: concepts/when-to-use.md
-
-  - Workflow:
-    - Overview: workflow/overview.md
-    - "Phase 1: Ontology Discovery": workflow/ontology-discovery.md
-    - "Phase 2: Pattern Discovery": workflow/pattern-discovery.md
-    - "Phase 3: Analysis Sessions": workflow/analysis-sessions.md
-
-  - Examples:
-    - Supply Chain:
-      - Overview: examples/supply-chain/overview.md
-      - Setup: examples/supply-chain/setup.md
-      - Ontology Tour: examples/supply-chain/ontology.md
-      - Query Patterns: examples/supply-chain/patterns.md
-      - Query Walkthroughs: examples/supply-chain/queries.md
-      - Benchmarks: examples/supply-chain/benchmark.md
-
-  - Guides:
-    - Handler Cookbook: guides/handler-cookbook.md
-
-  - Evaluation:
-    - Methodology: evaluation/methodology.md
-    - Benchmark Setup: evaluation/benchmark-setup.md
-    - Benchmark Results: evaluation/benchmark-results.md
-    - TCO Framework: evaluation/tco-framework.md
-    - Research Findings: evaluation/research-findings.md
-
-  - Reference:
-    - API:
-      - Handlers: reference/api/handlers.md
-      - Ontology: reference/api/ontology.md
-      - Estimator: reference/api/estimator.md
-    - Project History: reference/history.md
-
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/anthropics/virt-graph
-
-copyright: Copyright &copy; 2024-2025 Anthropic
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - Ontology Guide: ontology-guide.md
+  - Benchmark Report: benchmark-report.md
