@@ -75,6 +75,9 @@ nav:
       - Query Walkthroughs: examples/supply-chain/queries.md
       - Benchmarks: examples/supply-chain/benchmark.md
 
+  - Guides:
+    - Handler Cookbook: guides/handler-cookbook.md
+
   - Evaluation:
     - Methodology: evaluation/methodology.md
     - Benchmark Setup: evaluation/benchmark-setup.md

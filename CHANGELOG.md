@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.10] - 2025-12-08
+
+### Added
+
+- **Handler Cookbook** (`docs/guides/handler-cookbook.md`) - Comprehensive practical guide for all handlers with:
+  - Generic patterns using placeholder syntax for domain-agnostic usage
+  - Direction semantics explained for inbound/outbound traversals
+  - Return type documentation for all handlers
+  - Mixed complexity patterns (GREEN + YELLOW + RED combinations)
+  - Safety and performance guidelines
+  - Error handling patterns
+
+---
+
 ## [0.8.9] - 2025-12-08
 
 ### Added

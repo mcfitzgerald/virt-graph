@@ -579,7 +579,7 @@ def traverse(...) -> dict[str, Any]:
 | Fix 3: Excluded nodes | P2 | Medium | None |
 | Fix 5A: Direction in ontology | P2 | Low | Update discovery prompt |
 | Fix 4: Resilience handler | P3 | High | None |
-| Enhancement B: Cookbook | P3 | Medium | queries.md exists |
+| Enhancement B: Cookbook | ✅ DONE | Medium | `docs/guides/handler-cookbook.md` |
 | Enhancement C: Validation script | P3 | Low | Fix 1 first |
 | Enhancement D: Output schemas | P4 | Medium | None |
 
