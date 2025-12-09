@@ -3,7 +3,8 @@
 
 .PHONY: help install test validate-ontology validate-linkml validate-vg \
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
-        db-up db-down db-reset neo4j-up neo4j-down benchmark benchmark-vg
+        db-up db-down db-reset db-logs validate-entities \
+        neo4j-up neo4j-down neo4j-logs benchmark benchmark-vg
 
 # Default target
 help:
@@ -33,6 +34,7 @@ help:
 	@echo "  make db-up            Start PostgreSQL"
 	@echo "  make db-down          Stop PostgreSQL"
 	@echo "  make db-reset         Reset PostgreSQL (regenerate data)"
+	@echo "  make validate-entities  Verify named test entities exist"
 	@echo ""
 	@echo "Neo4j (benchmarking):"
 	@echo "  make neo4j-up         Start Neo4j"
@@ -97,6 +99,9 @@ db-reset:
 
 db-logs:
 	docker-compose -f postgres/docker-compose.yml logs -f
+
+validate-entities:
+	poetry run python scripts/validate_entities.py
 
 # Neo4j
 neo4j-up:

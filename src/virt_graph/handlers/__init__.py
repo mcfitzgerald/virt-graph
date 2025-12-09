@@ -21,12 +21,20 @@ from .base import (
     estimate_reachable_nodes,  # DEPRECATED - use virt_graph.estimator
     fetch_edges_for_frontier,
     fetch_nodes,
+    # Result TypedDicts for type hints
+    AllShortestPathsResult,
+    BomExplodeResult,
+    CentralityResult,
+    ResilienceResult,
+    ShortestPathResult,
+    TraverseResult,
 )
 from .network import (
     centrality,
     connected_components,
     graph_density,
     neighbors,
+    resilience_analysis,
 )
 from .pathfinding import (
     all_shortest_paths,
@@ -55,6 +63,13 @@ __all__ = [
     "estimate_reachable_nodes",  # DEPRECATED
     "fetch_edges_for_frontier",
     "fetch_nodes",
+    # Result TypedDicts
+    "TraverseResult",
+    "BomExplodeResult",
+    "ShortestPathResult",
+    "AllShortestPathsResult",
+    "CentralityResult",
+    "ResilienceResult",
     # Estimation config
     "EstimationConfig",
     # Traversal handlers (YELLOW)
@@ -69,4 +84,5 @@ __all__ = [
     "connected_components",
     "graph_density",
     "neighbors",
+    "resilience_analysis",
 ]

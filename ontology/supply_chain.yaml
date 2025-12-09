@@ -388,6 +388,10 @@ classes:
       vg:domain_class: Supplier
       vg:range_class: Supplier
       vg:traversal_complexity: YELLOW
+      vg:traversal_semantics: >-
+        inbound: Find suppliers who sell TO this entity (upstream suppliers).
+        outbound: Find entities this supplier sells TO (downstream buyers).
+        Example: To find all upstream suppliers of Acme Corp, use direction=inbound.
       vg:asymmetric: true
       vg:irreflexive: true
       vg:acyclic: true
@@ -421,6 +425,10 @@ classes:
       vg:domain_class: Part
       vg:range_class: Part
       vg:traversal_complexity: YELLOW
+      vg:traversal_semantics: >-
+        inbound: Find parts that are components OF me (my sub-components).
+        outbound: Find parts that contain me (what I am a component of).
+        Example: To find all parent assemblies containing CHIP-001, use direction=outbound.
       vg:asymmetric: true
       vg:irreflexive: true
       vg:acyclic: true
@@ -458,6 +466,10 @@ classes:
       vg:domain_class: Part
       vg:range_class: Part
       vg:traversal_complexity: YELLOW
+      vg:traversal_semantics: >-
+        inbound: Find parts that contain me (parent assemblies).
+        outbound: Find parts that are my sub-components (BOM explosion).
+        Example: To explode Turbo Encabulator BOM, use direction=outbound.
       vg:asymmetric: true
       vg:irreflexive: true
       vg:acyclic: true
@@ -496,6 +508,10 @@ classes:
       vg:domain_class: Facility
       vg:range_class: Facility
       vg:traversal_complexity: RED
+      vg:traversal_semantics: >-
+        inbound: Find facilities with routes arriving at this facility.
+        outbound: Find facilities reachable from this facility (departing routes).
+        Example: To find all facilities reachable from Chicago Warehouse, use direction=outbound.
       vg:irreflexive: true
       vg:is_weighted: true
       vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}, {"name": "transit_time_hours", "type": "decimal", "unit": "hours"}, {"name": "cost_usd", "type": "decimal", "unit": "usd"}]'

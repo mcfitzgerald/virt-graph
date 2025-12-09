@@ -119,12 +119,13 @@ Available handlers for graph operations:
 - `estimation_config` - Fine-tune estimation parameters (damping, margins)
 
 **RED (Network Algorithms)**:
-- `shortest_path(conn, nodes_table, edges_table, ..., start_id, end_id, weight_col)` - Dijkstra shortest path
-- `all_shortest_paths(conn, ..., max_paths)` - Find all optimal routes
+- `shortest_path(conn, nodes_table, edges_table, ..., start_id, end_id, weight_col, excluded_nodes)` - Dijkstra shortest path (can route around excluded nodes)
+- `all_shortest_paths(conn, ..., max_paths, excluded_nodes)` - Find all optimal routes
 - `centrality(conn, ..., centrality_type, top_n)` - Degree/betweenness/closeness/PageRank
 - `connected_components(conn, ..., min_size)` - Find graph clusters
 - `graph_density(conn, edges_table, ...)` - Network statistics
 - `neighbors(conn, ..., node_id, direction)` - Direct neighbor lookup
+- `resilience_analysis(conn, ..., node_to_remove)` - Simulate node removal, find disconnected pairs
 
 ## Patterns
 
@@ -274,6 +275,24 @@ Key relationship complexities:
 - **GREEN**: Simple FK joins (Provides, CanSupply, ContainsComponent, etc.)
 - **YELLOW**: Recursive traversal (SuppliesTo, ComponentOf)
 - **RED**: Network algorithms with weights (ConnectsTo)
+
+### Relationship Direction Quick Reference
+
+When using handlers, "inbound" and "outbound" refer to edge direction in the database:
+
+| Relationship | edge_from → edge_to | "inbound" means | "outbound" means |
+|--------------|---------------------|-----------------|------------------|
+| SuppliesTo | seller_id → buyer_id | Who sells to me (upstream) | Who I sell to (downstream) |
+| HasComponent | parent_part_id → child_part_id | What contains me | My sub-components |
+| ComponentOf | child_part_id → parent_part_id | My sub-components | What contains me |
+| ConnectsTo | origin_id → destination_id | Routes arriving here | Routes departing here |
+
+**Example**: To find all upstream suppliers of "Acme Corp":
+```python
+traverse(conn, "suppliers", "supplier_relationships",
+         edge_from_col="seller_id", edge_to_col="buyer_id",
+         start_id=acme_id, direction="inbound")  # Follow seller_id ← buyer_id
+```
 
 ## Skills
 

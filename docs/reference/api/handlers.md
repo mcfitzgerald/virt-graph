@@ -335,7 +335,8 @@ def shortest_path(
     weight_col: str | None = None,
     max_depth: int = 20,
     id_column: str = "id",
-) -> dict[str, Any]
+    excluded_nodes: list[int] | None = None,
+) -> ShortestPathResult
 ```
 
 Find shortest path between two nodes using Dijkstra's algorithm.
@@ -354,6 +355,7 @@ Find shortest path between two nodes using Dijkstra's algorithm.
 | `weight_col` | `str \| None` | Edge weight column (None = hop count) |
 | `max_depth` | `int` | Maximum search depth |
 | `id_column` | `str` | Primary key column |
+| `excluded_nodes` | `list[int] \| None` | Node IDs to route around |
 
 **Returns:**
 
@@ -364,6 +366,7 @@ Find shortest path between two nodes using Dijkstra's algorithm.
     "distance": 1234.56,         # Total weight/length
     "edges": [...],              # Edges along path
     "nodes_explored": int,       # Nodes loaded
+    "excluded_nodes": [...],     # Nodes that were excluded
     "error": str | None,         # Error if no path
 }
 ```
@@ -375,6 +378,7 @@ Find shortest path between two nodes using Dijkstra's algorithm.
 ```python
 from virt_graph.handlers import shortest_path
 
+# Basic shortest path
 result = shortest_path(
     conn,
     nodes_table="facilities",
@@ -384,6 +388,19 @@ result = shortest_path(
     start_id=1,
     end_id=25,
     weight_col="cost_usd",
+)
+
+# Route around a specific node (e.g., avoid Denver Hub)
+result = shortest_path(
+    conn,
+    nodes_table="facilities",
+    edges_table="transport_routes",
+    edge_from_col="origin_facility_id",
+    edge_to_col="destination_facility_id",
+    start_id=chicago_id,
+    end_id=la_id,
+    weight_col="cost_usd",
+    excluded_nodes=[denver_id],  # Route around Denver
 )
 ```
 
@@ -404,7 +421,8 @@ def all_shortest_paths(
     max_depth: int = 20,
     max_paths: int = 10,
     id_column: str = "id",
-) -> dict[str, Any]
+    excluded_nodes: list[int] | None = None,
+) -> AllShortestPathsResult
 ```
 
 Find all shortest paths between two nodes.
@@ -425,6 +443,8 @@ Same as `shortest_path()`, plus:
     "distance": 1234.56,                  # Common distance
     "path_count": int,                    # Paths found
     "nodes_explored": int,                # Nodes loaded
+    "excluded_nodes": [...],              # Nodes that were excluded
+    "error": str | None,                  # Error if no paths
 }
 ```
 
@@ -621,6 +641,92 @@ Get direct neighbors of a node.
 
 ---
 
+### `resilience_analysis()`
+
+```python
+def resilience_analysis(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    node_to_remove: int,
+    id_column: str = "id",
+) -> ResilienceResult
+```
+
+Analyze network resilience by simulating node removal. Identifies single points of failure.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `conn` | `PgConnection` | Database connection |
+| `nodes_table` | `str` | Node table |
+| `edges_table` | `str` | Edge table |
+| `edge_from_col` | `str` | Source column |
+| `edge_to_col` | `str` | Target column |
+| `node_to_remove` | `int` | Node ID to simulate removal |
+| `id_column` | `str` | Primary key column |
+
+**Returns:**
+
+```python
+{
+    "node_removed": int,           # The simulated-removed node
+    "node_removed_info": {...},    # Node details
+    "disconnected_pairs": [...],   # (node_a, node_b) tuples that lose connectivity
+    "components_before": int,      # Connected components before removal
+    "components_after": int,       # Connected components after removal
+    "component_increase": int,     # New components created
+    "isolated_nodes": [...],       # Nodes with degree 0 after removal
+    "affected_node_count": int,    # Total affected nodes
+    "is_critical": bool,           # True if removal breaks connectivity
+    "error": str | None,           # Error message if any
+}
+```
+
+**Raises:** `SubgraphTooLarge` if graph exceeds MAX_NODES.
+
+**Example:**
+
+```python
+from virt_graph.handlers import resilience_analysis
+
+# Check what happens if Denver Hub goes offline
+result = resilience_analysis(
+    conn,
+    nodes_table="facilities",
+    edges_table="transport_routes",
+    edge_from_col="origin_facility_id",
+    edge_to_col="destination_facility_id",
+    node_to_remove=denver_id,
+)
+
+if result["is_critical"]:
+    print(f"Denver Hub is critical! Removing it creates {result['component_increase']} new components")
+    print(f"Disconnected pairs: {result['disconnected_pairs']}")
+```
+
+---
+
+## Result TypedDicts
+
+All handlers return typed dictionaries for better IDE support:
+
+```python
+from virt_graph.handlers import (
+    TraverseResult,
+    BomExplodeResult,
+    ShortestPathResult,
+    AllShortestPathsResult,
+    CentralityResult,
+    ResilienceResult,
+)
+```
+
+---
+
 ## Import Shortcuts
 
 ```python
@@ -638,6 +744,7 @@ from virt_graph.handlers import (
     connected_components,
     graph_density,
     neighbors,
+    resilience_analysis,
     # Utilities
     get_connection,
     # Exceptions
@@ -645,6 +752,13 @@ from virt_graph.handlers import (
     SubgraphTooLarge,
     # Config
     EstimationConfig,
+    # Result TypedDicts
+    TraverseResult,
+    BomExplodeResult,
+    ShortestPathResult,
+    AllShortestPathsResult,
+    CentralityResult,
+    ResilienceResult,
 )
 ```
 

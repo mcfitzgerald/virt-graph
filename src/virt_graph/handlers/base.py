@@ -5,15 +5,157 @@ This module provides the foundation for all graph operation handlers:
 - Non-negotiable safety limits to prevent runaway queries
 - Frontier batching utilities for efficient traversal
 - Node estimation for proactive size checks
+- TypedDict definitions for handler return types
 
 Note: estimate_reachable_nodes is deprecated. Use the estimator module instead.
 """
 
 import warnings
-from typing import Any
+from decimal import Decimal
+from typing import Any, TypedDict
 
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
+
+
+# === TYPED RESULT DICTIONARIES ===
+# These provide IDE support and documentation for handler return types
+
+
+class TraverseResult(TypedDict):
+    """Result type for traverse() and traverse_collecting()."""
+
+    nodes: list[dict[str, Any]]
+    """List of node dicts with all columns from the nodes table."""
+
+    paths: dict[int, list[int]]
+    """Map of node_id to path (list of IDs from start node)."""
+
+    edges: list[tuple[int, int]]
+    """List of (from_id, to_id) tuples traversed."""
+
+    depth_reached: int
+    """Actual max depth encountered during traversal."""
+
+    nodes_visited: int
+    """Total unique nodes visited."""
+
+    terminated_at: list[int]
+    """Node IDs where traversal stopped due to stop_condition."""
+
+
+class BomExplodeResult(TypedDict):
+    """Result type for bom_explode()."""
+
+    components: list[dict[str, Any]]
+    """Flattened list of all components with depth and quantities."""
+
+    total_parts: int
+    """Total number of unique parts in the BOM."""
+
+    max_depth: int
+    """Maximum depth of the BOM hierarchy."""
+
+    nodes_visited: int
+    """Total nodes visited during explosion."""
+
+
+class ShortestPathResult(TypedDict):
+    """Result type for shortest_path()."""
+
+    path: list[int] | None
+    """List of node IDs from start to end, or None if no path found."""
+
+    path_nodes: list[dict[str, Any]]
+    """Node dicts with details for each node in the path."""
+
+    distance: float | int | None
+    """Total path weight/length, or None if no path found."""
+
+    edges: list[dict[str, Any]]
+    """Edge dicts with from_id, to_id, and weight for path edges."""
+
+    nodes_explored: int
+    """Number of nodes loaded into graph during search."""
+
+    excluded_nodes: list[int]
+    """Node IDs that were excluded from the search."""
+
+    error: str | None
+    """Error message if no path found, None otherwise."""
+
+
+class AllShortestPathsResult(TypedDict):
+    """Result type for all_shortest_paths()."""
+
+    paths: list[list[int]]
+    """List of paths, each path is a list of node IDs."""
+
+    distance: float | int | None
+    """Common distance of all shortest paths."""
+
+    path_count: int
+    """Number of paths found."""
+
+    nodes_explored: int
+    """Number of nodes loaded into graph."""
+
+    excluded_nodes: list[int]
+    """Node IDs that were excluded from the search."""
+
+    error: str | None
+    """Error message if no paths found."""
+
+
+class CentralityResult(TypedDict):
+    """Result type for centrality()."""
+
+    results: list[dict[str, Any]]
+    """List of {node: dict, score: float} sorted by score descending."""
+
+    centrality_type: str
+    """Type of centrality calculated (degree, betweenness, etc.)."""
+
+    graph_stats: dict[str, Any]
+    """Basic graph statistics (nodes, edges, density, etc.)."""
+
+    nodes_loaded: int
+    """Total nodes in graph."""
+
+
+class ResilienceResult(TypedDict):
+    """Result type for resilience_analysis()."""
+
+    node_removed: int
+    """The node ID that was simulated as removed."""
+
+    node_removed_info: dict[str, Any]
+    """Details of the removed node."""
+
+    disconnected_pairs: list[tuple[int, int]]
+    """Pairs of nodes that lose connectivity after removal."""
+
+    components_before: int
+    """Number of connected components before removal."""
+
+    components_after: int
+    """Number of connected components after removal."""
+
+    component_increase: int
+    """How many new components were created."""
+
+    isolated_nodes: list[int]
+    """Nodes that become completely disconnected."""
+
+    affected_node_count: int
+    """Total nodes affected by the removal."""
+
+    is_critical: bool
+    """True if removal increases components or isolates nodes."""
+
+    error: str | None
+    """Error message if any."""
+
 
 # === SAFETY LIMITS (Non-negotiable) ===
 MAX_DEPTH = 50  # Absolute traversal depth limit
@@ -205,7 +347,16 @@ def fetch_nodes(
         col_names = [desc[0] for desc in cur.description]
         rows = cur.fetchall()
 
-    return [dict(zip(col_names, row)) for row in rows]
+    nodes = []
+    for row in rows:
+        node = dict(zip(col_names, row))
+        # Convert Decimal to float for numeric fields (prevents TypeError in calculations)
+        for key, value in node.items():
+            if isinstance(value, Decimal):
+                node[key] = float(value)
+        nodes.append(node)
+
+    return nodes
 
 
 def should_stop(

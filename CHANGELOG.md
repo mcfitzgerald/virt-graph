@@ -7,9 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+---
 
-- **Ontology rediscovery** - Archived `supply_chain.yaml` (v2.1) to `archive/supply_chain_v2.1_linkml.yaml` for fresh 4-round discovery protocol
+## [0.8.9] - 2025-12-08
+
+### Added
+
+**Handler Enhancements**
+
+- `resilience_analysis()` handler - Simulates node removal to find disconnected pairs and network vulnerabilities
+- `excluded_nodes` parameter for `shortest_path()` and `all_shortest_paths()` - Route around specific nodes
+- TypedDict output schemas for all handlers (`TraverseResult`, `ShortestPathResult`, `ResilienceResult`, etc.)
+
+**Data Generator Improvements**
+
+- Named test entities for reproducible benchmarking:
+  - Parts: `CHIP-001`, `RESISTOR-100`, `CAP-001`, `MOTOR-001`, `SENSOR-001`
+  - Facilities: `Denver Hub`, `Miami Hub`, `Seattle Warehouse`
+  - Customers: `Acme Industries`, `Globex Corporation`, `Initech Inc`
+  - Orders: `ORD-2024-001`, `ORD-2024-002`, `ORD-2024-003`
+- Explicit supplier relationships: Eastern Electronics → Pacific Components → Acme Corp
+- Transport routes between named facilities (including Denver Hub connections for routing tests)
+
+**Ontology Enhancements**
+
+- `vg:traversal_semantics` annotation for YELLOW/RED relationships
+- Documents what "inbound" and "outbound" mean for each relationship
+
+**Developer Experience**
+
+- `make validate-entities` - Verify named test entities exist before benchmarking
+- `scripts/validate_entities.py` - Checks entities and relationships
+- Relationship direction cheat sheet in CLAUDE.md
+
+### Fixed
+
+- **Decimal type conversion** - PostgreSQL Decimal values now converted to float in `fetch_nodes()`, `_fetch_edges_with_weights()`, and `_load_full_graph()` (prevents TypeError in calculations)
 
 ---
 

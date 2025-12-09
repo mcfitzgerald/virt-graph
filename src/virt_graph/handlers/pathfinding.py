@@ -5,6 +5,7 @@ Loads subgraph on-demand using frontier-batched queries.
 Implements shortest path algorithms with weighted edges.
 """
 
+from decimal import Decimal
 from typing import Any
 
 import networkx as nx
@@ -31,6 +32,7 @@ def shortest_path(
     weight_col: str | None = None,
     max_depth: int = 20,
     id_column: str = "id",
+    excluded_nodes: list[int] | None = None,
 ) -> dict[str, Any]:
     """
     Find shortest path between two nodes using Dijkstra.
@@ -50,6 +52,7 @@ def shortest_path(
                     If None, uses hop count (unweighted shortest path)
         max_depth: Maximum search depth
         id_column: Name of the ID column in nodes_table
+        excluded_nodes: Node IDs to exclude from path (route around these nodes)
 
     Returns:
         dict with:
@@ -58,9 +61,11 @@ def shortest_path(
             - distance: total path weight/length (None if no path)
             - edges: list of edge dicts with weights along the path
             - nodes_explored: number of nodes loaded into graph
+            - excluded_nodes: list of node IDs that were excluded
             - error: error message if no path found
 
     Example:
+        >>> # Find route from Chicago to LA avoiding Denver Hub
         >>> result = shortest_path(
         ...     conn,
         ...     nodes_table="facilities",
@@ -70,10 +75,14 @@ def shortest_path(
         ...     start_id=chicago_id,
         ...     end_id=la_id,
         ...     weight_col="cost_usd",
+        ...     excluded_nodes=[denver_id],
         ... )
-        >>> print(f"Cheapest route costs ${result['distance']:.2f}")
+        >>> print(f"Route avoiding Denver costs ${result['distance']:.2f}")
     """
     max_depth = min(max_depth, MAX_DEPTH)
+
+    # Set of nodes to exclude (for filtering edges)
+    excluded_set = set(excluded_nodes) if excluded_nodes else set()
 
     # Build subgraph incrementally using bidirectional BFS
     # Start from both ends to reduce nodes loaded
@@ -117,6 +126,9 @@ def shortest_path(
 
             next_forward = set()
             for from_id, to_id, weight in edges:
+                # Skip edges involving excluded nodes
+                if from_id in excluded_set or to_id in excluded_set:
+                    continue
                 G.add_edge(from_id, to_id, weight=weight if weight else 1)
                 if to_id not in forward_visited:
                     next_forward.add(to_id)
@@ -138,6 +150,9 @@ def shortest_path(
 
             next_backward = set()
             for from_id, to_id, weight in edges:
+                # Skip edges involving excluded nodes
+                if from_id in excluded_set or to_id in excluded_set:
+                    continue
                 G.add_edge(from_id, to_id, weight=weight if weight else 1)
                 if from_id not in backward_visited:
                     next_backward.add(from_id)
@@ -220,6 +235,7 @@ def shortest_path(
         "distance": distance,
         "edges": path_edges,
         "nodes_explored": nodes_explored,
+        "excluded_nodes": excluded_nodes or [],
         "error": None,
     }
 
@@ -236,6 +252,7 @@ def all_shortest_paths(
     max_depth: int = 20,
     max_paths: int = 10,
     id_column: str = "id",
+    excluded_nodes: list[int] | None = None,
 ) -> dict[str, Any]:
     """
     Find all shortest paths between two nodes.
@@ -254,6 +271,7 @@ def all_shortest_paths(
         max_depth: Maximum search depth
         max_paths: Maximum number of paths to return
         id_column: Name of the ID column
+        excluded_nodes: Node IDs to exclude from paths (route around these nodes)
 
     Returns:
         dict with:
@@ -261,7 +279,11 @@ def all_shortest_paths(
             - distance: common distance of all paths
             - path_count: number of paths found
             - nodes_explored: number of nodes loaded
+            - excluded_nodes: list of node IDs that were excluded
     """
+    # Set of nodes to exclude (for filtering edges)
+    excluded_set = set(excluded_nodes) if excluded_nodes else set()
+
     # First find one shortest path to get the graph
     result = shortest_path(
         conn,
@@ -274,6 +296,7 @@ def all_shortest_paths(
         weight_col,
         max_depth,
         id_column,
+        excluded_nodes,
     )
 
     if result["path"] is None:
@@ -282,6 +305,7 @@ def all_shortest_paths(
             "distance": None,
             "path_count": 0,
             "nodes_explored": result["nodes_explored"],
+            "excluded_nodes": excluded_nodes or [],
             "error": result["error"],
         }
 
@@ -306,6 +330,9 @@ def all_shortest_paths(
 
         next_frontier = set()
         for from_id, to_id, weight in edges:
+            # Skip edges involving excluded nodes
+            if from_id in excluded_set or to_id in excluded_set:
+                continue
             G.add_edge(from_id, to_id, weight=weight if weight else 1)
             if to_id not in visited:
                 next_frontier.add(to_id)
@@ -327,6 +354,7 @@ def all_shortest_paths(
             "distance": None,
             "path_count": 0,
             "nodes_explored": len(visited),
+            "excluded_nodes": excluded_nodes or [],
             "error": "No path found",
         }
 
@@ -335,6 +363,7 @@ def all_shortest_paths(
         "distance": result["distance"],
         "path_count": len(all_paths),
         "nodes_explored": len(visited),
+        "excluded_nodes": excluded_nodes or [],
         "error": None,
     }
 
@@ -377,8 +406,11 @@ def _fetch_edges_with_weights(
         cur.execute(query, (frontier_ids,))
         rows = cur.fetchall()
 
-    # Add weight column (or None if not present)
+    # Add weight column (or None if not present), convert Decimal to float
     if weight_col:
-        return [(row[0], row[1], row[2]) for row in rows]
+        return [
+            (row[0], row[1], float(row[2]) if isinstance(row[2], Decimal) else row[2])
+            for row in rows
+        ]
     else:
         return [(row[0], row[1], None) for row in rows]

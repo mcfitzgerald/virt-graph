@@ -188,21 +188,47 @@ class SupplyChainGenerator:
         """Generate tier relationships: T3 → T2 → T1."""
         rel_id = 1
 
+        # First, ensure named supplier chain exists:
+        # Eastern Electronics (T3, id=7) → Pacific Components (T2, id=4) → Acme Corp (T1, id=1)
+        named_supply_chain = [
+            (7, 4, True),   # Eastern Electronics → Pacific Components (primary)
+            (4, 1, True),   # Pacific Components → Acme Corp (primary)
+            (8, 4, False),  # Delta Supplies → Pacific Components (alternate)
+            (5, 1, False),  # Northern Materials → Acme Corp (alternate)
+            (6, 2, True),   # Apex Manufacturing → GlobalTech Industries (primary)
+        ]
+
+        for seller_id, buyer_id, is_primary in named_supply_chain:
+            self.supplier_relationships.append({
+                "id": rel_id,
+                "seller_id": seller_id,
+                "buyer_id": buyer_id,
+                "relationship_type": "supplies",
+                "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
+                "is_primary": is_primary,
+            })
+            rel_id += 1
+
+        # Track existing relationships to avoid duplicates
+        existing_rels = {(r["seller_id"], r["buyer_id"]) for r in self.supplier_relationships}
+
         # T3 suppliers sell to T2 suppliers
         for t3_id in self.supplier_ids_by_tier[3]:
             # Each T3 sells to 1-3 T2 suppliers
             num_buyers = random.randint(1, 3)
             buyers = random.sample(self.supplier_ids_by_tier[2], min(num_buyers, len(self.supplier_ids_by_tier[2])))
             for t2_id in buyers:
-                self.supplier_relationships.append({
-                    "id": rel_id,
-                    "seller_id": t3_id,
-                    "buyer_id": t2_id,
-                    "relationship_type": "supplies",
-                    "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
-                    "is_primary": random.random() > 0.7,
-                })
-                rel_id += 1
+                if (t3_id, t2_id) not in existing_rels:
+                    self.supplier_relationships.append({
+                        "id": rel_id,
+                        "seller_id": t3_id,
+                        "buyer_id": t2_id,
+                        "relationship_type": "supplies",
+                        "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
+                        "is_primary": random.random() > 0.7,
+                    })
+                    existing_rels.add((t3_id, t2_id))
+                    rel_id += 1
 
         # T2 suppliers sell to T1 suppliers
         for t2_id in self.supplier_ids_by_tier[2]:
@@ -210,15 +236,17 @@ class SupplyChainGenerator:
             num_buyers = random.randint(1, 2)
             buyers = random.sample(self.supplier_ids_by_tier[1], min(num_buyers, len(self.supplier_ids_by_tier[1])))
             for t1_id in buyers:
-                self.supplier_relationships.append({
-                    "id": rel_id,
-                    "seller_id": t2_id,
-                    "buyer_id": t1_id,
-                    "relationship_type": "supplies",
-                    "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
-                    "is_primary": random.random() > 0.7,
-                })
-                rel_id += 1
+                if (t2_id, t1_id) not in existing_rels:
+                    self.supplier_relationships.append({
+                        "id": rel_id,
+                        "seller_id": t2_id,
+                        "buyer_id": t1_id,
+                        "relationship_type": "supplies",
+                        "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
+                        "is_primary": random.random() > 0.7,
+                    })
+                    existing_rels.add((t2_id, t1_id))
+                    rel_id += 1
 
     def generate_parts_with_bom(self, count: int):
         """
@@ -347,13 +375,36 @@ class SupplyChainGenerator:
                 })
                 bom_id += 1
 
-        # Add some named parts for testing
-        named_parts = [
-            (count + 1, "TURBO-ENC-001", "Turbo Encabulator Main Assembly"),
-            (count + 2, "FLUX-CAP-001", "Flux Capacitor Module"),
-            (count + 3, "WIDGET-A", "Standard Widget Type A"),
+        # Add named raw material parts for testing (to be used in named product BOMs)
+        named_raw_parts = [
+            (count + 1, "CHIP-001", "Integrated Circuit Chip", "Electronic"),
+            (count + 2, "RESISTOR-100", "100 Ohm Resistor", "Electronic"),
+            (count + 3, "CAP-001", "10uF Capacitor", "Electronic"),
+            (count + 4, "MOTOR-001", "Stepper Motor Unit", "Motor"),
+            (count + 5, "SENSOR-001", "Temperature Sensor", "Sensor"),
         ]
-        for part_id, part_number, description in named_parts:
+        for part_id, part_number, description, category in named_raw_parts:
+            self.parts.append({
+                "id": part_id,
+                "part_number": part_number,
+                "description": description,
+                "category": category,
+                "unit_cost": round(random.uniform(1, 50), 2),
+                "weight_kg": round(random.uniform(0.01, 0.5), 3),
+                "lead_time_days": random.randint(7, 30),
+                "primary_supplier_id": random.choice(self.supplier_ids_by_tier[2]),
+                "is_critical": True,
+                "min_stock_level": 100,
+            })
+            self.leaf_part_ids.append(part_id)
+
+        # Add named assembly parts for testing
+        named_assembly_parts = [
+            (count + 6, "TURBO-ENC-001", "Turbo Encabulator Main Assembly"),
+            (count + 7, "FLUX-CAP-001", "Flux Capacitor Module"),
+            (count + 8, "WIDGET-A", "Standard Widget Type A"),
+        ]
+        for part_id, part_number, description in named_assembly_parts:
             self.parts.append({
                 "id": part_id,
                 "part_number": part_number,
@@ -367,7 +418,48 @@ class SupplyChainGenerator:
                 "min_stock_level": 50,
             })
             self.top_part_ids.append(part_id)
-            # Add BOM for named parts (use existing high-level assemblies)
+
+        # Build BOM for named assemblies using named raw parts and some level_4_5
+        # Turbo Encabulator uses CHIP-001, RESISTOR-100, CAP-001, MOTOR-001
+        turbo_id = count + 6
+        chip_id = count + 1
+        resistor_id = count + 2
+        cap_id = count + 3
+        motor_id = count + 4
+
+        turbo_components = [
+            (chip_id, 4, "each"),      # 4x CHIP-001
+            (resistor_id, 10, "each"), # 10x RESISTOR-100
+            (cap_id, 6, "each"),       # 6x CAP-001
+            (motor_id, 2, "each"),     # 2x MOTOR-001
+        ]
+        for seq, (comp_id, qty, unit) in enumerate(turbo_components, 1):
+            self.bom.append({
+                "id": bom_id,
+                "parent_part_id": turbo_id,
+                "child_part_id": comp_id,
+                "quantity": qty,
+                "unit": unit,
+                "is_optional": False,
+                "assembly_sequence": seq,
+            })
+            bom_id += 1
+
+        # Add some level_4_5 assemblies to Turbo Encabulator
+        for seq, comp_id in enumerate(random.sample(level_4_5, min(3, len(level_4_5))), len(turbo_components) + 1):
+            self.bom.append({
+                "id": bom_id,
+                "parent_part_id": turbo_id,
+                "child_part_id": comp_id,
+                "quantity": random.randint(1, 2),
+                "unit": "each",
+                "is_optional": False,
+                "assembly_sequence": seq,
+            })
+            bom_id += 1
+
+        # Flux Capacitor and Widget get similar treatment
+        for part_id in [count + 7, count + 8]:
             for seq, comp_id in enumerate(random.sample(level_4_5, min(5, len(level_4_5))), 1):
                 self.bom.append({
                     "id": bom_id,
@@ -466,6 +558,9 @@ class SupplyChainGenerator:
             ("FAC-NYC", "New York Factory", "factory", "New York", "NY", "USA"),
             ("FAC-SH", "Shanghai Hub", "distribution_center", "Shanghai", None, "China"),
             ("FAC-MUN", "Munich Factory", "factory", "Munich", "Bavaria", "Germany"),
+            ("FAC-DEN", "Denver Hub", "distribution_center", "Denver", "CO", "USA"),
+            ("FAC-MIA", "Miami Hub", "distribution_center", "Miami", "FL", "USA"),
+            ("FAC-SEA", "Seattle Warehouse", "warehouse", "Seattle", "WA", "USA"),
         ]
 
         for i, (code, name, ftype, city, state, country) in enumerate(named_facilities):
@@ -509,6 +604,50 @@ class SupplyChainGenerator:
         facility_ids = [f["id"] for f in self.facilities]
         modes = ["truck", "rail", "air", "sea"]
 
+        # Named facility IDs (based on named_facilities order):
+        # 1=Chicago Warehouse, 2=LA Distribution, 3=NYC Factory, 4=Shanghai Hub,
+        # 5=Munich Factory, 6=Denver Hub, 7=Miami Hub, 8=Seattle Warehouse
+
+        # First, create explicit routes between named facilities
+        named_routes = [
+            # Denver Hub connections (Q35 asks about routing around Denver)
+            (6, 1, "truck", 1000, 16, 800),    # Denver Hub → Chicago Warehouse
+            (1, 6, "truck", 1000, 16, 800),    # Chicago Warehouse → Denver Hub
+            (6, 2, "truck", 1100, 18, 900),    # Denver Hub → LA Distribution
+            (2, 6, "truck", 1100, 18, 900),    # LA Distribution → Denver Hub
+            (6, 8, "truck", 1400, 22, 1100),   # Denver Hub → Seattle Warehouse
+            (8, 6, "truck", 1400, 22, 1100),   # Seattle Warehouse → Denver Hub
+            # Main corridor
+            (1, 2, "truck", 2800, 36, 1500),   # Chicago → LA (direct, bypassing Denver)
+            (2, 1, "truck", 2800, 36, 1500),   # LA → Chicago (direct)
+            (1, 3, "rail", 1200, 20, 600),     # Chicago → NYC
+            (3, 1, "rail", 1200, 20, 600),     # NYC → Chicago
+            # Miami Hub connections
+            (7, 2, "truck", 4000, 48, 2000),   # Miami → LA
+            (2, 7, "truck", 4000, 48, 2000),   # LA → Miami
+            (7, 1, "truck", 2100, 28, 1200),   # Miami → Chicago
+            (1, 7, "truck", 2100, 28, 1200),   # Chicago → Miami
+            # International
+            (4, 2, "sea", 10000, 360, 3000),   # Shanghai → LA
+            (5, 3, "air", 6500, 12, 5000),     # Munich → NYC
+        ]
+
+        existing_routes = set()
+        for origin, dest, mode, dist, time, cost in named_routes:
+            self.transport_routes.append({
+                "id": route_id,
+                "origin_facility_id": origin,
+                "destination_facility_id": dest,
+                "transport_mode": mode,
+                "distance_km": dist,
+                "transit_time_hours": time,
+                "cost_usd": cost,
+                "capacity_tons": round(random.uniform(50, 500), 2),
+                "is_active": True,
+            })
+            existing_routes.add((origin, dest, mode))
+            route_id += 1
+
         # Ensure network is connected: create a spanning tree first
         connected = {facility_ids[0]}
         unconnected = set(facility_ids[1:])
@@ -519,25 +658,25 @@ class SupplyChainGenerator:
             unconnected.remove(to_id)
             connected.add(to_id)
 
-            # Create bidirectional routes
+            # Create bidirectional routes (if not already exists)
             for origin, dest in [(from_id, to_id), (to_id, from_id)]:
                 mode = random.choice(modes)
-                self.transport_routes.append({
-                    "id": route_id,
-                    "origin_facility_id": origin,
-                    "destination_facility_id": dest,
-                    "transport_mode": mode,
-                    "distance_km": round(random.uniform(100, 5000), 2),
-                    "transit_time_hours": round(random.uniform(4, 120), 2),
-                    "cost_usd": round(random.uniform(100, 10000), 2),
-                    "capacity_tons": round(random.uniform(10, 1000), 2),
-                    "is_active": True,
-                })
-                route_id += 1
+                if (origin, dest, mode) not in existing_routes:
+                    self.transport_routes.append({
+                        "id": route_id,
+                        "origin_facility_id": origin,
+                        "destination_facility_id": dest,
+                        "transport_mode": mode,
+                        "distance_km": round(random.uniform(100, 5000), 2),
+                        "transit_time_hours": round(random.uniform(4, 120), 2),
+                        "cost_usd": round(random.uniform(100, 10000), 2),
+                        "capacity_tons": round(random.uniform(10, 1000), 2),
+                        "is_active": True,
+                    })
+                    existing_routes.add((origin, dest, mode))
+                    route_id += 1
 
         # Add additional routes for more connectivity
-        existing_routes = {(r["origin_facility_id"], r["destination_facility_id"], r["transport_mode"])
-                          for r in self.transport_routes}
 
         for _ in range(len(facility_ids) * 2):  # Add ~2x more routes
             from_id = random.choice(facility_ids)
@@ -563,7 +702,28 @@ class SupplyChainGenerator:
         """Generate customers."""
         customer_types = ["retail", "wholesale", "enterprise"]
 
-        for cust_id in range(1, count + 1):
+        # Named customers for testing
+        named_customers = [
+            ("CUST-ACME", "Acme Industries", "enterprise", "Chicago", "IL", "USA"),
+            ("CUST-GLOBEX", "Globex Corporation", "enterprise", "New York", "NY", "USA"),
+            ("CUST-INITECH", "Initech Inc", "wholesale", "Austin", "TX", "USA"),
+        ]
+
+        for i, (code, name, ctype, city, state, country) in enumerate(named_customers):
+            self.customers.append({
+                "id": i + 1,
+                "customer_code": code,
+                "name": name,
+                "customer_type": ctype,
+                "contact_email": f"orders@{name.lower().replace(' ', '')}.com",
+                "shipping_address": fake.street_address(),
+                "city": city,
+                "state": state,
+                "country": country,
+            })
+
+        start_id = len(named_customers) + 1
+        for cust_id in range(start_id, count + 1):
             self.customers.append({
                 "id": cust_id,
                 "customer_code": f"CUST-{cust_id:05d}",
@@ -586,7 +746,65 @@ class SupplyChainGenerator:
         order_item_id = 1
         shipment_id = 1
 
-        for order_id in range(1, count + 1):
+        # Named orders for testing (first few orders get specific numbers)
+        named_orders = [
+            ("ORD-2024-001", 1, "pending", datetime(2024, 6, 15, 10, 30)),   # Acme Industries order
+            ("ORD-2024-002", 2, "shipped", datetime(2024, 5, 20, 14, 0)),    # Globex order
+            ("ORD-2024-003", 1, "delivered", datetime(2024, 4, 10, 9, 15)),  # Another Acme order
+        ]
+
+        for order_id, (order_num, cust_id, status, order_date) in enumerate(named_orders, 1):
+            shipped_date = None
+            if status in ["shipped", "delivered"]:
+                shipped_date = order_date + timedelta(days=random.randint(1, 7))
+
+            self.orders.append({
+                "id": order_id,
+                "order_number": order_num,
+                "customer_id": cust_id,
+                "order_date": order_date,
+                "required_date": (order_date + timedelta(days=random.randint(7, 30))).date(),
+                "shipped_date": shipped_date,
+                "status": status,
+                "shipping_facility_id": 1,  # Chicago Warehouse
+                "total_amount": round(random.uniform(1000, 10000), 2),
+                "shipping_cost": round(random.uniform(50, 200), 2),
+            })
+
+            # Add order items
+            for _ in range(random.randint(2, 5)):
+                self.order_items.append({
+                    "id": order_item_id,
+                    "order_id": order_id,
+                    "product_id": random.choice(product_ids[:10]),  # Named products first
+                    "quantity": random.randint(1, 5),
+                    "unit_price": round(random.uniform(100, 500), 2),
+                    "discount_percent": 0,
+                })
+                order_item_id += 1
+
+            # Add shipment for shipped/delivered
+            if status in ["shipped", "delivered"]:
+                self.shipments.append({
+                    "id": shipment_id,
+                    "shipment_number": f"SHP-{order_num.split('-')[-1]}",
+                    "order_id": order_id,
+                    "origin_facility_id": 1,  # Chicago Warehouse
+                    "destination_facility_id": 2,  # LA Distribution Center
+                    "transport_route_id": None,
+                    "carrier": "Priority Logistics",
+                    "tracking_number": fake.bothify("??#########??"),
+                    "status": "delivered" if status == "delivered" else "in_transit",
+                    "shipped_at": shipped_date,
+                    "delivered_at": shipped_date + timedelta(days=random.randint(1, 14)) if status == "delivered" else None,
+                    "weight_kg": round(random.uniform(5, 50), 2),
+                    "cost_usd": round(random.uniform(100, 500), 2),
+                })
+                shipment_id += 1
+
+        start_order_id = len(named_orders) + 1
+
+        for order_id in range(start_order_id, count + 1):
             order_date = fake.date_time_between(start_date="-2y", end_date="now")
             status = random.choice(statuses)
 

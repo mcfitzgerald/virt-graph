@@ -6,6 +6,7 @@ graph-level analytics. These operations typically require loading
 larger portions of the graph.
 """
 
+from decimal import Decimal
 from typing import Any, Literal
 
 import networkx as nx
@@ -331,6 +332,137 @@ def neighbors(
     }
 
 
+def resilience_analysis(
+    conn: PgConnection,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    node_to_remove: int,
+    id_column: str = "id",
+) -> dict[str, Any]:
+    """
+    Analyze network resilience by simulating node removal.
+
+    Calculates which node pairs lose connectivity if a specific node is removed.
+    Useful for identifying single points of failure in supply chains or transport networks.
+
+    Args:
+        conn: Database connection
+        nodes_table: Table containing nodes (e.g., "facilities")
+        edges_table: Table containing edges (e.g., "transport_routes")
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        node_to_remove: Node ID to simulate removal of
+        id_column: Name of the ID column
+
+    Returns:
+        dict with:
+            - node_removed: the node ID that was simulated as removed
+            - node_removed_info: dict with node details
+            - disconnected_pairs: list of (node_a, node_b) tuples that lose connectivity
+            - components_before: number of connected components before removal
+            - components_after: number of connected components after removal
+            - component_increase: how many new components were created
+            - isolated_nodes: nodes that become completely disconnected
+            - affected_node_count: total nodes affected by the removal
+            - is_critical: True if removal increases components or isolates nodes
+
+    Example:
+        >>> # Check what happens if Denver Hub goes offline
+        >>> result = resilience_analysis(
+        ...     conn,
+        ...     nodes_table="facilities",
+        ...     edges_table="transport_routes",
+        ...     edge_from_col="origin_facility_id",
+        ...     edge_to_col="destination_facility_id",
+        ...     node_to_remove=denver_id,
+        ... )
+        >>> print(f"Removing hub creates {result['component_increase']} new components")
+        >>> print(f"Disconnected pairs: {result['disconnected_pairs']}")
+    """
+    # Load full graph
+    G = _load_full_graph(conn, edges_table, edge_from_col, edge_to_col)
+
+    if G.number_of_nodes() > MAX_NODES:
+        raise SubgraphTooLarge(
+            f"Graph has {G.number_of_nodes():,} nodes, exceeds limit {MAX_NODES:,}"
+        )
+
+    # Check if node exists in graph
+    if node_to_remove not in G:
+        return {
+            "node_removed": node_to_remove,
+            "node_removed_info": {},
+            "disconnected_pairs": [],
+            "components_before": 0,
+            "components_after": 0,
+            "component_increase": 0,
+            "isolated_nodes": [],
+            "affected_node_count": 0,
+            "is_critical": False,
+            "error": f"Node {node_to_remove} not found in graph",
+        }
+
+    # Get node info
+    node_info = fetch_nodes(conn, nodes_table, [node_to_remove], id_column=id_column)
+    node_info_dict = node_info[0] if node_info else {}
+
+    # Analyze before removal
+    components_before = nx.number_weakly_connected_components(G)
+
+    # Get neighbors of the node (these might become disconnected)
+    predecessors = list(G.predecessors(node_to_remove))
+    successors = list(G.successors(node_to_remove))
+    all_neighbors = list(set(predecessors + successors))
+
+    # Create graph without the node
+    G_removed = G.copy()
+    G_removed.remove_node(node_to_remove)
+
+    components_after = nx.number_weakly_connected_components(G_removed)
+    component_increase = components_after - components_before
+
+    # Find disconnected pairs (pairs of neighbors that can no longer reach each other)
+    disconnected_pairs = []
+    if component_increase > 0 and len(all_neighbors) > 1:
+        # Get the components after removal
+        component_map = {}
+        for i, comp in enumerate(nx.weakly_connected_components(G_removed)):
+            for node in comp:
+                component_map[node] = i
+
+        # Check which neighbor pairs are now in different components
+        for i, n1 in enumerate(all_neighbors):
+            for n2 in all_neighbors[i + 1:]:
+                if n1 in component_map and n2 in component_map:
+                    if component_map[n1] != component_map[n2]:
+                        disconnected_pairs.append((n1, n2))
+
+    # Find isolated nodes (degree 0 after removal)
+    isolated_nodes = [n for n in G_removed.nodes() if G_removed.degree(n) == 0]
+
+    # Calculate affected nodes
+    affected_nodes = set()
+    for pair in disconnected_pairs:
+        affected_nodes.add(pair[0])
+        affected_nodes.add(pair[1])
+    affected_nodes.update(isolated_nodes)
+
+    return {
+        "node_removed": node_to_remove,
+        "node_removed_info": node_info_dict,
+        "disconnected_pairs": disconnected_pairs,
+        "components_before": components_before,
+        "components_after": components_after,
+        "component_increase": component_increase,
+        "isolated_nodes": isolated_nodes,
+        "affected_node_count": len(affected_nodes),
+        "is_critical": component_increase > 0 or len(isolated_nodes) > 0,
+        "error": None,
+    }
+
+
 def _load_full_graph(
     conn: PgConnection,
     edges_table: str,
@@ -359,7 +491,9 @@ def _load_full_graph(
     for row in rows:
         from_id, to_id = row[0], row[1]
         if weight_col:
-            G.add_edge(from_id, to_id, weight=row[2])
+            # Convert Decimal to float for weights
+            weight = float(row[2]) if isinstance(row[2], Decimal) else row[2]
+            G.add_edge(from_id, to_id, weight=weight)
         else:
             G.add_edge(from_id, to_id)
 
