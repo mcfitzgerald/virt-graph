@@ -249,6 +249,9 @@ def fetch_edges_for_frontier(
     edge_from_col: str,
     edge_to_col: str,
     direction: str = "outbound",
+    nodes_table: str | None = None,
+    node_id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> list[tuple[int, int]]:
     """
     Fetch all edges for a frontier in a SINGLE query.
@@ -263,6 +266,10 @@ def fetch_edges_for_frontier(
         edge_from_col: Column for edge source
         edge_to_col: Column for edge target
         direction: "outbound", "inbound", or "both"
+        nodes_table: Table containing nodes (required for soft-delete filtering)
+        node_id_column: ID column in nodes_table (default "id")
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, filters out edges to/from soft-deleted nodes.
 
     Returns:
         List of (from_id, to_id) tuples
@@ -272,36 +279,72 @@ def fetch_edges_for_frontier(
 
     results: list[tuple[int, int]] = []
 
+    # Build soft-delete join clause if needed
+    # We need to ensure both endpoints of edges are not soft-deleted
+    soft_delete_join = ""
+    if soft_delete_column and nodes_table:
+        soft_delete_join = f"""
+            JOIN {nodes_table} n_from ON e.{edge_from_col} = n_from.{node_id_column}
+                AND n_from.{soft_delete_column} IS NULL
+            JOIN {nodes_table} n_to ON e.{edge_to_col} = n_to.{node_id_column}
+                AND n_to.{soft_delete_column} IS NULL
+        """
+
     with conn.cursor() as cur:
         # Set statement timeout for safety
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
 
-        if direction == "outbound":
-            query = f"""
-                SELECT {edge_from_col}, {edge_to_col}
-                FROM {edges_table}
-                WHERE {edge_from_col} = ANY(%s)
-            """
-            cur.execute(query, (frontier_ids,))
-            results = cur.fetchall()
+        if soft_delete_column and nodes_table:
+            # Use aliased table with joins for soft-delete filtering
+            if direction == "outbound":
+                query = f"""
+                    SELECT e.{edge_from_col}, e.{edge_to_col}
+                    FROM {edges_table} e
+                    {soft_delete_join}
+                    WHERE e.{edge_from_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids,))
+            elif direction == "inbound":
+                query = f"""
+                    SELECT e.{edge_from_col}, e.{edge_to_col}
+                    FROM {edges_table} e
+                    {soft_delete_join}
+                    WHERE e.{edge_to_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids,))
+            else:  # both
+                query = f"""
+                    SELECT e.{edge_from_col}, e.{edge_to_col}
+                    FROM {edges_table} e
+                    {soft_delete_join}
+                    WHERE e.{edge_from_col} = ANY(%s) OR e.{edge_to_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids, frontier_ids))
+        else:
+            # Original logic without soft-delete filtering
+            if direction == "outbound":
+                query = f"""
+                    SELECT {edge_from_col}, {edge_to_col}
+                    FROM {edges_table}
+                    WHERE {edge_from_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids,))
+            elif direction == "inbound":
+                query = f"""
+                    SELECT {edge_from_col}, {edge_to_col}
+                    FROM {edges_table}
+                    WHERE {edge_to_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids,))
+            else:  # both
+                query = f"""
+                    SELECT {edge_from_col}, {edge_to_col}
+                    FROM {edges_table}
+                    WHERE {edge_from_col} = ANY(%s) OR {edge_to_col} = ANY(%s)
+                """
+                cur.execute(query, (frontier_ids, frontier_ids))
 
-        elif direction == "inbound":
-            query = f"""
-                SELECT {edge_from_col}, {edge_to_col}
-                FROM {edges_table}
-                WHERE {edge_to_col} = ANY(%s)
-            """
-            cur.execute(query, (frontier_ids,))
-            results = cur.fetchall()
-
-        else:  # both
-            query = f"""
-                SELECT {edge_from_col}, {edge_to_col}
-                FROM {edges_table}
-                WHERE {edge_from_col} = ANY(%s) OR {edge_to_col} = ANY(%s)
-            """
-            cur.execute(query, (frontier_ids, frontier_ids))
-            results = cur.fetchall()
+        results = cur.fetchall()
 
     return results
 
@@ -312,6 +355,7 @@ def fetch_nodes(
     node_ids: list[int],
     columns: list[str] | None = None,
     id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch node data for a list of node IDs.
@@ -322,6 +366,8 @@ def fetch_nodes(
         node_ids: List of node IDs to fetch
         columns: Columns to return (None = all)
         id_column: Name of the ID column
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, only returns nodes where this column IS NULL.
 
     Returns:
         List of node dicts with requested columns
@@ -340,6 +386,8 @@ def fetch_nodes(
         FROM {nodes_table}
         WHERE {id_column} = ANY(%s)
     """
+    if soft_delete_column:
+        query += f" AND {soft_delete_column} IS NULL"
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")

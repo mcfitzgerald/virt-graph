@@ -44,6 +44,8 @@ def traverse(
     max_nodes: int | None = None,
     skip_estimation: bool = False,
     estimation_config: EstimationConfig | None = None,
+    # Soft-delete filtering
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
@@ -72,6 +74,8 @@ def traverse(
         max_nodes: Override default MAX_NODES limit (None = use default 10,000)
         skip_estimation: Bypass size check entirely (caller takes responsibility)
         estimation_config: Fine-tune estimation parameters
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -161,6 +165,9 @@ def traverse(
             edge_from_col,
             edge_to_col,
             direction,
+            nodes_table=nodes_table,
+            node_id_column=id_column,
+            soft_delete_column=soft_delete_column,
         )
 
         # Apply prefilter if specified
@@ -209,7 +216,9 @@ def traverse(
     if not include_start:
         nodes_to_fetch = [n for n in nodes_to_fetch if n != start_id]
 
-    nodes = fetch_nodes(conn, nodes_table, nodes_to_fetch, collect_columns, id_column)
+    nodes = fetch_nodes(
+        conn, nodes_table, nodes_to_fetch, collect_columns, id_column, soft_delete_column
+    )
 
     return {
         "nodes": nodes,
@@ -362,6 +371,67 @@ def traverse_collecting(
     }
 
 
+def _aggregate_bom_quantities_cte(
+    conn: PgConnection,
+    start_part_id: int,
+    max_depth: int,
+) -> dict[int, tuple[int, int]]:
+    """
+    Use recursive CTE to find ALL paths and aggregate quantities.
+
+    This is the correct algorithm for BOM explosion - it finds every path
+    from the start part to each descendant and sums the quantities across
+    all paths. This handles the "diamond problem" where a component appears
+    via multiple assembly paths.
+
+    Args:
+        conn: Database connection
+        start_part_id: Root part ID
+        max_depth: Maximum recursion depth
+
+    Returns:
+        Dict mapping part_id -> (total_quantity, min_depth)
+        where total_quantity is the SUM across all paths to that part
+    """
+    query = """
+    WITH RECURSIVE bom_paths AS (
+        -- Anchor: direct children of start part
+        SELECT
+            child_part_id as part_id,
+            quantity as path_qty,
+            1 as depth,
+            ARRAY[%s, child_part_id] as path
+        FROM bill_of_materials
+        WHERE parent_part_id = %s
+
+        UNION ALL
+
+        -- Recursive: multiply quantities along each path
+        SELECT
+            bom.child_part_id,
+            bp.path_qty * bom.quantity,
+            bp.depth + 1,
+            bp.path || bom.child_part_id
+        FROM bom_paths bp
+        JOIN bill_of_materials bom ON bom.parent_part_id = bp.part_id
+        WHERE bp.depth < %s
+          AND NOT bom.child_part_id = ANY(bp.path)  -- cycle prevention
+    )
+    SELECT part_id, SUM(path_qty) as total_qty, MIN(depth) as min_depth
+    FROM bom_paths
+    GROUP BY part_id
+    """
+
+    result: dict[int, tuple[int, int]] = {}
+    with conn.cursor() as cur:
+        cur.execute(query, (start_part_id, start_part_id, max_depth))
+        for row in cur.fetchall():
+            part_id, total_qty, min_depth = row
+            result[part_id] = (int(total_qty), int(min_depth))
+
+    return result
+
+
 def bom_explode(
     conn: PgConnection,
     start_part_id: int,
@@ -371,28 +441,38 @@ def bom_explode(
     max_nodes: int | None = None,
     skip_estimation: bool = False,
     estimation_config: EstimationConfig | None = None,
+    # Soft-delete filtering
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Explode a Bill of Materials starting from a top-level part.
 
-    This is a specialized traversal for BOM structures that also
-    aggregates quantities along the path.
+    This function aggregates quantities across ALL paths to each component,
+    correctly handling the "diamond problem" where a part appears via multiple
+    assembly paths. Uses a recursive CTE for accurate quantity aggregation.
 
     Args:
         conn: Database connection
         start_part_id: Top-level part ID
-        max_depth: Maximum BOM depth to traverse
-        include_quantities: Whether to aggregate quantities
+        max_depth: Maximum BOM depth to traverse (default 20)
+        include_quantities: Whether to aggregate quantities (default True)
         max_nodes: Override default MAX_NODES limit (None = use default 10,000)
         skip_estimation: Bypass size check entirely (caller takes responsibility)
         estimation_config: Fine-tune estimation parameters
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes parts where this column IS NOT NULL.
 
     Returns:
-        dict with BOM tree structure and aggregated quantities
+        BomExplodeResult dict with:
+            - components: list of component dicts with id, name, unit_cost,
+                         depth, quantity, and extended_cost
+            - total_parts: count of unique parts in the BOM
+            - max_depth: deepest level reached
+            - nodes_visited: total nodes processed
 
     Example:
-        >>> # Normal usage with improved estimation
         >>> result = bom_explode(conn, part_id)
+        >>> total_cost = sum(c['extended_cost'] for c in result['components'])
 
         >>> # Override limit for large BOMs
         >>> result = bom_explode(conn, part_id, max_nodes=50_000)
@@ -400,8 +480,8 @@ def bom_explode(
         >>> # Skip estimation when you know BOM is bounded
         >>> result = bom_explode(conn, part_id, skip_estimation=True)
     """
-    # Use traverse with BOM-specific settings
-    result = traverse(
+    # Use traverse to get structure and run size estimation
+    traverse_result = traverse(
         conn,
         nodes_table="parts",
         edges_table="bill_of_materials",
@@ -414,37 +494,74 @@ def bom_explode(
         max_nodes=max_nodes,
         skip_estimation=skip_estimation,
         estimation_config=estimation_config,
+        soft_delete_column=soft_delete_column,
     )
 
+    # Build node lookup for fast access
+    nodes_by_id = {node["id"]: node for node in traverse_result["nodes"]}
+
     if not include_quantities:
-        return result
+        # Return basic structure without quantity aggregation
+        components = []
+        for node in traverse_result["nodes"]:
+            if node["id"] == start_part_id:
+                continue  # Skip root part
+            path = traverse_result["paths"].get(node["id"], [])
+            components.append({
+                "id": node["id"],
+                "name": node.get("name"),
+                "part_number": node.get("part_number"),
+                "unit_cost": node.get("unit_cost"),
+                "depth": len(path) - 1 if path else 0,
+                "quantity": None,
+                "extended_cost": None,
+            })
 
-    # Aggregate quantities along paths
-    # This requires additional queries to get quantities from BOM table
-    quantities: dict[int, int] = {start_part_id: 1}
+        return {
+            "components": components,
+            "total_parts": len(components),
+            "max_depth": traverse_result["depth_reached"],
+            "nodes_visited": traverse_result["nodes_visited"],
+        }
 
-    for node_id, path in result["paths"].items():
+    # Use recursive CTE for correct quantity aggregation across ALL paths
+    qty_depth_map = _aggregate_bom_quantities_cte(conn, start_part_id, max_depth)
+
+    # Build components list with quantities
+    components = []
+    max_depth_seen = 0
+
+    for node in traverse_result["nodes"]:
+        node_id = node["id"]
         if node_id == start_part_id:
-            continue
+            continue  # Skip root part
 
-        # Calculate quantity by multiplying along path
-        total_qty = 1
-        for i in range(len(path) - 1):
-            parent_id = path[i]
-            child_id = path[i + 1]
+        qty_info = qty_depth_map.get(node_id)
+        if qty_info:
+            total_qty, depth = qty_info
+            max_depth_seen = max(max_depth_seen, depth)
+        else:
+            # Node was visited but not in CTE result (shouldn't happen normally)
+            total_qty = 1
+            path = traverse_result["paths"].get(node_id, [])
+            depth = len(path) - 1 if path else 0
 
-            # Get quantity for this edge
-            query = """
-                SELECT quantity FROM bill_of_materials
-                WHERE parent_part_id = %s AND child_part_id = %s
-            """
-            with conn.cursor() as cur:
-                cur.execute(query, (parent_id, child_id))
-                row = cur.fetchone()
-                if row:
-                    total_qty *= row[0]
+        unit_cost = node.get("unit_cost") or 0
+        extended_cost = float(unit_cost) * total_qty if unit_cost else 0.0
 
-        quantities[node_id] = total_qty
+        components.append({
+            "id": node_id,
+            "name": node.get("name"),
+            "part_number": node.get("part_number"),
+            "unit_cost": unit_cost,
+            "depth": depth,
+            "quantity": total_qty,
+            "extended_cost": extended_cost,
+        })
 
-    result["quantities"] = quantities
-    return result
+    return {
+        "components": components,
+        "total_parts": len(components),
+        "max_depth": max_depth_seen,
+        "nodes_visited": traverse_result["nodes_visited"],
+    }

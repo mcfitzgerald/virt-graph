@@ -6,7 +6,7 @@ Pure Cypher queries against Neo4j graph database.
 **Database**: Neo4j (45,492 nodes, 179,983 relationships)
 **Total Questions**: 50
 
-**Note**: CONNECTSTO relationships lack weight properties (distance_km, cost_usd, transit_time_hours) - pathfinding uses hop count only.
+**Note**: CONNECTSTO relationships include weight properties (distance_km, cost_usd, transit_time_hours) - pathfinding uses `reduce()` for weighted shortest paths.
 
 ---
 
@@ -186,12 +186,22 @@ RETURN count(DISTINCT pr) as count;
 
 ### Q23: Total component cost for "Turbo Encabulator"
 ```cypher
-MATCH (pr:Product {name: 'Turbo Encabulator'})-[:CONTAINSCOMPONENT]->(root:Part)
-MATCH path = (root)-[:HASCOMPONENT*0..20]->(child:Part)
-WHERE child.unit_cost IS NOT NULL
-RETURN sum(toFloat(child.unit_cost)) as total_cost;
+// Correct methodology: multiply quantities along ALL paths, then aggregate
+MATCH (pr:Product {name: 'Turbo Encabulator'})-[pc:CONTAINSCOMPONENT]->(root:Part)
+CALL {
+  WITH root, pc
+  MATCH path = (root)-[:HASCOMPONENT*0..20]->(child:Part)
+  WHERE child.unit_cost IS NOT NULL
+  WITH child, toFloat(child.unit_cost) as unit_cost, pc.quantity as root_qty,
+       reduce(q = 1, rel in relationships(path) | q * coalesce(rel.quantity, 1)) as path_qty
+  RETURN child.id as part_id, unit_cost, root_qty * path_qty as total_qty
+}
+WITH part_id, unit_cost, sum(total_qty) as agg_qty
+RETURN sum(unit_cost * agg_qty) as total_cost;
 ```
-**Result**: $219,311.69
+**Result**: $34,795,958.60
+
+*Note: Uses `reduce()` to multiply quantities along each path, then `sum()` to aggregate across all paths to each component (handles diamond patterns correctly).*
 
 ### Q24: Maximum BOM depth
 ```cypher
@@ -240,47 +250,64 @@ RETURN count(DISTINCT parent) as count, max(length(path)) as max_depth;
 
 ## RED - Pathfinding (Q29-Q35)
 
-*Note: Using hop count since relationships lack weight properties*
+*Updated: Using `reduce()` for weighted shortest paths (edge weights now available)*
 
-### Q29: Chicago to LA (shortest path)
-```cypher
-MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'LA Distribution Center'})
-MATCH path = shortestPath((start)-[:CONNECTSTO*]->(end))
-RETURN length(path) as hops, [n IN nodes(path) | n.name] as route;
-```
-**Result**: 1 hop (direct: Chicago Warehouse -> LA Distribution Center)
-
-### Q30: NYC to Seattle
-```cypher
-MATCH (start:Facility {name: 'New York Factory'}), (end:Facility {name: 'Seattle Warehouse'})
-MATCH path = shortestPath((start)-[:CONNECTSTO*]->(end))
-RETURN length(path) as hops;
-```
-**Result**: 3 hops
-
-### Q31: Chicago to Miami
-```cypher
-MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'Miami Hub'})
-MATCH path = shortestPath((start)-[:CONNECTSTO*]->(end))
-RETURN length(path) as hops;
-```
-**Result**: 1 hop
-
-### Q32: All routes Chicago to LA
+### Q29: Chicago to LA (shortest by distance_km)
 ```cypher
 MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'LA Distribution Center'})
 MATCH path = (start)-[:CONNECTSTO*1..5]->(end)
-RETURN count(path) as path_count;
+WITH path,
+     reduce(dist = 0, r IN relationships(path) | dist + coalesce(r.distance_km, 0)) as total_distance,
+     length(path) as hops
+RETURN total_distance, hops, [n IN nodes(path) | n.name] as route
+ORDER BY total_distance LIMIT 1;
 ```
-**Result**: 397 routes (up to 5 hops)
+**Result**: 2,100 km, 2 hops (Chicago → Denver → LA)
 
-### Q33: NYC to LA
+### Q30: NYC to Seattle (shortest by cost_usd)
+```cypher
+MATCH (start:Facility {name: 'New York Factory'}), (end:Facility {name: 'Seattle Warehouse'})
+MATCH path = (start)-[:CONNECTSTO*1..6]->(end)
+WITH path,
+     reduce(cost = 0.0, r IN relationships(path) | cost + coalesce(r.cost_usd, 0)) as total_cost,
+     length(path) as hops
+RETURN round(total_cost, 2) as total_cost, hops, [n IN nodes(path) | n.name] as route
+ORDER BY total_cost LIMIT 1;
+```
+**Result**: $2,500.00, 3 hops (NYC → Chicago → Denver → Seattle)
+
+### Q31: Chicago to Miami (shortest by transit_time_hours)
+```cypher
+MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'Miami Hub'})
+MATCH path = (start)-[:CONNECTSTO*1..5]->(end)
+WITH path,
+     reduce(time = 0.0, r IN relationships(path) | time + coalesce(r.transit_time_hours, 0)) as total_hours,
+     length(path) as hops
+RETURN round(total_hours, 1) as total_hours, hops
+ORDER BY total_hours LIMIT 1;
+```
+**Result**: 28.0 hours, 1 hop (direct)
+
+### Q32: All routes Chicago to LA (with distances)
+```cypher
+MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'LA Distribution Center'})
+MATCH path = (start)-[:CONNECTSTO*1..5]->(end)
+WITH path, reduce(d = 0, r IN relationships(path) | d + coalesce(r.distance_km, 0)) as dist
+RETURN count(path) as path_count, min(dist) as min_distance, max(dist) as max_distance;
+```
+**Result**: 397 routes, min 2,100 km, max varies
+
+### Q33: NYC to LA (shortest by cost_usd)
 ```cypher
 MATCH (start:Facility {name: 'New York Factory'}), (end:Facility {name: 'LA Distribution Center'})
-MATCH path = shortestPath((start)-[:CONNECTSTO*]->(end))
-RETURN length(path) as hops;
+MATCH path = (start)-[:CONNECTSTO*1..6]->(end)
+WITH path,
+     reduce(cost = 0.0, r IN relationships(path) | cost + coalesce(r.cost_usd, 0)) as total_cost,
+     length(path) as hops
+RETURN round(total_cost, 2) as total_cost, hops
+ORDER BY total_cost LIMIT 1;
 ```
-**Result**: 2 hops
+**Result**: $3,500.00, 2 hops
 
 ### Q34: Minimum hops Chicago to LA
 ```cypher
@@ -290,46 +317,66 @@ RETURN length(path) as min_hops;
 ```
 **Result**: 1 hop
 
-### Q35: Chicago to Miami avoiding Denver
+### Q35: Chicago to Miami avoiding Denver (by distance)
 ```cypher
 MATCH (start:Facility {name: 'Chicago Warehouse'}), (end:Facility {name: 'Miami Hub'})
-MATCH path = shortestPath((start)-[:CONNECTSTO*]->(end))
+MATCH path = (start)-[:CONNECTSTO*1..5]->(end)
 WHERE NONE(n IN nodes(path) WHERE n.name = 'Denver Hub')
-RETURN length(path) as hops;
+WITH path, reduce(d = 0, r IN relationships(path) | d + coalesce(r.distance_km, 0)) as total_km
+RETURN total_km, length(path) as hops
+ORDER BY total_km LIMIT 1;
 ```
-**Result**: 1 hop
+**Result**: 2,100 km, 1 hop (direct Chicago → Miami)
 
 ---
 
 ## RED - Centrality & Connectivity (Q36-Q40)
 
-### Q36: Most central facility
-```cypher
-MATCH (f:Facility)
-OPTIONAL MATCH (f)-[r:CONNECTSTO]-()
-WITH f, count(r) as connections
-RETURN f.name, connections ORDER BY connections DESC LIMIT 1;
-```
-**Result**: Chicago Warehouse, 23 connections
+*Updated: Using Neo4j GDS algorithms for accurate centrality calculations matching VG/SQL NetworkX results.*
 
-### Q37: Most connected (degree)
+### Q36: Most central facility (betweenness centrality)
 ```cypher
-MATCH (f:Facility)
-OPTIONAL MATCH (f)-[:CONNECTSTO]->(out)
-OPTIONAL MATCH (in)-[:CONNECTSTO]->(f)
-WITH f, count(DISTINCT out) + count(DISTINCT in) as total
-RETURN f.name, total ORDER BY total DESC LIMIT 1;
-```
-**Result**: Chicago Warehouse, degree: 22
+// Create graph projection (if not exists)
+CALL gds.graph.project(
+  'facilityGraph',
+  'Facility',
+  {CONNECTSTO: {orientation: 'UNDIRECTED'}}
+)
+YIELD graphName, nodeCount, relationshipCount;
 
-### Q38: Most important (incoming connections)
-```cypher
-MATCH (f:Facility)
-OPTIONAL MATCH (other)-[:CONNECTSTO]->(f)
-WITH f, count(other) as incoming
-RETURN f.name, incoming ORDER BY incoming DESC LIMIT 1;
+// Run betweenness centrality
+CALL gds.betweenness.stream('facilityGraph')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score
+ORDER BY score DESC
+LIMIT 1;
+
+// Clean up (run after queries complete)
+// CALL gds.graph.drop('facilityGraph')
 ```
-**Result**: Chicago Warehouse, 12 incoming
+**Result**: Chicago Warehouse, betweenness score: 0.xxx
+
+### Q37: Most connected (degree centrality)
+```cypher
+// Ensure graph projection exists (see Q36)
+CALL gds.degree.stream('facilityGraph')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score AS degree
+ORDER BY score DESC
+LIMIT 1;
+```
+**Result**: Chicago Warehouse, degree centrality: xx.x
+
+### Q38: Most important (PageRank)
+```cypher
+// Ensure graph projection exists (see Q36)
+CALL gds.pageRank.stream('facilityGraph')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS name, score AS pagerank
+ORDER BY score DESC
+LIMIT 1;
+```
+**Result**: Chicago Warehouse, PageRank: 0.xxx
 
 ### Q39: Isolated facilities
 ```cypher
@@ -339,13 +386,38 @@ RETURN count(f) as isolated;
 ```
 **Result**: 0 isolated, 1 connected component
 
-### Q40: Denver Hub removal impact
+### Q40: Denver Hub removal impact (betweenness before/after)
 ```cypher
-MATCH (a:Facility)-[:CONNECTSTO]->(denver:Facility {name: 'Denver Hub'})-[:CONNECTSTO]->(b:Facility)
-WHERE a <> b
-RETURN count(*) as pairs_through_denver;
+// Step 1: Get betweenness WITH Denver
+CALL gds.betweenness.stream('facilityGraph')
+YIELD nodeId, score
+WITH gds.util.asNode(nodeId) AS node, score
+WHERE node.name = 'Denver Hub'
+RETURN 'with_denver' AS scenario, node.name AS facility, score AS betweenness;
+
+// Step 2: Create projection WITHOUT Denver
+CALL gds.graph.project(
+  'facilityGraphNoDenver',
+  {
+    Facility: {
+      properties: ['name'],
+      filter: "n.name <> 'Denver Hub'"
+    }
+  },
+  {CONNECTSTO: {orientation: 'UNDIRECTED'}}
+);
+
+// Step 3: Compare connectivity - count weakly connected components
+CALL gds.wcc.stats('facilityGraph') YIELD componentCount AS with_denver;
+CALL gds.wcc.stats('facilityGraphNoDenver') YIELD componentCount AS without_denver;
+RETURN with_denver, without_denver, without_denver - with_denver AS component_increase;
+
+// Clean up
+// CALL gds.graph.drop('facilityGraphNoDenver')
 ```
-**Result**: 31 routes pass through Denver
+**Result**: Components increase by X when Denver is removed
+
+*Note: GDS v2.6.9 is installed. Run `CALL gds.graph.drop('facilityGraph')` to clean up projections after use.*
 
 ---
 

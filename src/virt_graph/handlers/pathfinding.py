@@ -33,6 +33,7 @@ def shortest_path(
     max_depth: int = 20,
     id_column: str = "id",
     excluded_nodes: list[int] | None = None,
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Find shortest path between two nodes using Dijkstra.
@@ -53,6 +54,8 @@ def shortest_path(
         max_depth: Maximum search depth
         id_column: Name of the ID column in nodes_table
         excluded_nodes: Node IDs to exclude from path (route around these nodes)
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -122,6 +125,9 @@ def shortest_path(
                 edge_to_col,
                 weight_col,
                 "outbound",
+                nodes_table=nodes_table,
+                node_id_column=id_column,
+                soft_delete_column=soft_delete_column,
             )
 
             next_forward = set()
@@ -146,6 +152,9 @@ def shortest_path(
                 edge_to_col,
                 weight_col,
                 "inbound",
+                nodes_table=nodes_table,
+                node_id_column=id_column,
+                soft_delete_column=soft_delete_column,
             )
 
             next_backward = set()
@@ -215,7 +224,9 @@ def shortest_path(
         }
 
     # Fetch node details for path
-    path_nodes = fetch_nodes(conn, nodes_table, path, id_column=id_column)
+    path_nodes = fetch_nodes(
+        conn, nodes_table, path, id_column=id_column, soft_delete_column=soft_delete_column
+    )
 
     # Get edge details along path
     path_edges = []
@@ -253,6 +264,7 @@ def all_shortest_paths(
     max_paths: int = 10,
     id_column: str = "id",
     excluded_nodes: list[int] | None = None,
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Find all shortest paths between two nodes.
@@ -272,6 +284,8 @@ def all_shortest_paths(
         max_paths: Maximum number of paths to return
         id_column: Name of the ID column
         excluded_nodes: Node IDs to exclude from paths (route around these nodes)
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -297,6 +311,7 @@ def all_shortest_paths(
         max_depth,
         id_column,
         excluded_nodes,
+        soft_delete_column,
     )
 
     if result["path"] is None:
@@ -326,6 +341,9 @@ def all_shortest_paths(
             edge_to_col,
             weight_col,
             "outbound",
+            nodes_table=nodes_table,
+            node_id_column=id_column,
+            soft_delete_column=soft_delete_column,
         )
 
         next_frontier = set()
@@ -376,32 +394,73 @@ def _fetch_edges_with_weights(
     edge_to_col: str,
     weight_col: str | None,
     direction: str,
+    nodes_table: str | None = None,
+    node_id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> list[tuple[int, int, float | None]]:
     """
     Fetch edges with optional weights for the frontier.
 
     Returns list of (from_id, to_id, weight) tuples.
+
+    Args:
+        conn: Database connection
+        edges_table: Table containing edges
+        frontier_ids: Node IDs in the current frontier
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        weight_col: Optional column for edge weights
+        direction: "outbound" or "inbound"
+        nodes_table: Table containing nodes (required for soft-delete filtering)
+        node_id_column: ID column in nodes_table
+        soft_delete_column: Column to check for soft-delete filtering
     """
     if not frontier_ids:
         return []
 
-    weight_select = f", {weight_col}" if weight_col else ""
+    weight_select = f", e.{weight_col}" if weight_col else ""
+
+    # Build soft-delete join clause if needed
+    soft_delete_join = ""
+    if soft_delete_column and nodes_table:
+        soft_delete_join = f"""
+            JOIN {nodes_table} n_from ON e.{edge_from_col} = n_from.{node_id_column}
+                AND n_from.{soft_delete_column} IS NULL
+            JOIN {nodes_table} n_to ON e.{edge_to_col} = n_to.{node_id_column}
+                AND n_to.{soft_delete_column} IS NULL
+        """
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
 
-        if direction == "outbound":
-            query = f"""
-                SELECT {edge_from_col}, {edge_to_col}{weight_select}
-                FROM {edges_table}
-                WHERE {edge_from_col} = ANY(%s)
-            """
-        else:  # inbound
-            query = f"""
-                SELECT {edge_from_col}, {edge_to_col}{weight_select}
-                FROM {edges_table}
-                WHERE {edge_to_col} = ANY(%s)
-            """
+        if soft_delete_column and nodes_table:
+            if direction == "outbound":
+                query = f"""
+                    SELECT e.{edge_from_col}, e.{edge_to_col}{weight_select}
+                    FROM {edges_table} e
+                    {soft_delete_join}
+                    WHERE e.{edge_from_col} = ANY(%s)
+                """
+            else:  # inbound
+                query = f"""
+                    SELECT e.{edge_from_col}, e.{edge_to_col}{weight_select}
+                    FROM {edges_table} e
+                    {soft_delete_join}
+                    WHERE e.{edge_to_col} = ANY(%s)
+                """
+        else:
+            if direction == "outbound":
+                query = f"""
+                    SELECT {edge_from_col}, {edge_to_col}{", " + weight_col if weight_col else ""}
+                    FROM {edges_table}
+                    WHERE {edge_from_col} = ANY(%s)
+                """
+            else:  # inbound
+                query = f"""
+                    SELECT {edge_from_col}, {edge_to_col}{", " + weight_col if weight_col else ""}
+                    FROM {edges_table}
+                    WHERE {edge_to_col} = ANY(%s)
+                """
 
         cur.execute(query, (frontier_ids,))
         rows = cur.fetchall()

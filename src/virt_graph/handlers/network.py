@@ -31,6 +31,7 @@ def centrality(
     top_n: int = 10,
     weight_col: str | None = None,
     id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Calculate centrality for nodes in the graph.
@@ -54,6 +55,8 @@ def centrality(
         top_n: Number of top nodes to return (default 10)
         weight_col: Column for edge weights (used by some centrality measures)
         id_column: Name of the ID column in nodes_table
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -74,7 +77,10 @@ def centrality(
         >>> print(f"Most critical facility: {result['results'][0]['node']['name']}")
     """
     # Load full graph
-    G = _load_full_graph(conn, edges_table, edge_from_col, edge_to_col, weight_col)
+    G = _load_full_graph(
+        conn, edges_table, edge_from_col, edge_to_col, weight_col,
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+    )
 
     node_count = G.number_of_nodes()
     edge_count = G.number_of_edges()
@@ -107,7 +113,9 @@ def centrality(
 
     # Fetch node details
     node_ids = [node_id for node_id, _ in top_nodes]
-    nodes_data = fetch_nodes(conn, nodes_table, node_ids, id_column=id_column)
+    nodes_data = fetch_nodes(
+        conn, nodes_table, node_ids, id_column=id_column, soft_delete_column=soft_delete_column
+    )
 
     # Create lookup for node data
     node_lookup = {n[id_column]: n for n in nodes_data}
@@ -142,6 +150,7 @@ def connected_components(
     edge_to_col: str,
     min_size: int = 1,
     id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Find connected components in the graph.
@@ -156,6 +165,8 @@ def connected_components(
         edge_to_col: Column for edge target
         min_size: Minimum component size to return (default 1)
         id_column: Name of the ID column
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -167,7 +178,10 @@ def connected_components(
             - largest_component_size: size of largest component
             - isolated_nodes: nodes with no connections
     """
-    G = _load_full_graph(conn, edges_table, edge_from_col, edge_to_col)
+    G = _load_full_graph(
+        conn, edges_table, edge_from_col, edge_to_col,
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+    )
 
     if G.number_of_nodes() > MAX_NODES:
         raise SubgraphTooLarge(
@@ -189,7 +203,9 @@ def connected_components(
     for component in components[:MAX_RESULTS]:
         node_ids = list(component)
         sample_ids = node_ids[:5]  # Sample first 5 nodes
-        sample_nodes = fetch_nodes(conn, nodes_table, sample_ids, id_column=id_column)
+        sample_nodes = fetch_nodes(
+            conn, nodes_table, sample_ids, id_column=id_column, soft_delete_column=soft_delete_column
+        )
 
         results.append({
             "node_ids": node_ids,
@@ -218,6 +234,9 @@ def graph_density(
     edge_from_col: str,
     edge_to_col: str,
     weight_col: str | None = None,
+    nodes_table: str | None = None,
+    node_id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Calculate graph density and basic statistics.
@@ -230,11 +249,17 @@ def graph_density(
         edge_from_col: Column for edge source
         edge_to_col: Column for edge target
         weight_col: Optional weight column
+        nodes_table: Table containing nodes (required for soft-delete filtering)
+        node_id_column: ID column in nodes_table
+        soft_delete_column: Column to check for soft-delete filtering
 
     Returns:
         dict with graph statistics
     """
-    G = _load_full_graph(conn, edges_table, edge_from_col, edge_to_col, weight_col)
+    G = _load_full_graph(
+        conn, edges_table, edge_from_col, edge_to_col, weight_col,
+        nodes_table=nodes_table, node_id_column=node_id_column, soft_delete_column=soft_delete_column
+    )
 
     if G.number_of_nodes() > MAX_NODES:
         raise SubgraphTooLarge(
@@ -274,6 +299,7 @@ def neighbors(
     node_id: int,
     direction: Literal["outbound", "inbound", "both"] = "both",
     id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Get direct neighbors of a node.
@@ -289,6 +315,8 @@ def neighbors(
         node_id: Node to get neighbors for
         direction: Direction to look for neighbors
         id_column: Name of the ID column
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -299,21 +327,46 @@ def neighbors(
     outbound_ids = []
     inbound_ids = []
 
+    # Build soft-delete join clause if needed
+    soft_delete_join_out = ""
+    soft_delete_join_in = ""
+    if soft_delete_column:
+        soft_delete_join_out = f"""
+            JOIN {nodes_table} n ON e.{edge_to_col} = n.{id_column}
+                AND n.{soft_delete_column} IS NULL
+        """
+        soft_delete_join_in = f"""
+            JOIN {nodes_table} n ON e.{edge_from_col} = n.{id_column}
+                AND n.{soft_delete_column} IS NULL
+        """
+
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
 
         if direction in ("outbound", "both"):
-            cur.execute(
-                f"SELECT {edge_to_col} FROM {edges_table} WHERE {edge_from_col} = %s",
-                (node_id,),
-            )
+            if soft_delete_column:
+                cur.execute(
+                    f"SELECT e.{edge_to_col} FROM {edges_table} e {soft_delete_join_out} WHERE e.{edge_from_col} = %s",
+                    (node_id,),
+                )
+            else:
+                cur.execute(
+                    f"SELECT {edge_to_col} FROM {edges_table} WHERE {edge_from_col} = %s",
+                    (node_id,),
+                )
             outbound_ids = [row[0] for row in cur.fetchall()]
 
         if direction in ("inbound", "both"):
-            cur.execute(
-                f"SELECT {edge_from_col} FROM {edges_table} WHERE {edge_to_col} = %s",
-                (node_id,),
-            )
+            if soft_delete_column:
+                cur.execute(
+                    f"SELECT e.{edge_from_col} FROM {edges_table} e {soft_delete_join_in} WHERE e.{edge_to_col} = %s",
+                    (node_id,),
+                )
+            else:
+                cur.execute(
+                    f"SELECT {edge_from_col} FROM {edges_table} WHERE {edge_to_col} = %s",
+                    (node_id,),
+                )
             inbound_ids = [row[0] for row in cur.fetchall()]
 
     # Combine unique neighbor IDs
@@ -321,7 +374,7 @@ def neighbors(
 
     # Fetch neighbor details
     neighbors_data = fetch_nodes(
-        conn, nodes_table, all_neighbor_ids, id_column=id_column
+        conn, nodes_table, all_neighbor_ids, id_column=id_column, soft_delete_column=soft_delete_column
     )
 
     return {
@@ -340,6 +393,7 @@ def resilience_analysis(
     edge_to_col: str,
     node_to_remove: int,
     id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> dict[str, Any]:
     """
     Analyze network resilience by simulating node removal.
@@ -355,6 +409,8 @@ def resilience_analysis(
         edge_to_col: Column for edge target
         node_to_remove: Node ID to simulate removal of
         id_column: Name of the ID column
+        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
+                           If provided, excludes nodes where this column IS NOT NULL.
 
     Returns:
         dict with:
@@ -382,7 +438,10 @@ def resilience_analysis(
         >>> print(f"Disconnected pairs: {result['disconnected_pairs']}")
     """
     # Load full graph
-    G = _load_full_graph(conn, edges_table, edge_from_col, edge_to_col)
+    G = _load_full_graph(
+        conn, edges_table, edge_from_col, edge_to_col,
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+    )
 
     if G.number_of_nodes() > MAX_NODES:
         raise SubgraphTooLarge(
@@ -405,7 +464,9 @@ def resilience_analysis(
         }
 
     # Get node info
-    node_info = fetch_nodes(conn, nodes_table, [node_to_remove], id_column=id_column)
+    node_info = fetch_nodes(
+        conn, nodes_table, [node_to_remove], id_column=id_column, soft_delete_column=soft_delete_column
+    )
     node_info_dict = node_info[0] if node_info else {}
 
     # Analyze before removal
@@ -469,23 +530,55 @@ def _load_full_graph(
     edge_from_col: str,
     edge_to_col: str,
     weight_col: str | None = None,
+    nodes_table: str | None = None,
+    node_id_column: str = "id",
+    soft_delete_column: str | None = None,
 ) -> nx.DiGraph:
     """
     Load entire graph from edge table.
 
     Creates a directed graph (DiGraph) by default since most relationships
     in our ontology are directional.
+
+    Args:
+        conn: Database connection
+        edges_table: Table containing edges
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        weight_col: Optional column for edge weights
+        nodes_table: Table containing nodes (required for soft-delete filtering)
+        node_id_column: ID column in nodes_table
+        soft_delete_column: Column to check for soft-delete filtering
     """
     G = nx.DiGraph()
 
-    weight_select = f", {weight_col}" if weight_col else ""
+    weight_select = f", e.{weight_col}" if weight_col else ""
+
+    # Build soft-delete join clause if needed
+    soft_delete_join = ""
+    if soft_delete_column and nodes_table:
+        soft_delete_join = f"""
+            JOIN {nodes_table} n_from ON e.{edge_from_col} = n_from.{node_id_column}
+                AND n_from.{soft_delete_column} IS NULL
+            JOIN {nodes_table} n_to ON e.{edge_to_col} = n_to.{node_id_column}
+                AND n_to.{soft_delete_column} IS NULL
+        """
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
-        cur.execute(f"""
-            SELECT {edge_from_col}, {edge_to_col}{weight_select}
-            FROM {edges_table}
-        """)
+
+        if soft_delete_column and nodes_table:
+            cur.execute(f"""
+                SELECT e.{edge_from_col}, e.{edge_to_col}{weight_select}
+                FROM {edges_table} e
+                {soft_delete_join}
+            """)
+        else:
+            weight_select_simple = f", {weight_col}" if weight_col else ""
+            cur.execute(f"""
+                SELECT {edge_from_col}, {edge_to_col}{weight_select_simple}
+                FROM {edges_table}
+            """)
         rows = cur.fetchall()
 
     for row in rows:
