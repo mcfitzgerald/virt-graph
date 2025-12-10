@@ -8,8 +8,30 @@ All notable changes to this project will be documented in this file.
 
 - **Lean academic publication branch** - Simplified repository structure
 - Consolidated documentation from 25+ pages to 5 essential pages
-- Removed patterns/, archive/, and unused prompts
-- Simplified CLAUDE.md and configuration files
+- Simplified README.md with focused quick start and reference docs
+- Simplified queries.md to concise VG/SQL benchmark catalogue
+
+### Removed
+
+- `.claude/skills/` - Handler, pattern, and schema skill definitions
+- `benchmark/` - Entire benchmark suite (queries.yaml, ground truth, results, runner)
+- `docs/` - MkDocs documentation pages (architecture, getting-started, ontology-guide, etc.)
+- `neo4j/queries/` - All 25 Cypher query files
+- `prompts/` - Analysis session prompts
+- `REPORT.md`, `benchmarking.md` - Benchmark reports
+- `virtgraph_whiteboard.png` - Whiteboard image
+- Cleared `CLAUDE.md` content
+- Stripped `mkdocs.yml` to minimal config
+
+### Added
+
+- `sql_pattern_cheat_sheet.md` - SQL and handler usage patterns
+- `handler_pattern_cheat_sheet.md` - Handler signatures and parameters
+- `experiment_notebook_1.md` - Experimental notes
+- `benchmark_comparison.md` - Comparison documentation
+- `neo4j_queries.md` - Neo4j query reference
+- `the_plan.md` - Project planning document
+- `RUN_1/` - Archive of benchmark run artifacts
 
 ---
 

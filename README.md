@@ -1,103 +1,259 @@
 # Virtual Graph
 
-Graph-like queries over relational data using LLM reasoning.
+## What is Virtual Graph?
 
-## Research Question
+Virtual Graph explores whether an LLM, equipped with a domain ontology and specialized handlers, can effectively answer graph-style questions over relational databases—without migrating data to a native graph database.
 
-> Can an LLM agent system (Claude Code) equipped with an ontology and tooling for complex queries (DAGs, recursion, etc.) on top of a relational database perform effectively versus implementing a graph database?
+**The hypothesis**: By combining:
+1. A **domain ontology** that maps graph concepts to relational structures
+2. **Specialized handlers** for recursive traversal and network algorithms
+3. **LLM reasoning** to route questions and generate queries
 
-For enterprises with existing SQL infrastructure, Virtual Graph delivers **92% of graph query accuracy** at a fraction of the migration cost.
-
-## How It Works
-
-Virtual Graph routes queries through three paths based on complexity:
-
-| Route | Description | Example | Handler |
-|-------|-------------|---------|---------|
-| GREEN | Simple lookups/joins | "Find supplier ABC Corp" | Direct SQL |
-| YELLOW | Recursive traversal | "All tier 3 suppliers for Acme" | `traverse()` |
-| RED | Network algorithms | "Cheapest route from A to B" | NetworkX |
-
-An ontology maps business concepts to SQL tables. Handlers generate efficient queries. No graph database required.
+...we can achieve comparable functionality to graph databases for common enterprise use cases.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-poetry install
+make install          # Install Python dependencies
+make db-up            # Start PostgreSQL
+make neo4j-up         # Start Neo4j (for benchmarking)
+```
 
+## Reference Documentation
+
+| Document | Description |
+|----------|-------------|
+| `sql_pattern_cheat_sheet.md` | SQL and handler usage patterns |
+| `handler_pattern_cheat_sheet.md` | Handler signatures and parameters |
+| `question_inventory.md` | 50 benchmark questions |
+| `queries.md` | VG/SQL query catalogue with results |
+
+## Database Setup
+
+Virtual Graph uses two databases: **PostgreSQL** for relational data and **Neo4j** for graph queries.
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- Poetry installed (`pip install poetry`)
+- Python dependencies: `make install`
+
+### Starting the Databases
+
+```bash
 # Start PostgreSQL
 make db-up
 
-# Run tests
-make test
-
-# Serve documentation
-make serve-docs
+# Start Neo4j
+make neo4j-up
 ```
 
-## Project Structure
-
-```
-virt-graph/
-  src/virt_graph/
-    handlers/           # GREEN/YELLOW/RED handlers
-    estimator/          # Graph size estimation
-    ontology.py         # OntologyAccessor API
-  ontology/
-    supply_chain.yaml   # Domain ontology (LinkML)
-  prompts/              # Claude Code session starters
-  benchmark/            # VG vs Neo4j comparison
-  docs/                 # MkDocs documentation
-```
-
-## Key Features
-
-- **No Migration Required**: Query existing PostgreSQL data as a graph
-- **Safety Limits**: Built-in guards prevent runaway queries (MAX_NODES=10,000)
-- **Frontier Batching**: Efficient traversal with one query per depth level
-- **26x Faster**: No network hop to a separate database
-
-## Benchmark Results
-
-Virtual Graph achieves **92% accuracy** compared to Neo4j baseline:
-
-| Route | Accuracy | Avg Latency | Target |
-|-------|----------|-------------|--------|
-| GREEN | 88.9% | 2ms | 100% |
-| YELLOW | 100%* | 2ms | 90% |
-| RED | 85.7% | 1ms | 80% |
-| **Overall** | **92%** | **2ms** | 85% |
-
-*YELLOW includes queries that correctly triggered safety limits.
-
-## TCO Comparison
-
-| Scenario | Virtual Graph | Neo4j | Savings |
-|----------|--------------|-------|---------|
-| Tech Startup | $15,200 | $67,600 | 77% |
-| Enterprise | $145,800 | $306,600 | 52% |
-
-## Documentation
-
-- [Getting Started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Ontology Guide](docs/ontology-guide.md)
-- [Benchmark Report](docs/benchmark-report.md)
-
-## Development
+### Checking Database Health
 
 ```bash
-make test-gate1         # Database and core handlers
-make test-gate2         # Ontology and traversal
-make validate-ontology  # Two-layer validation
-make benchmark          # Run full benchmark
+# Check running containers
+docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(postgres|neo4j)"
 ```
 
-## Version
+Expected output shows both as "healthy":
+```
+virt-graph-neo4j      Up X minutes (healthy)
+postgres-postgres-1   Up X minutes (healthy)
+```
 
-Current version: **0.9.0** (Lean Academic Publication)
+### Stopping the Databases
 
-## License
+```bash
+# Stop PostgreSQL
+make db-down
 
-MIT
+# Stop Neo4j
+make neo4j-down
+```
+
+### Resetting PostgreSQL
+
+To wipe and recreate the PostgreSQL database (re-runs schema and seed scripts):
+
+```bash
+make db-reset
+```
+
+### Viewing Logs
+
+```bash
+# PostgreSQL logs
+make db-logs
+
+# Neo4j logs
+make neo4j-logs
+```
+
+### Database Credentials
+
+| Database   | Host      | Port | User        | Password     | Database/DB   |
+|------------|-----------|------|-------------|--------------|---------------|
+| PostgreSQL | localhost | 5432 | virt_graph  | dev_password | supply_chain  |
+| Neo4j      | localhost | 7687 | neo4j       | dev_password | neo4j         |
+
+Neo4j also exposes a browser UI at http://localhost:7474
+
+### Python Access
+
+#### PostgreSQL
+
+```python
+import psycopg2
+
+conn = psycopg2.connect(
+    host='localhost',
+    database='supply_chain',
+    user='virt_graph',
+    password='dev_password'
+)
+cur = conn.cursor()
+cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+for row in cur.fetchall():
+    print(row[0])
+conn.close()
+```
+
+#### Neo4j
+
+```python
+from neo4j import GraphDatabase
+
+driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'dev_password'))
+with driver.session() as session:
+    result = session.run('MATCH (n) RETURN labels(n)[0] AS label, count(*) AS count')
+    for record in result:
+        print(f"{record['label']}: {record['count']}")
+driver.close()
+```
+
+### Data Overview
+
+**PostgreSQL** contains 16 relational tables:
+`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`
+
+**Neo4j** contains graph nodes:
+| Node Type | Count |
+|-----------|-------|
+| Order | 20,000 |
+| Inventory | 10,032 |
+| Shipment | 7,995 |
+| Part | 5,008 |
+| Customer | 1,000 |
+| Certification | 707 |
+| Supplier | 500 |
+| Product | 200 |
+| Facility | 50 |
+
+## Using Virtual Graph with Claude Code
+
+Virtual Graph enables answering graph-style questions over relational data using an ontology and specialized handlers.
+
+### Key Resources
+
+| Resource | Location | Purpose |
+|----------|----------|---------|
+| Ontology | `ontology/supply_chain.yaml` | Defines entities, relationships, and complexity levels |
+| Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
+
+### Complexity Classification
+
+The ontology classifies relationships by query strategy:
+
+| Complexity | Strategy | Use Case |
+|------------|----------|----------|
+| **GREEN** | Direct SQL | Simple joins, aggregations |
+| **YELLOW** | `traverse()`, `bom_explode()` | Recursive paths (supplier network, BOM) |
+| **RED** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
+
+### Example Queries
+
+These are real queries generated by Claude Code during benchmarking. See `question_inventory.md` for all 50 benchmark questions and `queries.md` for the complete query catalogue.
+
+**GREEN - Direct SQL** (Q05: Which suppliers have ISO9001 certification?)
+```sql
+SELECT DISTINCT s.supplier_code, s.name, sc.certification_number
+FROM suppliers s
+JOIN supplier_certifications sc ON s.id = sc.supplier_id
+WHERE sc.certification_type = 'ISO9001' AND sc.is_valid = true;
+```
+
+**YELLOW - Recursive Traversal** (Q12: Find all upstream suppliers of 'Acme Corp')
+```python
+result = traverse(
+    conn,
+    nodes_table="suppliers",
+    edges_table="supplier_relationships",
+    edge_from_col="seller_id",
+    edge_to_col="buyer_id",
+    start_id=acme_id,
+    direction="inbound",  # Who sells TO Acme
+    max_depth=10,
+    include_start=False,
+)
+# Result: 33 upstream suppliers (7 tier 2, 26 tier 3)
+```
+
+**YELLOW - BOM Explosion** (Q19: Full BOM for 'Turbo Encabulator')
+```python
+result = bom_explode(
+    conn,
+    start_part_id=part_id,
+    max_depth=20,
+    include_quantities=True,
+)
+# Result: 1,024 unique parts
+```
+
+**RED - Shortest Path** (Q29: Shortest route from Chicago to LA)
+```python
+result = shortest_path(
+    conn,
+    nodes_table="facilities",
+    edges_table="transport_routes",
+    edge_from_col="origin_facility_id",
+    edge_to_col="destination_facility_id",
+    start_id=chicago_id,
+    end_id=la_id,
+    weight_col="distance_km",
+)
+# Result: 3,388.3 km, 3 hops
+```
+
+**RED - Centrality** (Q36: Which facility is most central?)
+```python
+result = centrality(
+    conn,
+    nodes_table="facilities",
+    edges_table="transport_routes",
+    edge_from_col="origin_facility_id",
+    edge_to_col="destination_facility_id",
+    centrality_type="betweenness",
+    top_n=10,
+)
+# Result: New York Factory (score=0.2327)
+```
+
+### Available Handlers
+
+| Handler | Complexity | Description |
+|---------|------------|-------------|
+| `traverse()` | YELLOW | BFS/DFS with direction control |
+| `bom_explode()` | YELLOW | Bill of materials explosion with quantities |
+| `shortest_path()` | RED | Dijkstra weighted shortest path |
+| `all_shortest_paths()` | RED | All shortest paths between nodes |
+| `centrality()` | RED | Betweenness/closeness/degree centrality |
+| `connected_components()` | RED | Find connected subgraphs |
+| `neighbors()` | RED | Direct neighbors of a node |
+| `resilience_analysis()` | RED | Impact analysis of node removal |
+
+### Workflow
+
+1. **Read the ontology** (`ontology/supply_chain.yaml`) to understand available entities and relationships
+2. **Classify the question** as GREEN, YELLOW, or RED based on traversal needs
+3. **Generate the query**: SQL for GREEN, handler call for YELLOW/RED
+4. **Execute and return results**
