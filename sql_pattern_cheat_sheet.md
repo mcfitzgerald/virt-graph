@@ -67,6 +67,7 @@ result = traverse(
     start_id=supplier_id,
     direction="inbound",
     max_depth=10,
+    soft_delete_column="deleted_at",  # Align with Neo4j migration
 )
 ```
 
@@ -81,6 +82,7 @@ result = traverse(
     start_id=supplier_id,
     direction="outbound",
     max_depth=10,
+    soft_delete_column="deleted_at",
 )
 ```
 
@@ -93,6 +95,7 @@ result = bom_explode(
     start_part_id=part_id,
     max_depth=20,
     include_quantities=True,
+    soft_delete_column="deleted_at",
 )
 ```
 
@@ -125,6 +128,7 @@ result = shortest_path(
     start_id=origin_id,
     end_id=dest_id,
     weight_col="distance_km",  # or "cost_usd", "transit_time_hours"
+    soft_delete_column="deleted_at",
 )
 ```
 
@@ -138,6 +142,7 @@ result = centrality(
     edge_to_col="destination_facility_id",
     centrality_type="betweenness",  # or "degree", "pagerank"
     top_n=10,
+    soft_delete_column="deleted_at",
 )
 ```
 

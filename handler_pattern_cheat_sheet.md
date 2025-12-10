@@ -23,6 +23,7 @@ result = traverse(
     max_depth=10,
     stop_condition="tier = 1", # SQL WHERE fragment (optional)
     include_start=False,
+    soft_delete_column="deleted_at",  # Filter out soft-deleted nodes (optional)
 )
 ```
 
@@ -48,6 +49,7 @@ result = bom_explode(
     start_part_id=123,
     max_depth=20,
     include_quantities=True,
+    soft_delete_column="deleted_at",  # Filter out soft-deleted parts (optional)
 )
 ```
 
@@ -97,6 +99,7 @@ result = shortest_path(
     end_id=la_id,
     weight_col="distance_km",  # or "cost_usd", "transit_time_hours", None
     excluded_nodes=[denver_id], # optional: route around these
+    soft_delete_column="deleted_at",  # Filter out soft-deleted nodes (optional)
 )
 ```
 
@@ -152,6 +155,7 @@ result = centrality(
     edge_to_col="destination_facility_id",
     centrality_type="betweenness",
     top_n=10,
+    soft_delete_column="deleted_at",  # Filter out soft-deleted nodes (optional)
 )
 ```
 
