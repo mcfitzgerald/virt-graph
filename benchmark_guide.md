@@ -4,6 +4,21 @@ This guide covers running the 50-question benchmark comparing Virtual Graph (SQL
 
 ---
 
+## Claude Prompt Directive
+
+To run a fresh benchmark, give Claude this directive:
+
+> Execute the 50-question benchmark from `question_inventory.md`:
+> 1. Start Docker containers: `docker compose up -d` (postgres + neo4j)
+> 2. For each question, run both VG/SQL (handlers) and Neo4j (Cypher)
+> 3. Use `soft_delete_column="deleted_at"` for all handlers
+> 4. Update `queries.md` with VG/SQL results
+> 5. Update `neo4j_queries.md` with Neo4j results
+> 6. Update `benchmark_comparison.md` with side-by-side analysis
+> 7. GREEN questions must match 100% before proceeding
+
+---
+
 ## Quick Start
 
 ### Pre-Flight Checklist
@@ -133,7 +148,6 @@ result = centrality(
 
 ## Reference
 
-- `handler_pattern_cheat_sheet.md` - Handler signatures and parameters
-- `sql_pattern_cheat_sheet.md` - SQL and handler patterns
+- `src/virt_graph/handlers/` - Handler modules with full docstrings
 - `src/virt_graph/ontology.py` - Ontology definitions
 - `neo4j/migration_metrics.json` - Neo4j schema reference
