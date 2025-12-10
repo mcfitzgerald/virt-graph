@@ -319,15 +319,21 @@ class OntologyAccessor:
         """
         Get SQL mapping for a role (reconstructed from annotations).
 
-        Returns dict with: table, domain_key, range_key, weight_columns
+        Returns dict with: table, domain_key, range_key, weight_columns, additional_columns
         """
         resolved = self._resolve_role_name(name)
         cls = self._rbox[resolved]
+
+        # Get attribute names as additional columns (edge properties)
+        attributes = cls.get("attributes", {})
+        additional_columns = list(attributes.keys())
+
         return {
             "table": self._get_annotation(cls, "edge_table"),
             "domain_key": self._get_annotation(cls, "domain_key"),
             "range_key": self._get_annotation(cls, "range_key"),
             "weight_columns": self.get_role_weight_columns(resolved),
+            "additional_columns": additional_columns,
         }
 
     def get_role_table(self, name: str) -> str:

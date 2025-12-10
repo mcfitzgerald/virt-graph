@@ -225,9 +225,11 @@ result = traverse(
 ### Q23: Calculate total component cost for "Turbo Encabulator"
 ```python
 result = bom_explode(conn, start_part_id=turbo_part_id, max_depth=20, include_quantities=True)
-# Sum unit_cost * quantity
+total = sum(c['extended_cost'] for c in result['components'] if c['extended_cost'])
 ```
-**Result**: $5,846,557.79
+**Result**: $34,795,958.60
+
+*Note: Uses CTE-based quantity aggregation that correctly sums quantities across ALL paths (fixing the "diamond problem" where components appear via multiple assembly paths).*
 
 ### Q24: What is the deepest BOM level for any product?
 ```python

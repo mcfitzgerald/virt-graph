@@ -395,7 +395,7 @@ class TestIntegration:
             skip_estimation=True,
         )
 
-        assert "nodes" in result
+        assert "components" in result
         assert result["nodes_visited"] >= 1
 
     def test_bom_with_increased_limit(self, conn):
@@ -421,7 +421,7 @@ class TestIntegration:
             max_nodes=50_000,  # Increased limit
         )
 
-        assert "nodes" in result
+        assert "components" in result
 
     def test_traverse_with_custom_config(self, conn):
         """Traverse with custom estimation config."""

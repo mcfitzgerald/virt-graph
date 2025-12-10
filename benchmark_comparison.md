@@ -57,7 +57,7 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 | Q18 | Shared suppliers | 7 | 328 | ✗ |
 
 **Notes**:
-- Depth discrepancy: VG/SQL explores more thoroughly via BFS
+- **Depth discrepancy (Q12, Q15, Q16)**: VG/SQL reports max depth 3, Neo4j reports max depth 2. Root cause: Neo4j migration filters soft-deleted nodes (`WHERE deleted_at IS NULL`), while VG/SQL `traverse()` follows all edges including those to soft-deleted suppliers. Both are correct given their data scope.
 - Q18 difference: Neo4j counts all shared suppliers across ALL tier 1s, VG/SQL sampled 5
 
 **YELLOW Supplier Pass Rate**: 7/8 (87.5%)
@@ -72,7 +72,7 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 | Q20 | Flux BOM | 688 parts | 688 parts | ✓ |
 | Q21 | CHIP-001 where-used | 1 | 1 | ✓ |
 | Q22 | RESISTOR-100 in products | 2 | 2 | ✓ |
-| Q23 | Turbo component cost | $5,846,557.79 | $219,311.69 | ~ |
+| Q23 | Turbo component cost | $34,795,958.60 | $34,795,958.60 | ✓ |
 | Q24 | Max BOM depth | 5 | 5 | ✓ |
 | Q25 | Turbo leaf components | 563 | 563 | ✓ |
 | Q26 | Common parts (both products) | 201 | 201 | ✓ |
@@ -81,9 +81,9 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 
 **Notes**:
 - BOM counts NOW MATCH: Both systems traverse from ALL product_components
-- Cost difference: VG/SQL multiplies by quantities along path, Neo4j sums raw unit_cost (different methodology)
+- Q23 cost NOW MATCHES: VG/SQL uses CTE-based multi-path quantity aggregation (same methodology as Neo4j)
 
-**YELLOW BOM Pass Rate**: 8/10 (80%)
+**YELLOW BOM Pass Rate**: 9/10 (90%)
 
 ---
 
@@ -91,17 +91,20 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 
 | ID | Question | VG/SQL | Neo4j | Match |
 |----|----------|--------|-------|-------|
-| Q29 | Chicago→LA distance | 2,100 km, 3 hops | 1 hop* | ~ |
-| Q30 | NYC→Seattle cost | $5,920.57, 5 hops | 3 hops* | ~ |
-| Q31 | Chicago→Miami time | 28 hours, 2 hops | 1 hop* | ~ |
-| Q32 | All Chicago→LA routes | 1 optimal | 397 (≤5 hops) | ~ |
-| Q33 | NYC→LA routes | 1 ($8,109.16) | 2 hops* | ~ |
+| Q29 | Chicago→LA distance | 2,100 km, 3 hops | 2,100 km, 2 hops | ✓ |
+| Q30 | NYC→Seattle cost | $5,920.57, 5 hops | $2,500, 3 hops | ~ |
+| Q31 | Chicago→Miami time | 28 hours, 2 hops | 28 hours, 1 hop | ✓ |
+| Q32 | All Chicago→LA routes | 1 optimal | 397, min 2,100 km | ~ |
+| Q33 | NYC→LA routes | 1 ($8,109.16) | $3,500, 2 hops | ~ |
 | Q34 | Min hops Chicago→LA | 1 | 1 | ✓ |
-| Q35 | Chicago→Miami avoiding Denver | 2,100 km, 2 hops | 1 hop | ~ |
+| Q35 | Chicago→Miami avoiding Denver | 2,100 km, 2 hops | 2,100 km, 1 hop | ✓ |
 
-*Neo4j uses hop count only (edge weights not migrated)
+**Notes**:
+- Neo4j now uses weighted shortest paths via `reduce()` with edge properties
+- Distance/time values match; hop counts differ due to soft-delete filtering (VG/SQL traverses more nodes)
+- Cost differences may reflect different available routes in each dataset
 
-**RED Pathfinding**: VG/SQL provides weighted paths; Neo4j limited to hops
+**RED Pathfinding Pass Rate**: 4/7 (57%)
 
 ---
 
@@ -166,9 +169,9 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 | Aspect | VG/SQL | Neo4j |
 |--------|--------|-------|
 | BOM Counting | All product_components (fixed) | All CONTAINSCOMPONENT |
-| Path Weights | Full support | Requires GDS or APOC |
-| Centrality | NetworkX algorithms | Simple counts (without GDS) |
-| Quantity Rollup | Multiplies along path | Sum only |
+| Path Weights | Full support (Dijkstra) | `reduce()` with edge properties |
+| Centrality | NetworkX algorithms | Simple counts (GDS would add full support) |
+| Quantity Rollup | CTE-based multi-path aggregation | All paths with sum() |
 
 ---
 
@@ -178,14 +181,13 @@ Side-by-side comparison of Virtual Graph (SQL + handlers) vs Neo4j (pure Cypher)
 |----------|--------|-------|-----------|
 | GREEN (10) | 100% | 100% | 100% |
 | YELLOW Supplier (8) | 100% | 100% | 87.5% |
-| YELLOW BOM (10) | 100% | 100% | 80%* |
-| RED Pathfinding (7) | 100% | 100% | 14%** |
+| YELLOW BOM (10) | 100% | 100% | 90% |
+| RED Pathfinding (7) | 100% | 100% | 57%* |
 | RED Centrality (5) | 100% | 100% | 80% |
 | MIXED (10) | 100% | 100% | 70% |
-| **Overall** | **100%** | **100%** | **~72%** |
+| **Overall** | **100%** | **100%** | **~82%** |
 
-*BOM counts now match (734/688) after fix to traverse ALL product_components
-**Neo4j lacks edge weights for weighted pathfinding
+*Pathfinding now uses weighted shortest paths; remaining differences due to data scope (soft-delete filtering)
 
 ---
 
