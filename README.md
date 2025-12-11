@@ -1,15 +1,18 @@
-# Virtual Graph
+# VG/SQL: Virtual Graph over SQL
 
-## What is Virtual Graph?
+## What is VG/SQL?
 
-Virtual Graph explores whether an LLM, equipped with a domain ontology and specialized handlers, can effectively answer graph-style questions over relational databases—without migrating data to a native graph database.
+**The problem**: Enterprise data lives in relational SQL databases. Graph databases offer powerful query patterns (traversals, pathfinding, centrality), but migrating data is cumbersome and often impractical.
 
-**The hypothesis**: By combining:
-1. A **domain ontology** that maps graph concepts to relational structures
-2. **Specialized handlers** for recursive traversal and network algorithms
-3. **LLM reasoning** to route questions and generate queries
+**The solution**: VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational data WITHOUT migration. It combines:
 
-...we can achieve comparable functionality to graph databases for common enterprise use cases.
+1. A **LinkML ontology** that maps graph concepts to relational structures
+2. **Lightweight Python handlers** for recursive traversal and graph algorithms
+3. **On-the-fly query generation** via a general-purpose agentic system like Claude Code
+
+This work extends [virtual-ontology](https://github.com/mcfitzgerald/virtual-ontology) by adopting LinkML for standardized, validatable ontology definitions and adding handlers for full graph operations.
+
+**Proof of concept**: The supply chain domain demonstrates the approach; the pattern generalizes to any relational schema with graph-like relationships.
 
 ## Quick Start
 
@@ -23,14 +26,14 @@ make neo4j-up         # Start Neo4j (for benchmarking)
 
 | Document | Description |
 |----------|-------------|
-| `sql_pattern_cheat_sheet.md` | SQL and handler usage patterns |
-| `handler_pattern_cheat_sheet.md` | Handler signatures and parameters |
 | `question_inventory.md` | 50 benchmark questions |
 | `queries.md` | VG/SQL query catalogue with results |
+| `benchmark_comparison.md` | VG/SQL vs Neo4j comparison |
+| `ontology/supply_chain.yaml` | LinkML ontology definition |
 
 ## Database Setup
 
-Virtual Graph uses two databases: **PostgreSQL** for relational data and **Neo4j** for graph queries.
+VG/SQL uses two databases: **PostgreSQL** for relational data and **Neo4j** for validation/benchmarking.
 
 ### Prerequisites
 
@@ -149,9 +152,26 @@ driver.close()
 | Product | 200 |
 | Facility | 50 |
 
-## Using Virtual Graph with Claude Code
+## How VG/SQL Works
 
-Virtual Graph enables answering graph-style questions over relational data using an ontology and specialized handlers.
+VG/SQL enables graph-like queries over relational data through three components:
+
+### The Handlers (Key Contribution)
+
+Lightweight, generic Python tools that enable full graph operations over SQL—a small price to pay for graph capabilities without migration:
+
+| Handler | Complexity | Description |
+|---------|------------|-------------|
+| `traverse()` | YELLOW | BFS/DFS with direction control |
+| `bom_explode()` | YELLOW | Bill of materials explosion with quantities |
+| `shortest_path()` | RED | Dijkstra weighted shortest path |
+| `all_shortest_paths()` | RED | All shortest paths between nodes |
+| `centrality()` | RED | Betweenness/closeness/degree centrality |
+| `connected_components()` | RED | Find connected subgraphs |
+| `neighbors()` | RED | Direct neighbors of a node |
+| `resilience_analysis()` | RED | Impact analysis of node removal |
+
+These handlers are easily extended or new ones created for domain-specific graph operations.
 
 ### Key Resources
 
@@ -238,22 +258,33 @@ result = centrality(
 # Result: New York Factory (score=0.2327)
 ```
 
-### Available Handlers
-
-| Handler | Complexity | Description |
-|---------|------------|-------------|
-| `traverse()` | YELLOW | BFS/DFS with direction control |
-| `bom_explode()` | YELLOW | Bill of materials explosion with quantities |
-| `shortest_path()` | RED | Dijkstra weighted shortest path |
-| `all_shortest_paths()` | RED | All shortest paths between nodes |
-| `centrality()` | RED | Betweenness/closeness/degree centrality |
-| `connected_components()` | RED | Find connected subgraphs |
-| `neighbors()` | RED | Direct neighbors of a node |
-| `resilience_analysis()` | RED | Impact analysis of node removal |
-
-### Workflow
+### Workflow (with Claude Code)
 
 1. **Read the ontology** (`ontology/supply_chain.yaml`) to understand available entities and relationships
-2. **Classify the question** as GREEN, YELLOW, or RED based on traversal needs
-3. **Generate the query**: SQL for GREEN, handler call for YELLOW/RED
+2. **Dispatch** the question: determine if a handler is needed based on complexity (GREEN/YELLOW/RED)
+3. **Generate query on-the-fly**: Direct SQL for GREEN, handler call for YELLOW/RED
 4. **Execute and return results**
+
+All queries are generated on-the-fly by the agentic system—no hardcoded templates.
+
+## Designed for Agentic Systems
+
+VG/SQL is built for a new paradigm: **tools running in a loop** ([Willison, 2025](https://simonwillison.net/2025/Sep/18/agents/)). General-purpose agentic systems like **Claude Code** provide a complete environment—file access, code execution, web search, reasoning—with batteries included.
+
+VG/SQL leverages these native capabilities:
+- **Ontology discovery**: Introspect database schema, generate LinkML ontology
+- **Dispatch**: Natural language question → determine if handler is needed
+- **Query generation**: On-the-fly SQL or handler calls (not templates)
+
+The ontology + handlers are the contribution; Claude Code is the enabler.
+
+## Research Validation
+
+*Validation methodology (benchmark results to be updated):*
+
+- 50 benchmark questions generated by Claude
+- Same ontology defines BOTH VG/SQL handlers AND Neo4j schema
+- Both systems queried with on-the-fly generated queries
+- Supply chain domain proves the concept; approach generalizes
+
+See `benchmark_comparison.md` for detailed results.
