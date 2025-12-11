@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Validate that named test entities exist in the database.
+Validate that named supply chain benchmark entities exist in the database.
 
+This is a supply-chain specific validation script for the benchmark study.
 Run before benchmarking to ensure the database has all expected named entities.
 
 Usage:
-    poetry run python scripts/validate_entities.py
+    poetry run python BENCHMARK_STUDY/validate_entities.py
     make validate-entities
 """
 

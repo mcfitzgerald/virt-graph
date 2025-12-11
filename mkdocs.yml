@@ -1,0 +1,56 @@
+site_name: VG/SQL Documentation
+site_description: Virtual Graph over SQL - Graph queries without migration
+site_url: https://github.com/mcfitzgerald/virt-graph
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.tabs.link
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quickstart.md
+  - Core Concepts:
+    - Architecture: concepts/architecture.md
+    - Complexity Levels: concepts/complexity-levels.md
+    - Ontology System: concepts/ontology.md
+  - Handlers:
+    - Overview: handlers/overview.md
+    - Traversal: handlers/traversal.md
+    - Pathfinding: handlers/pathfinding.md
+    - Network Analysis: handlers/network.md
+  - Ontology Development:
+    - LinkML Format: ontology/linkml-format.md
+    - VG Extensions: ontology/vg-extensions.md
+    - Creating Ontologies: ontology/creating-ontologies.md
+    - Validation: ontology/validation.md
+  - API Reference:
+    - Handlers: api/handlers.md
+    - Estimator: api/estimator.md
+    - OntologyAccessor: api/ontology-accessor.md
+  - Examples:
+    - Supply Chain Tutorial: examples/supply-chain.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mcfitzgerald/virt-graph

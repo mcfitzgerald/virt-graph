@@ -102,25 +102,38 @@ def main():
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "--all":
-            # Validate all ontology files
+            # Validate all ontology files in ontology/ directory
+            # Excludes TEMPLATE.yaml (template, not a real ontology)
             ontology_files = [
-                ontology_dir / "virt_graph.yaml",
-                ontology_dir / "supply_chain.yaml",
+                f for f in ontology_dir.glob("*.yaml")
+                if f.name != "TEMPLATE.yaml"
             ]
+            if not ontology_files:
+                print(f"No ontology files found in {ontology_dir}")
+                sys.exit(1)
+
+            print(f"Found {len(ontology_files)} ontology file(s) to validate:")
+            for f in ontology_files:
+                print(f"  - {f.name}")
+
             all_passed = True
-            for path in ontology_files:
-                if path.exists():
-                    if not validate_ontology(path):
-                        all_passed = False
-                else:
-                    print(f"Warning: {path} not found, skipping")
+            for path in sorted(ontology_files):
+                if not validate_ontology(path):
+                    all_passed = False
             sys.exit(0 if all_passed else 1)
         else:
             # Validate specific file
             ontology_path = Path(sys.argv[1])
     else:
-        # Default to supply_chain.yaml
-        ontology_path = ontology_dir / "supply_chain.yaml"
+        # No argument - show usage
+        print("Usage:")
+        print("  poetry run python scripts/validate_ontology.py <ontology_path>")
+        print("  poetry run python scripts/validate_ontology.py --all")
+        print()
+        print("Examples:")
+        print("  poetry run python scripts/validate_ontology.py ontology/supply_chain.yaml")
+        print("  poetry run python scripts/validate_ontology.py --all")
+        sys.exit(1)
 
     if not ontology_path.exists():
         print(f"Error: {ontology_path} not found")

@@ -6,15 +6,17 @@
 
 **The solution**: VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational data WITHOUT migration. It combines:
 
-1. A **LinkML ontology** that maps graph concepts to relational structures
-2. **Lightweight Python handlers** for recursive traversal and graph algorithms
-3. **On-the-fly query generation** via a general-purpose agentic system like Claude Code
+1. An **ontology** expressed in [LinkML](https://linkml.io) forma that maps graph concepts to relational structures and translates 1:1 to an annotated Tbox/Rbox ontological structure.
+2. **Lightweight Python handlers** for recursive traversal and graph algorithms filling in gaps in native SQL for graph operations.
+3. **Overall orchestration and on-the-fly query generation** via general-purpose agentic systems (in this case Claude Code)
 
-This work extends [virtual-ontology](https://github.com/mcfitzgerald/virtual-ontology) by adopting LinkML for standardized, validatable ontology definitions and adding handlers for full graph operations.
+This work extends the previously introduced [virtual-ontology](https://github.com/mcfitzgerald/virtual-ontology) concept by adopting LinkML for standardized, validatable ontology definitions and adding handlers for full graph operations.
 
-**Proof of concept**: The supply chain domain demonstrates the approach; the pattern generalizes to any relational schema with graph-like relationships.
+**Proof of concept**: We share a toy example from supply chain domain to demonstrate the approach; the pattern generalizes to any relational schema
 
 ## Quick Start
+
+**FIRST:Launch Claude Code session**
 
 ```bash
 make install          # Install Python dependencies
@@ -22,18 +24,9 @@ make db-up            # Start PostgreSQL
 make neo4j-up         # Start Neo4j (for benchmarking)
 ```
 
-## Reference Documentation
-
-| Document | Description |
-|----------|-------------|
-| `question_inventory.md` | 50 benchmark questions |
-| `queries.md` | VG/SQL query catalogue with results |
-| `benchmark_comparison.md` | VG/SQL vs Neo4j comparison |
-| `ontology/supply_chain.yaml` | LinkML ontology definition |
-
 ## Database Setup
 
-VG/SQL uses two databases: **PostgreSQL** for relational data and **Neo4j** for validation/benchmarking.
+While the general use case is on realtional SQL data, we compare two databases: **PostgreSQL** for relational data and **Neo4j** for validation/benchmarking
 
 ### Prerequisites
 
@@ -134,24 +127,6 @@ with driver.session() as session:
 driver.close()
 ```
 
-### Data Overview
-
-**PostgreSQL** contains 16 relational tables:
-`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`
-
-**Neo4j** contains graph nodes:
-| Node Type | Count |
-|-----------|-------|
-| Order | 20,000 |
-| Inventory | 10,032 |
-| Shipment | 7,995 |
-| Part | 5,008 |
-| Customer | 1,000 |
-| Certification | 707 |
-| Supplier | 500 |
-| Product | 200 |
-| Facility | 50 |
-
 ## How VG/SQL Works
 
 VG/SQL enables graph-like queries over relational data through three components:
@@ -189,6 +164,28 @@ The ontology classifies relationships by query strategy:
 | **GREEN** | Direct SQL | Simple joins, aggregations |
 | **YELLOW** | `traverse()`, `bom_explode()` | Recursive paths (supplier network, BOM) |
 | **RED** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
+
+
+# Supply Chain Use Case
+
+### Data Overview
+
+**PostgreSQL** contains 16 relational tables:
+`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`
+
+**Neo4j** contains graph nodes:
+| Node Type | Count |
+|-----------|-------|
+| Order | 20,000 |
+| Inventory | 10,032 |
+| Shipment | 7,995 |
+| Part | 5,008 |
+| Customer | 1,000 |
+| Certification | 707 |
+| Supplier | 500 |
+| Product | 200 |
+| Facility | 50 |
+
 
 ### Example Queries
 
