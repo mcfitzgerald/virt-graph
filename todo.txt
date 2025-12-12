@@ -1,0 +1,46 @@
+Based on the mkdocs.yml navigation, here's what's done vs. remaining:
+
+  Done
+
+  | File                                    | Status  |
+  |-----------------------------------------|---------|
+  | docs/index.md                           | Created |
+  | docs/getting-started/quickstart.md      | Created |
+  | docs/concepts/ontology.md               | Created |
+  | docs/handlers/overview.md               | Created |
+  | Tests (pathfinding, network, traversal) | Created |
+  | validate_ontology.py generic            | Done    |
+  | validate_entities.py moved              | Done    |
+
+  Remaining (referenced in mkdocs.yml but not created)
+
+  Core Concepts:
+  - concepts/architecture.md - How VG/SQL works
+  - concepts/complexity-levels.md - GREEN/YELLOW/RED explanation
+
+  Handler Details:
+  - handlers/traversal.md - Deep dive on traverse(), bom_explode()
+  - handlers/pathfinding.md - Deep dive on shortest_path()
+  - handlers/network.md - Deep dive on centrality(), etc.
+
+  Ontology Development:
+  - ontology/linkml-format.md - LinkML basics
+  - ontology/vg-extensions.md - VG annotation reference
+  - ontology/creating-ontologies.md - Step-by-step guide
+  - ontology/validation.md - Validation details
+
+  API Reference:
+  - api/handlers.md - Full API docs
+  - api/estimator.md - Estimator module docs
+  - api/ontology-accessor.md - OntologyAccessor docs
+
+  Examples:
+  - examples/supply-chain.md - Tutorial using supply chain data
+
+  ---
+  Recommendation: The essential docs are done. The remaining pages provide depth but aren't blocking. You could:
+  1. Ship with current docs (remove unfinished nav entries from mkdocs.yml)
+  2. Create placeholder pages with "Coming soon"
+  3. Continue building out the remaining pages
+
+  Which would you prefer?

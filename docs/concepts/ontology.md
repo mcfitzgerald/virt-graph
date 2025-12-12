@@ -167,7 +167,7 @@ BelongsToCategory:
     vg:functional: true
 ```
 
-**Example (YELLOW - Recursive):**
+**Example (YELLOW - Recursive)** *Supply Chain Use Case:*
 ```yaml
 SuppliesTo:
   description: "Supplier sells to another supplier"
@@ -186,7 +186,7 @@ SuppliesTo:
     vg:is_hierarchical: true
 ```
 
-**Example (RED - Network Algorithm):**
+**Example (RED - Network Algorithm)** *Supply Chain Use Case:*
 ```yaml
 TransportRoute:
   description: "Transport connection between facilities"
@@ -274,21 +274,19 @@ red_roles = ontology.get_roles_by_complexity("RED")
 
 ## Creating a New Ontology
 
-1. Copy the template:
-   ```bash
-   cp ontology/TEMPLATE.yaml ontology/my_domain.yaml
-   ```
+Ontologies are created through an interactive, guided process using Claude. The process follows a 4-round discovery protocol that automatically introspects your database schema and generates a complete LinkML ontology.
 
-2. Fill in schema metadata (id, name, description)
+### The Discovery Process
 
-3. Define entity classes with `vg:SQLMappedClass`
+1. **Round 1: Schema Introspection** - Claude queries `information_schema` to discover tables, columns, foreign keys, constraints, and patterns (soft deletes, natural keys, etc.)
 
-4. Define relationship classes with `vg:SQLMappedRelationship`
+2. **Round 2: Entity Class Discovery (TBox)** - For each entity table, Claude proposes LinkML classes with `vg:SQLMappedClass`, including required annotations (`vg:table`, `vg:primary_key`) and optional ones (`vg:identifier`, `vg:soft_delete_column`, `vg:row_count`)
 
-5. Validate:
-   ```bash
-   poetry run python scripts/validate_ontology.py ontology/my_domain.yaml
-   ```
+3. **Round 3: Relationship Class Discovery (RBox)** - For each foreign key relationship, Claude proposes LinkML classes with `vg:SQLMappedRelationship`, determining traversal complexity (GREEN/YELLOW/RED) and OWL 2 role axioms based on the schema structure
+
+4. **Round 4: Draft, Validate & Finalize** - Claude writes the complete ontology file, performs two-layer validation (LinkML structure + VG annotations), and fixes any errors
+
+After each round, you review and provide corrections before proceeding. The process uses the discovery protocol defined in `prompts/ontology_discovery.md`.
 
 See [Creating Ontologies](../ontology/creating-ontologies.md) for a detailed guide.
 
