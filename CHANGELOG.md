@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.1] - 2025-12-14
+
+### Changed
+
+- **virt_graph.yaml is now single source of truth** for VG extension validation
+- `OntologyAccessor` dynamically loads validation rules from metamodel via LinkML SchemaView
+- Removed hardcoded `ENTITY_REQUIRED`, `RELATIONSHIP_REQUIRED`, `VALID_COMPLEXITIES` constants
+
+### Removed
+
+- `ontology/TEMPLATE.yaml` - redundant; virt_graph.yaml serves as both metamodel and template
+
+### Updated Documentation
+
+- `docs/concepts/ontology.md` - explains metamodel-driven validation
+- `prompts/ontology_discovery.md` - references virt_graph.yaml as source of truth
+- `README.md` - added metamodel to Key Resources table
+- `CLAUDE.md` - updated key files list
+
+---
+
 ## [0.9.0] - 2025-12-08
 
 ### Changed

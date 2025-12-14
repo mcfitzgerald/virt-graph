@@ -4,8 +4,8 @@ Ontology accessor for LinkML format with Virtual Graph extensions.
 Provides a stable API abstracting over the LinkML structure,
 presenting logical TBox (classes) and RBox (roles) views.
 
-Includes custom validation for VG-specific annotations since LinkML's
-`instantiates` validation is not yet implemented.
+Validation rules are derived from the VG metamodel (ontology/virt_graph.yaml)
+using LinkML's SchemaView, making the metamodel the single source of truth.
 """
 
 import json
@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from linkml_runtime.utils.schemaview import SchemaView
 
 
 @dataclass
@@ -65,17 +66,11 @@ class OntologyAccessor:
     VG_ENTITY = "vg:SQLMappedClass"
     VG_RELATIONSHIP = "vg:SQLMappedRelationship"
 
-    # Required annotations for each extension type
-    ENTITY_REQUIRED = {"table", "primary_key"}
-    RELATIONSHIP_REQUIRED = {
-        "edge_table",
-        "domain_key",
-        "range_key",
-        "domain_class",
-        "range_class",
-        "traversal_complexity",
-    }
-    VALID_COMPLEXITIES = {"GREEN", "YELLOW", "RED"}
+    # Class-level cache for metamodel rules (loaded once per process)
+    _metamodel_loaded: bool = False
+    _entity_required: set[str] = set()
+    _relationship_required: set[str] = set()
+    _valid_complexities: set[str] = set()
 
     def __init__(self, ontology_path: Optional[Path] = None, validate: bool = True):
         """
@@ -89,6 +84,9 @@ class OntologyAccessor:
         Raises:
             OntologyValidationError: If validation is enabled and fails
         """
+        # Load metamodel rules from virt_graph.yaml (once per process)
+        self._load_metamodel_rules()
+
         if ontology_path is None:
             ontology_path = (
                 Path(__file__).parent.parent.parent / "ontology" / "supply_chain.yaml"
@@ -106,6 +104,46 @@ class OntologyAccessor:
             errors = self.validate()
             if errors:
                 raise OntologyValidationError(errors)
+
+    @classmethod
+    def _load_metamodel_rules(cls) -> None:
+        """
+        Load validation rules from virt_graph.yaml via SchemaView.
+
+        This makes virt_graph.yaml the single source of truth for:
+        - Required fields for SQLMappedClass (entity classes)
+        - Required fields for SQLMappedRelationship (relationship classes)
+        - Valid values for TraversalComplexity enum
+
+        Rules are cached at class level and loaded once per process.
+        """
+        if cls._metamodel_loaded:
+            return
+
+        metamodel_path = (
+            Path(__file__).parent.parent.parent / "ontology" / "virt_graph.yaml"
+        )
+        sv = SchemaView(str(metamodel_path))
+
+        # Extract required fields from SQLMappedClass
+        cls._entity_required = {
+            slot
+            for slot in sv.class_slots("SQLMappedClass")
+            if sv.induced_slot(slot, "SQLMappedClass").required
+        }
+
+        # Extract required fields from SQLMappedRelationship
+        cls._relationship_required = {
+            slot
+            for slot in sv.class_slots("SQLMappedRelationship")
+            if sv.induced_slot(slot, "SQLMappedRelationship").required
+        }
+
+        # Extract valid enum values for TraversalComplexity
+        complexity_enum = sv.get_enum("TraversalComplexity")
+        cls._valid_complexities = set(complexity_enum.permissible_values.keys())
+
+        cls._metamodel_loaded = True
 
     def _index_classes(self):
         """Partition classes into TBox (entities) and RBox (relationships)."""
@@ -189,7 +227,7 @@ class OntologyAccessor:
         errors = []
         for name, cls in self._tbox.items():
             present = self._get_all_annotations(cls)
-            missing = self.ENTITY_REQUIRED - present
+            missing = self._entity_required - present
             for field in missing:
                 errors.append(
                     ValidationError(
@@ -208,7 +246,7 @@ class OntologyAccessor:
             present = self._get_all_annotations(cls)
 
             # Check required fields
-            missing = self.RELATIONSHIP_REQUIRED - present
+            missing = self._relationship_required - present
             for field in missing:
                 errors.append(
                     ValidationError(
@@ -221,13 +259,13 @@ class OntologyAccessor:
 
             # Validate traversal_complexity value
             complexity = self._get_annotation(cls, "traversal_complexity")
-            if complexity and complexity not in self.VALID_COMPLEXITIES:
+            if complexity and complexity not in self._valid_complexities:
                 errors.append(
                     ValidationError(
                         element_type="relationship",
                         element_name=name,
                         field="traversal_complexity",
-                        message=f"invalid value '{complexity}', must be one of {self.VALID_COMPLEXITIES}",
+                        message=f"invalid value '{complexity}', must be one of {self._valid_complexities}",
                     )
                 )
 

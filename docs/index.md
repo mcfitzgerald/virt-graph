@@ -153,7 +153,7 @@ virt-graph/
 │   ├── ontology.py        # OntologyAccessor class
 │   └── estimator.py       # Pre-flight size estimation
 ├── ontology/
-│   ├── TEMPLATE.yaml      # Ontology template
+│   ├── virt_graph.yaml    # VG metamodel (single source of truth)
 │   └── *.yaml             # Domain ontologies
 ├── scripts/
 │   └── validate_ontology.py  # Two-layer validation

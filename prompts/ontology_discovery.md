@@ -11,8 +11,7 @@ You are starting an interactive ontology discovery session. Follow the 4-round p
 **Database**: `{{connection_string}}`
 **Schema Name**: `{{schema_name}}`
 **Output**: `ontology/{{schema_name}}.yaml`
-**Metamodel**: `ontology/virt_graph.yaml`
-**Template**: `ontology/TEMPLATE.yaml`
+**Metamodel**: `ontology/virt_graph.yaml` (single source of truth for extensions and validation rules)
 
 **Validation** (two-layer):
 1. Structure: `poetry run linkml-lint --validate-only ontology/{{schema_name}}.yaml`
@@ -48,7 +47,10 @@ Present findings as a table summary. **Pause for human review.**
 
 For each entity table, propose a LinkML class with `instantiates: [vg:SQLMappedClass]`.
 
-**Required annotations** (MUST be present):
+> **Note**: Required and optional annotations are defined in `ontology/virt_graph.yaml` (SQLMappedClass).
+> Validation rules are derived from the metamodel automatically.
+
+**Required annotations** (as defined in virt_graph.yaml SQLMappedClass):
 | Annotation | How to determine |
 |------------|------------------|
 | `vg:table` | SQL table name |
@@ -91,7 +93,10 @@ Present class proposals as a structured list. **Pause for human corrections.**
 
 For each FK relationship, propose a LinkML class with `instantiates: [vg:SQLMappedRelationship]`.
 
-**Required annotations** (MUST be present):
+> **Note**: Required and optional annotations are defined in `ontology/virt_graph.yaml` (SQLMappedRelationship).
+> Valid `traversal_complexity` values (GREEN, YELLOW, RED) come from the TraversalComplexity enum in the metamodel.
+
+**Required annotations** (as defined in virt_graph.yaml SQLMappedRelationship):
 | Annotation | How to determine |
 |------------|------------------|
 | `vg:edge_table` | Table containing the FK (or junction table) |
@@ -200,7 +205,7 @@ Present role proposals. **Pause for human corrections.**
 ### Round 4: Draft, Validate & Finalize
 
 1. **Write complete ontology** to `ontology/{{schema_name}}.yaml`
-   - Follow the structure in `ontology/TEMPLATE.yaml`
+   - Follow the metamodel in `ontology/virt_graph.yaml` (defines SQLMappedClass, SQLMappedRelationship)
    - Include schema header with metadata:
      ```yaml
      id: https://virt-graph.dev/schemas/{{schema_name}}

@@ -103,11 +103,7 @@ def main():
     if len(sys.argv) > 1:
         if sys.argv[1] == "--all":
             # Validate all ontology files in ontology/ directory
-            # Excludes TEMPLATE.yaml (template, not a real ontology)
-            ontology_files = [
-                f for f in ontology_dir.glob("*.yaml")
-                if f.name != "TEMPLATE.yaml"
-            ]
+            ontology_files = list(ontology_dir.glob("*.yaml"))
             if not ontology_files:
                 print(f"No ontology files found in {ontology_dir}")
                 sys.exit(1)

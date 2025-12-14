@@ -38,6 +38,19 @@ VG/SQL ontologies are valid [LinkML schemas](https://linkml.io/linkml/schemas/) 
 - Tooling for validation, documentation, and code generation
 - Compatibility with the LinkML ecosystem
 
+## Metamodel Reference
+
+The VG metamodel is defined in `ontology/virt_graph.yaml` and serves as the **single source of truth** for:
+
+- **Extension classes**: `vg:SQLMappedClass`, `vg:SQLMappedRelationship`
+- **Validation rules**: Required fields are derived from the metamodel automatically
+- **Enums**: `vg:TraversalComplexity` (GREEN/YELLOW/RED)
+- **Supporting types**: `vg:WeightColumn`, `vg:DatabaseConnection`
+
+The `OntologyAccessor` reads `virt_graph.yaml` via LinkML's SchemaView to dynamically extract validation rules. This means:
+- Adding a required field to `SQLMappedClass` in `virt_graph.yaml` automatically updates validation
+- No hardcoded duplication between YAML and Python code
+
 ### Basic Structure
 
 ```yaml
@@ -85,11 +98,11 @@ VG extensions use the `vg:` prefix and are expressed as LinkML annotations.
 
 Entity classes represent database tables. They must instantiate `vg:SQLMappedClass`.
 
-**Required annotations:**
+**Required annotations** (defined in `virt_graph.yaml` SQLMappedClass):
 - `vg:table` - SQL table name
 - `vg:primary_key` - Primary key column
 
-**Optional annotations:**
+**Optional annotations** (also from SQLMappedClass):
 - `vg:identifier` - Natural key column(s) as JSON array
 - `vg:soft_delete_column` - Soft delete timestamp column
 - `vg:row_count` - Estimated row count for query planning
@@ -121,15 +134,15 @@ Supplier:
 
 Relationship classes represent foreign key relationships. They must instantiate `vg:SQLMappedRelationship`.
 
-**Required annotations:**
+**Required annotations** (defined in `virt_graph.yaml` SQLMappedRelationship):
 - `vg:edge_table` - Junction/edge table name
 - `vg:domain_key` - FK column pointing to domain class
 - `vg:range_key` - FK column pointing to range class
 - `vg:domain_class` - Name of the domain class
 - `vg:range_class` - Name of the range class
-- `vg:traversal_complexity` - GREEN, YELLOW, or RED
+- `vg:traversal_complexity` - GREEN, YELLOW, or RED (from TraversalComplexity enum)
 
-**Optional annotations:**
+**Optional annotations** (also from SQLMappedRelationship):
 
 *OWL 2 Role Axioms:*
 - `vg:transitive` - R(x,y) and R(y,z) implies R(x,z)
@@ -231,7 +244,7 @@ poetry run linkml-lint --validate-only ontology/my_domain.yaml
 
 ### Layer 2: VG Annotations
 
-Validates VG-specific annotations:
+Validates VG-specific annotations. Rules are derived from `virt_graph.yaml`:
 
 ```python
 from virt_graph.ontology import OntologyAccessor
@@ -239,6 +252,11 @@ from virt_graph.ontology import OntologyAccessor
 # Raises OntologyValidationError if invalid
 ontology = OntologyAccessor("ontology/my_domain.yaml", validate=True)
 ```
+
+The `OntologyAccessor` loads `virt_graph.yaml` via LinkML's SchemaView to:
+- Extract required fields from `SQLMappedClass` and `SQLMappedRelationship`
+- Extract valid values from `TraversalComplexity` enum
+- Validate domain ontologies against these dynamically-loaded rules
 
 ### Full Validation Script
 
@@ -290,12 +308,3 @@ After each round, you review and provide corrections before proceeding. The proc
 
 See [Creating Ontologies](../ontology/creating-ontologies.md) for a detailed guide.
 
-## Metamodel Reference
-
-The VG metamodel is defined in `ontology/virt_graph.yaml` and provides:
-
-- `vg:SQLMappedClass` - Extension for entity tables
-- `vg:SQLMappedRelationship` - Extension for relationships
-- `vg:WeightColumn` - Describes numeric weight columns
-- `vg:TraversalComplexity` - Enum for GREEN/YELLOW/RED
-- `vg:DatabaseConnection` - Schema-level database metadata

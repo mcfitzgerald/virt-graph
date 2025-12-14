@@ -107,6 +107,5 @@ domain_key, range_key = ontology.get_role_keys("SuppliesTo")
 ## Key Files
 
 - `ontology/supply_chain.yaml` - Domain ontology with VG annotations
-- `ontology/virt_graph.yaml` - VG metamodel (extension definitions)
-- `ontology/TEMPLATE.yaml` - Template for new ontologies
+- `ontology/virt_graph.yaml` - VG metamodel (single source of truth for extensions and template)
 - `prompts/ontology_discovery.md` - 4-round protocol for creating ontologies from new databases

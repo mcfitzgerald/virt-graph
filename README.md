@@ -152,6 +152,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 
 | Resource | Location | Purpose |
 |----------|----------|---------|
+| Metamodel | `ontology/virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
 | Ontology | `ontology/supply_chain.yaml` | Defines entities, relationships, and complexity levels |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 
