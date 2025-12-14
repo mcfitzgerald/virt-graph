@@ -2,7 +2,7 @@
 Integration tests for traversal handlers.
 
 Tests traverse_collecting() function. Note that traverse() and bom_explode()
-are tested in test_gate1_validation.py and test_bom_explode.py respectively.
+are tested in test_handler_safety.py and test_bom_explode.py respectively.
 
 NOTE: These tests use the supply chain sample dataset (suppliers, supplier_relationships).
 The handlers themselves are schema-parameterized and work with any relational graph

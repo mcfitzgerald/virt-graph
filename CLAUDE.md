@@ -24,7 +24,7 @@ make neo4j-down       # Stop Neo4j
 
 # Testing
 make test             # Run all tests
-poetry run pytest tests/test_gate1_validation.py -v   # Run specific test file
+poetry run pytest tests/test_handler_safety.py -v      # Run specific test file
 poetry run pytest tests/test_bom_explode.py::test_function_name -v   # Run single test
 
 # Ontology validation (two-layer)

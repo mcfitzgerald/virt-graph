@@ -1,15 +1,14 @@
 """
-Gate 1 Validation Tests
+Handler Safety Tests
 
-These tests validate the Phase 1 deliverables:
+Tests for handler safety mechanisms and traversal performance:
 1. BOM traversal at scale - traverse() on 5K-part BOM in <2 seconds
 2. Safety limits trigger - SubgraphTooLarge raised before DB overload
 3. Data integrity - Generated data has expected graph properties
 
 Prerequisites:
 - PostgreSQL running with schema and seed data
-- Run: docker-compose -f postgres/docker-compose.yml up -d
-- Run: poetry run python scripts/generate_data.py (if seed.sql doesn't exist)
+- Run: make db-up
 """
 
 import os
@@ -231,7 +230,7 @@ def db_available() -> bool:
 
 
 @pytest.mark.skipif(not db_available(), reason="PostgreSQL not available")
-class TestIntegrationGate1:
+class TestHandlerIntegration:
     """Integration tests requiring running database."""
 
     @pytest.fixture
@@ -251,7 +250,7 @@ class TestIntegrationGate1:
 
     def test_bom_traversal_performance(self, conn):
         """
-        Gate 1 Test 1: BOM traversal at scale.
+        BOM traversal at scale.
 
         Target: Complete 5K-part BOM traversal in <2 seconds.
         Verify frontier batching (should be ~depth queries, not ~nodes queries).
@@ -294,7 +293,7 @@ class TestIntegrationGate1:
 
     def test_safety_limits_trigger_before_overload(self, conn):
         """
-        Gate 1 Test 2: Safety limits trigger before DB overload.
+        Safety limits trigger before DB overload.
 
         Attempt traversal that would exceed MAX_NODES.
         Verify SubgraphTooLarge raised proactively.
@@ -328,7 +327,7 @@ class TestIntegrationGate1:
 
     def test_supplier_tiers_form_dag(self, conn):
         """
-        Gate 1 Test 3a: Data integrity - Supplier tiers form valid DAG.
+        Data integrity - Supplier tiers form valid DAG.
 
         Verify no cycles in supplier relationships.
         """
@@ -358,7 +357,7 @@ class TestIntegrationGate1:
 
     def test_bom_has_realistic_depth(self, conn):
         """
-        Gate 1 Test 3b: Data integrity - BOM has realistic depth distribution.
+        Data integrity - BOM has realistic depth distribution.
 
         Target average depth: ~5 levels.
         """
@@ -403,7 +402,7 @@ class TestIntegrationGate1:
 
     def test_transport_network_connected(self, conn):
         """
-        Gate 1 Test 3c: Data integrity - Transport network is connected.
+        Data integrity - Transport network is connected.
 
         All facilities should be reachable from any other facility.
         Uses SQL-based connectivity check since transport network is small.

@@ -1,8 +1,8 @@
 """
-Gate 2: Ontology Validation Tests
+Ontology Validation Tests
 
-Validates the discovered ontology against the database schema and data.
-Run with: poetry run pytest tests/test_gate2_validation.py -v
+Validates the ontology against the database schema and data.
+Run with: poetry run pytest tests/test_ontology_validation.py -v
 
 Includes:
 - LinkML structure validation (Layer 1)
@@ -462,11 +462,11 @@ class TestDataDistribution:
                 f"BOM avg depth {avg_depth} outside expected range"
 
 
-class TestGate2Summary:
-    """Summary test for Gate 2 validation."""
+class TestOntologySummary:
+    """Summary test for ontology validation."""
 
-    def test_gate2_complete(self, ontology):
-        """Verify all Gate 2 deliverables are present."""
+    def test_ontology_complete(self, ontology):
+        """Verify ontology is complete and valid."""
         # Check ontology structure (now using TBox/RBox format)
         assert ontology.version is not None, "Missing version"
         assert ontology.name is not None, "Missing name"
@@ -489,7 +489,7 @@ class TestGate2Summary:
         assert "RED" in complexities, "Missing RED complexity relationships"
 
         print("\n" + "="*60)
-        print("GATE 2 VALIDATION SUMMARY")
+        print("ONTOLOGY VALIDATION SUMMARY")
         print("="*60)
         print(f"Classes defined: {len(ontology.classes)}")
         print(f"Relationships defined: {len(ontology.roles)}")

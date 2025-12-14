@@ -211,16 +211,16 @@ SQLMappedClass:
 
 If you need to add a new required annotation, add it to the metamodel. The validation will automatically enforce it.
 
-## Running Gate Tests
+## Running Validation Tests
 
-VG/SQL includes gate tests that verify ontology validity as part of the test suite:
+VG/SQL includes tests that verify ontology validity as part of the test suite:
 
 ```bash
-# Gate 1: Basic validation
-poetry run pytest tests/test_gate1_validation.py -v
+# Handler safety tests
+poetry run pytest tests/test_handler_safety.py -v
 
-# Gate 2: Advanced validation
-poetry run pytest tests/test_gate2_validation.py -v
+# Ontology validation tests
+poetry run pytest tests/test_ontology_validation.py -v
 
 # All tests
 make test

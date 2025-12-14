@@ -300,9 +300,9 @@ Present role proposals. **Pause for human corrections.**
 
 3. **Fix any validation errors** and re-validate
 
-4. **Run gate tests**:
+4. **Run validation tests**:
    ```bash
-   poetry run pytest tests/test_gate2_validation.py -v
+   poetry run pytest tests/test_ontology_validation.py -v
    ```
 
 5. Human approves or requests changes
@@ -319,7 +319,7 @@ After writing the ontology, validate:
 - [ ] **Referential integrity**: Check for orphaned FKs (`LEFT JOIN WHERE NULL`)
 - [ ] **DAG validation**: For `vg:acyclic: true` roles, verify no cycles (recursive CTE with path tracking)
 - [ ] **Weight ranges**: For `vg:is_weighted: true`, check weight columns have valid values
-- [ ] **Gate tests pass**: `poetry run pytest tests/test_gate2_validation.py -v`
+- [ ] **Validation tests pass**: `poetry run pytest tests/test_ontology_validation.py -v`
 
 ---
 

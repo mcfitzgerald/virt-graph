@@ -228,7 +228,7 @@ After the ontology is created:
 
 ```bash
 # Run validation tests
-poetry run pytest tests/test_gate2_validation.py -v
+poetry run pytest tests/test_ontology_validation.py -v
 
 # Run all tests
 make test

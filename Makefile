@@ -1,10 +1,11 @@
 # Virtual Graph Makefile
 # Common development tasks and validation scripts
 
-.PHONY: help install test validate-ontology validate-linkml validate-vg \
+.PHONY: help install test test-handlers test-ontology \
+        validate-ontology validate-linkml validate-vg \
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
         db-up db-down db-reset db-logs validate-entities \
-        neo4j-up neo4j-down neo4j-reset neo4j-logs benchmark benchmark-vg
+        neo4j-up neo4j-down neo4j-reset neo4j-logs
 
 # Default target
 help:
@@ -16,8 +17,8 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test             Run all tests"
-	@echo "  make test-gate1       Run Gate 1 tests"
-	@echo "  make test-gate2       Run Gate 2 tests (ontology)"
+	@echo "  make test-handlers    Run handler safety tests"
+	@echo "  make test-ontology    Run ontology validation tests"
 	@echo ""
 	@echo "Ontology:"
 	@echo "  make validate-ontology   Run full two-layer validation"
@@ -41,10 +42,6 @@ help:
 	@echo "  make neo4j-down       Stop Neo4j"
 	@echo "  make neo4j-reset      Reset Neo4j (wipe data)"
 	@echo ""
-	@echo "Benchmarking:"
-	@echo "  make benchmark        Run full benchmark (VG + Neo4j)"
-	@echo "  make benchmark-vg     Run Virtual Graph benchmark only"
-	@echo ""
 	@echo "Documentation:"
 	@echo "  make serve-docs       Serve documentation locally"
 
@@ -56,11 +53,11 @@ install:
 test:
 	poetry run pytest
 
-test-gate1:
-	poetry run pytest tests/test_gate1_validation.py -v
+test-handlers:
+	poetry run pytest tests/test_handler_safety.py -v
 
-test-gate2:
-	poetry run pytest tests/test_gate2_validation.py -v
+test-ontology:
+	poetry run pytest tests/test_ontology_validation.py -v
 
 # Ontology Validation
 validate-ontology:
@@ -117,17 +114,6 @@ neo4j-reset:
 
 neo4j-logs:
 	docker-compose -f neo4j/docker-compose.yml logs -f
-
-# Benchmarking
-benchmark:
-	poetry run python benchmark/run.py --system both
-	@echo ""
-	@echo "Results saved to benchmark/results/ and docs/evaluation/"
-
-benchmark-vg:
-	poetry run python benchmark/run.py --system vg
-	@echo ""
-	@echo "Results saved to benchmark/results/ and docs/evaluation/"
 
 # Documentation
 serve-docs:
