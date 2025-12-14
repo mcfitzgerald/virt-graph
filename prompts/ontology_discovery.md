@@ -163,6 +163,45 @@ For each FK relationship, propose a LinkML class with `instantiates: [vg:SQLMapp
 - For tiered structures: `is_hierarchical: true`
 - For weighted graphs: `is_weighted: true` + `weight_columns`
 
+---
+
+#### Relationship Enrichment Questions
+
+For each YELLOW or RED relationship, explicitly ask the SME these questions:
+
+**1. Bidirectional Traversal (Inverse Pairs)**
+> "For `[RelationshipName]`: Do users need to traverse in BOTH directions with distinct semantics?"
+> - If YES → Create an inverse pair with `vg:inverse_of` linking them
+> - If NO → Single relationship is sufficient
+>
+> *Example*: BOM traversal often needs both:
+> - `HasComponent` (parent→child): "What parts make up this assembly?"
+> - `ComponentOf` (child→parent): "What assemblies use this part?"
+
+**2. Traversal Semantics**
+> "For `[RelationshipName]`: What do 'inbound' and 'outbound' mean in business terms?"
+> Document the answer in `vg:traversal_semantics` annotation.
+>
+> *Example*: For `SuppliesTo` (seller_id → buyer_id):
+> - inbound: "Who sells TO this entity?" (upstream suppliers)
+> - outbound: "Who does this entity sell TO?" (downstream buyers)
+
+**3. Transitivity**
+> "Is `[RelationshipName]` transitive? If A→B and B→C, does A→C hold?"
+> - If YES → Set `vg:transitive: true`
+> - Note: Transitive properties should NOT be functional or inverse_functional
+>
+> *Example*: `partOf` is often transitive (a screw in a motor in a car is part of the car)
+
+**4. Symmetry**
+> "Is `[RelationshipName]` symmetric? If A→B, does B→A always hold?"
+> - If YES → Set `vg:symmetric: true` (do NOT also define an inverse)
+> - If NO → Consider if it's asymmetric (`A→B implies NOT B→A`)
+>
+> *Warning*: Don't define `vg:inverse_of` for symmetric properties (OOPS! pitfall P26)
+
+---
+
 **Output format** for each relationship:
 
 ```yaml
@@ -284,6 +323,64 @@ After writing the ontology, validate:
 
 ---
 
+## Robustness Checklist
+
+Quality and completeness checks based on ontology best practices. Review with SME before finalizing.
+
+### Structural Completeness
+
+| Check | Question | Action if YES |
+|-------|----------|---------------|
+| **Inverse pairs** | For each YELLOW/RED relationship, does traversing in the opposite direction have distinct business meaning? | Create inverse relationship with `vg:inverse_of` |
+| **Traversal semantics** | For each YELLOW/RED relationship, is it clear what "inbound" and "outbound" mean? | Add `vg:traversal_semantics` annotation |
+| **Missing relationships** | Are there implicit relationships not captured by FKs? (e.g., derived from business rules) | Document or add as computed relationships |
+| **Orphan entities** | Are any entity classes not connected to others via relationships? | Verify intentional or add missing relationships |
+
+### Semantic Correctness
+
+| Check | Question | Action |
+|-------|----------|--------|
+| **Wrong inverse** (OOPS P05) | Are inverse pairs actually inverses? (domain↔range swap correctly?) | Verify FK direction matches semantics |
+| **Wrong symmetric** (OOPS P28) | If marked symmetric, does A→B truly imply B→A in all cases? | Test with real data examples |
+| **Wrong transitive** (OOPS P29) | If marked transitive, does A→B→C truly imply A→C? | Test with real data examples |
+| **Transitive + functional conflict** | Is any transitive property also marked functional? | Remove functional; transitive requires chains |
+| **Symmetric + inverse conflict** (OOPS P26) | Is any symmetric property given an inverse? | Remove inverse; symmetric IS its own inverse |
+| **Self-inverse** (OOPS P25) | Is any property defined as inverse of itself? | Change to symmetric if A→B implies B→A |
+
+### Naming & Consistency
+
+| Check | Question | Action |
+|-------|----------|--------|
+| **Consistent naming** (OOPS P22) | Do all classes/relationships follow same convention? | Standardize (e.g., PascalCase for classes) |
+| **Polysemy** (OOPS P01) | Does any name have multiple meanings? | Rename to be unambiguous |
+| **Missing descriptions** (OOPS P08) | Do all classes and relationships have descriptions? | Add human-readable descriptions |
+
+### Cardinality & Constraints
+
+| Check | Question | Action |
+|-------|----------|--------|
+| **Cardinality specified** | Are `cardinality_domain` and `cardinality_range` set for all relationships? | Add based on FK nullability and uniqueness |
+| **Functional correctness** | If marked functional, can source really only have ONE target? | Verify with `GROUP BY HAVING COUNT > 1` |
+| **Irreflexive correctness** | If marked irreflexive, are there really no self-loops? | Verify with `WHERE domain_key = range_key` |
+
+### Query Readiness
+
+| Check | Question | Action |
+|-------|----------|--------|
+| **GREEN coverage** | Can common queries be answered with GREEN (direct SQL) relationships? | Ensure simple lookups don't require handlers |
+| **Handler coverage** | For YELLOW/RED, are the right handlers available? | Verify traverse/shortest_path/centrality fit use cases |
+| **Weight column selection** | For RED relationships, are the right weight columns identified? | Confirm with SME which metrics matter |
+
+### Data Quality Alignment
+
+| Check | Question | Action |
+|-------|----------|--------|
+| **Row counts current** | Are `vg:row_count` values recent? | Re-query if data has changed significantly |
+| **Soft delete handling** | For entities with `soft_delete_column`, should relationships filter deleted? | Document expected behavior |
+| **NULL FK handling** | How should NULL foreign keys be interpreted? | Document in relationship description |
+
+---
+
 ## Quick Reference
 
 ### Traversal Complexity Decision Tree
@@ -394,3 +491,22 @@ SELECT relname AS table_name, reltuples::bigint AS row_count
 FROM pg_class
 WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace;
 ```
+
+---
+
+## References
+
+The Robustness Checklist is informed by these ontology and graph modeling best practices:
+
+### Ontology Quality Standards
+- [OOPS! (OntOlogy Pitfall Scanner)](https://oops.linkeddata.es/) - Online tool detecting 41 common ontology pitfalls
+- [OQuaRE: Ontology Quality Evaluation](https://pmc.ncbi.nlm.nih.gov/articles/PMC4141745/) - Quality metrics framework adapted from software engineering
+
+### Part-Whole & Inverse Relationships
+- [W3C: Simple Part-Whole Relations in OWL](https://www.w3.org/2001/sw/BestPractices/OEP/SimplePartWhole/) - When to use inverses, transitivity constraints
+- [TopQuadrant: Modeling Graph Relationships](https://www.topquadrant.com/resources/modeling-graph-relationships/) - Direction selection, avoiding redundant inverses
+
+### Graph Database Design
+- [Neo4j: Data Modeling Pitfalls to Avoid](https://neo4j.com/blog/graph-data-science/data-modeling-pitfalls/) - Common anti-patterns
+- [TerminusDB: Knowledge Graph Schema Design](https://terminusdb.com/blog/knowledge-graph-schema-design/) - Schema design patterns and principles
+- [Cambridge Intelligence: Graph Data Modeling 101](https://cambridge-intelligence.com/graph-data-modeling-101/) - Query-driven modeling approach

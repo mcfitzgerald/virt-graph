@@ -276,6 +276,21 @@ VG/SQL leverages these native capabilities:
 
 The ontology + handlers are the contribution; Claude Code is the enabler.
 
+## Documentation
+
+Serve the full documentation locally:
+
+```bash
+poetry run mkdocs serve
+```
+
+Documentation covers:
+- **[Architecture](docs/concepts/architecture.md)** - System design and dispatch pattern
+- **[Complexity Levels](docs/concepts/complexity-levels.md)** - GREEN/YELLOW/RED explained
+- **[Handlers](docs/handlers/overview.md)** - All available graph operations
+- **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
+- **[Supply Chain Tutorial](docs/examples/supply-chain.md)** - Complete worked example
+
 ## Research Validation
 
 *Validation methodology (benchmark results to be updated):*

@@ -32,10 +32,6 @@ nav:
     - VG Extensions: ontology/vg-extensions.md
     - Creating Ontologies: ontology/creating-ontologies.md
     - Validation: ontology/validation.md
-  - API Reference:
-    - Handlers: api/handlers.md
-    - Estimator: api/estimator.md
-    - OntologyAccessor: api/ontology-accessor.md
   - Examples:
     - Supply Chain Tutorial: examples/supply-chain.md
 

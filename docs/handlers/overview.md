@@ -312,4 +312,4 @@ else:
     print(f"Warning: {estimate['node_count']} nodes, {estimate['edge_count']} edges")
 ```
 
-See [Estimator API](../api/estimator.md) for details.
+See [Architecture](../concepts/architecture.md) for more on estimation.

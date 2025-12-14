@@ -1,46 +1,34 @@
-Based on the mkdocs.yml navigation, here's what's done vs. remaining:
+Documentation Status: COMPLETE
+
+All mkdocs pages have been created and are ready for use.
 
   Done
 
-  | File                                    | Status  |
-  |-----------------------------------------|---------|
-  | docs/index.md                           | Created |
-  | docs/getting-started/quickstart.md      | Created |
-  | docs/concepts/ontology.md               | Created |
-  | docs/handlers/overview.md               | Created |
-  | Tests (pathfinding, network, traversal) | Created |
-  | validate_ontology.py generic            | Done    |
-  | validate_entities.py moved              | Done    |
+  | File                                    | Status    |
+  |-----------------------------------------|-----------|
+  | docs/index.md                           | Created   |
+  | docs/getting-started/quickstart.md      | Created   |
+  | docs/concepts/ontology.md               | Created   |
+  | docs/concepts/architecture.md           | Created   |
+  | docs/concepts/complexity-levels.md      | Created   |
+  | docs/handlers/overview.md               | Created   |
+  | docs/handlers/traversal.md              | Created   |
+  | docs/handlers/pathfinding.md            | Created   |
+  | docs/handlers/network.md                | Created   |
+  | docs/ontology/linkml-format.md          | Created   |
+  | docs/ontology/vg-extensions.md          | Created   |
+  | docs/ontology/creating-ontologies.md    | Created   |
+  | docs/ontology/validation.md             | Created   |
+  | docs/examples/supply-chain.md           | Created   |
+  | Tests (pathfinding, network, traversal) | Created   |
+  | validate_ontology.py generic            | Done      |
+  | validate_entities.py moved              | Done      |
 
-  Remaining (referenced in mkdocs.yml but not created)
+  Removed (not needed)
 
-  Core Concepts:
-  - concepts/architecture.md - How VG/SQL works
-  - concepts/complexity-levels.md - GREEN/YELLOW/RED explanation
+  API Reference section was removed - Claude reads source directly, making
+  separate API docs redundant.
 
-  Handler Details:
-  - handlers/traversal.md - Deep dive on traverse(), bom_explode()
-  - handlers/pathfinding.md - Deep dive on shortest_path()
-  - handlers/network.md - Deep dive on centrality(), etc.
+  To serve docs locally:
 
-  Ontology Development:
-  - ontology/linkml-format.md - LinkML basics
-  - ontology/vg-extensions.md - VG annotation reference
-  - ontology/creating-ontologies.md - Step-by-step guide
-  - ontology/validation.md - Validation details
-
-  API Reference:
-  - api/handlers.md - Full API docs
-  - api/estimator.md - Estimator module docs
-  - api/ontology-accessor.md - OntologyAccessor docs
-
-  Examples:
-  - examples/supply-chain.md - Tutorial using supply chain data
-
-  ---
-  Recommendation: The essential docs are done. The remaining pages provide depth but aren't blocking. You could:
-  1. Ship with current docs (remove unfinished nav entries from mkdocs.yml)
-  2. Create placeholder pages with "Coming soon"
-  3. Continue building out the remaining pages
-
-  Which would you prefer?
+  poetry run mkdocs serve

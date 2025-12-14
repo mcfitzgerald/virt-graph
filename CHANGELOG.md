@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.2] - 2025-12-14
+
+### Added
+
+- **Complete MkDocs documentation** - All referenced pages now exist
+  - `concepts/architecture.md` - System overview, dispatch pattern, design principles
+  - `concepts/complexity-levels.md` - GREEN/YELLOW/RED deep dive with decision tree
+  - `handlers/traversal.md` - traverse(), traverse_collecting(), bom_explode() details
+  - `handlers/pathfinding.md` - shortest_path(), all_shortest_paths() details
+  - `handlers/network.md` - centrality(), connected_components(), resilience_analysis() details
+  - `ontology/linkml-format.md` - LinkML basics, data types, inheritance
+  - `ontology/vg-extensions.md` - Complete VG annotation reference
+  - `ontology/creating-ontologies.md` - 4-round discovery protocol guide
+  - `ontology/validation.md` - Two-layer validation explained
+  - `examples/supply-chain.md` - Full tutorial with working code examples
+
+### Removed
+
+- **API Reference section** from mkdocs.yml - Claude reads source directly, making separate API docs redundant
+
+---
+
 ## [0.9.1] - 2025-12-14
 
 ### Changed
