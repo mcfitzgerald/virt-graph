@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.3] - 2025-12-14
+
+### Changed
+
+- **MAX_RESULTS increased** from 1,000 to 100,000 to cover demo database (largest table ~60K rows)
+- **CLAUDE.md improvements** - Added safety limits section, psycopg2 usage note, documentation commands
+- **README.md** - Added note that `psql` CLI may not be available; use psycopg2
+
+---
+
 ## [0.9.2] - 2025-12-14
 
 ### Added

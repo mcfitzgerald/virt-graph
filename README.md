@@ -96,6 +96,8 @@ Neo4j also exposes a browser UI at http://localhost:7474
 
 ### Python Access
 
+**Note:** Use psycopg2 for database access. The `psql` CLI may not be installed in all environments.
+
 #### PostgreSQL
 
 ```python

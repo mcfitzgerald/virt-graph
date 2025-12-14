@@ -160,7 +160,7 @@ class ResilienceResult(TypedDict):
 # === SAFETY LIMITS (Non-negotiable) ===
 MAX_DEPTH = 50  # Absolute traversal depth limit
 MAX_NODES = 10_000  # Max nodes to visit in single traversal
-MAX_RESULTS = 1_000  # Max rows to return
+MAX_RESULTS = 100_000  # Max rows to return (covers demo DB's largest table ~60K)
 QUERY_TIMEOUT_SEC = 30  # Per-query timeout
 
 

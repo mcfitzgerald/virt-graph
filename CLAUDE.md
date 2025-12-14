@@ -13,25 +13,28 @@ VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL dat
 
 ```bash
 # Setup
-make install          # Install dependencies via Poetry
+make install              # Install dependencies via Poetry
 
-# Database management
-make db-up            # Start PostgreSQL
-make db-down          # Stop PostgreSQL
-make db-reset         # Wipe and recreate PostgreSQL (re-runs schema and seed scripts)
-make neo4j-up         # Start Neo4j (for benchmarking)
-make neo4j-down       # Stop Neo4j
+# Database
+make db-up                # Start PostgreSQL
+make db-down              # Stop PostgreSQL
+make db-reset             # Wipe and recreate (re-runs schema and seed)
+make neo4j-up             # Start Neo4j (for benchmarking)
+make neo4j-down           # Stop Neo4j
 
 # Testing
-make test             # Run all tests
-poetry run pytest tests/test_handler_safety.py -v      # Run specific test file
-poetry run pytest tests/test_bom_explode.py::test_function_name -v   # Run single test
+make test                 # Run all tests
+poetry run pytest tests/test_handler_safety.py -v           # Run specific test file
+poetry run pytest tests/test_bom_explode.py::test_name -v   # Run single test
 
-# Ontology validation (two-layer)
-make validate-ontology    # Full validation
+# Ontology
+make validate-ontology    # Full two-layer validation
 make validate-linkml      # LinkML structure only
 make validate-vg          # VG annotation validation only
 make show-ontology        # Show TBox/RBox definitions
+
+# Documentation
+make serve-docs           # Serve MkDocs locally (http://localhost:8000)
 ```
 
 ## Architecture
@@ -61,6 +64,16 @@ The ontology classifies relationships by query strategy in `vg:traversal_complex
 **Estimator** (`src/virt_graph/estimator/`):
 - Statistical sampling for query planning
 - Provides bounds estimation before executing expensive traversals
+
+### Safety Limits
+
+Default limits in `handlers/base.py` (can be overridden per-call via `max_nodes` parameter):
+- `MAX_DEPTH=50` - Absolute traversal depth limit
+- `MAX_NODES=10,000` - Max nodes per traversal
+- `MAX_RESULTS=100,000` - Max rows returned (covers demo DB's largest table ~60K)
+- `QUERY_TIMEOUT_SEC=30` - Per-query timeout
+
+All handlers use **frontier-batched BFS** (never one query per node). Soft-delete filtering supported via `soft_delete_column` parameter.
 
 ### Handler Pattern
 
@@ -97,7 +110,17 @@ domain_key, range_key = ontology.get_role_keys("SuppliesTo")
 3. Generate query on-the-fly: SQL for GREEN, handler call for YELLOW/RED
 4. Execute and return results
 
-## Database Credentials
+## Database Access
+
+**Use psycopg2 for PostgreSQL access** (not `psql` CLI - may not be installed):
+
+```python
+import psycopg2
+conn = psycopg2.connect(
+    host='localhost', port=5432, database='supply_chain',
+    user='virt_graph', password='dev_password'
+)
+```
 
 | Database   | Host      | Port | User        | Password     | Database      |
 |------------|-----------|------|-------------|--------------|---------------|
