@@ -5,7 +5,7 @@
         validate-ontology validate-linkml validate-vg \
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
         db-up db-down db-reset db-logs validate-entities \
-        neo4j-up neo4j-down neo4j-reset neo4j-logs
+        neo4j-up neo4j-down neo4j-stop neo4j-reset neo4j-cycle neo4j-logs validate-neo4j
 
 # Default target
 help:
@@ -40,7 +40,10 @@ help:
 	@echo "Neo4j (benchmarking):"
 	@echo "  make neo4j-up         Start Neo4j"
 	@echo "  make neo4j-down       Stop Neo4j"
+	@echo "  make neo4j-stop       Stop Neo4j and wait for clean shutdown"
 	@echo "  make neo4j-reset      Reset Neo4j (wipe data)"
+	@echo "  make neo4j-cycle      Full cycle: stop, wipe, restart (fixes PID issues)"
+	@echo "  make validate-neo4j   Validate Neo4j graph against ontology"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make serve-docs       Serve documentation locally"
@@ -108,12 +111,27 @@ neo4j-up:
 neo4j-down:
 	docker-compose -f neo4j/docker-compose.yml down
 
+neo4j-stop:  ## Stop Neo4j with clean shutdown (waits for container to fully stop)
+	docker-compose -f neo4j/docker-compose.yml stop
+	docker-compose -f neo4j/docker-compose.yml down
+
 neo4j-reset:
 	docker-compose -f neo4j/docker-compose.yml down -v
 	docker-compose -f neo4j/docker-compose.yml up -d
 
+neo4j-cycle:  ## Full cycle: stop, remove volumes, restart (fixes stale PID issues)
+	docker-compose -f neo4j/docker-compose.yml stop
+	docker-compose -f neo4j/docker-compose.yml down -v
+	@echo "Waiting for clean shutdown..."
+	sleep 2
+	docker-compose -f neo4j/docker-compose.yml up -d
+	@echo "Neo4j restarting. Wait ~20s for full startup."
+
 neo4j-logs:
 	docker-compose -f neo4j/docker-compose.yml logs -f
+
+validate-neo4j:  ## Validate Neo4j graph against ontology
+	poetry run python scripts/validate_neo4j.py
 
 # Documentation
 serve-docs:

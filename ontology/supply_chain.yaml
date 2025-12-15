@@ -88,7 +88,7 @@ classes:
       vg:primary_key: id
       vg:identifier: "[part_number]"
       vg:soft_delete_column: deleted_at
-      vg:row_count: 5003
+      vg:row_count: 5008
     attributes:
       part_number:
         range: string
@@ -322,7 +322,7 @@ classes:
     annotations:
       vg:table: inventory
       vg:primary_key: id
-      vg:row_count: 10056
+      vg:row_count: 10032
     attributes:
       quantity_on_hand:
         range: integer
@@ -350,7 +350,7 @@ classes:
     annotations:
       vg:table: supplier_certifications
       vg:primary_key: id
-      vg:row_count: 721
+      vg:row_count: 707
     attributes:
       certification_type:
         range: string
@@ -399,7 +399,7 @@ classes:
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:has_self_ref_constraint: true
-      vg:row_count: 817
+      vg:row_count: 822
     attributes:
       relationship_type:
         range: string
@@ -435,7 +435,7 @@ classes:
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:has_self_ref_constraint: true
-      vg:row_count: 14283
+      vg:row_count: 14285
       vg:inverse_of: HasComponent
     attributes:
       quantity:
@@ -476,7 +476,7 @@ classes:
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:has_self_ref_constraint: true
-      vg:row_count: 14283
+      vg:row_count: 14285
       vg:inverse_of: ComponentOf
     attributes:
       quantity:
@@ -518,7 +518,7 @@ classes:
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:has_self_ref_constraint: true
-      vg:row_count: 197
+      vg:row_count: 212
     attributes:
       transport_mode:
         range: string
@@ -572,7 +572,7 @@ classes:
       vg:traversal_complexity: GREEN
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
-      vg:row_count: 7582
+      vg:row_count: 7587
     attributes:
       supplier_part_number:
         range: string
@@ -603,7 +603,7 @@ classes:
       vg:traversal_complexity: GREEN
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
-      vg:row_count: 619
+      vg:row_count: 612
     attributes:
       quantity:
         range: integer
@@ -656,7 +656,7 @@ classes:
       vg:traversal_complexity: GREEN
       vg:cardinality_domain: "1..*"
       vg:cardinality_range: "0..*"
-      vg:row_count: 60241
+      vg:row_count: 60246
     attributes:
       quantity:
         range: integer
@@ -684,7 +684,7 @@ classes:
       vg:functional: true
       vg:cardinality_domain: "1..1"
       vg:cardinality_range: "0..*"
-      vg:row_count: 10056
+      vg:row_count: 10032
 
   InventoryOf:
     description: "Inventory record tracks stock of a part"
@@ -700,7 +700,7 @@ classes:
       vg:functional: true
       vg:cardinality_domain: "1..1"
       vg:cardinality_range: "0..*"
-      vg:row_count: 10056
+      vg:row_count: 10032
 
   HasCertification:
     description: "Supplier holds a certification"
@@ -715,7 +715,7 @@ classes:
       vg:traversal_complexity: GREEN
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "1..1"
-      vg:row_count: 721
+      vg:row_count: 707
 
   ForOrder:
     description: "Shipment fulfills an order"

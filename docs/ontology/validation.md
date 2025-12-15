@@ -265,6 +265,52 @@ make show-ontology
 
 This displays the metamodel's required fields for SQLMappedClass and SQLMappedRelationship.
 
+## Neo4j Graph Validation
+
+After migrating data to Neo4j, use the graph validator to verify the structure matches the ontology:
+
+```bash
+# Validate against default ontology
+make validate-neo4j
+
+# Validate against custom ontology
+poetry run python scripts/validate_neo4j.py path/to/ontology.yaml
+
+# JSON output for CI
+poetry run python scripts/validate_neo4j.py --json
+```
+
+### What It Checks
+
+| Check | Description |
+|-------|-------------|
+| Node Labels | All ontology classes exist as Neo4j labels |
+| Node Counts | Counts match `row_count` annotations (if present) |
+| Relationship Types | All ontology roles exist as Neo4j relationship types |
+| Relationship Endpoints | Domain/range match ontology declarations |
+| Relationship Counts | Counts match `row_count` annotations (if present) |
+| Constraints | Irreflexive (no self-loops), Asymmetric (no bidirectional) |
+
+### Sample Output
+
+```
+Neo4j Graph Validation Report
+==================================================
+Ontology: supply_chain v1.0
+Database: bolt://localhost:7687
+
+Node Labels
+--------------------------------------------------
+  [pass] Supplier: Label 'Supplier' exists
+  [pass] Part: Label 'Part' exists
+  ...
+
+Summary
+--------------------------------------------------
+Passed: 67/67 checks
+[pass] All validations passed
+```
+
 ## Next Steps
 
 - [Creating Ontologies](creating-ontologies.md) - Step-by-step guide

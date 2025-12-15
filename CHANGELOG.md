@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.4] - 2025-12-14
+
+### Added
+
+- **Neo4j Graph Validator** (`scripts/validate_neo4j.py`) - Generic validation script that verifies Neo4j graph structure matches ontology definitions
+  - Node label existence and count validation
+  - Relationship type coverage and endpoint validation (domain/range)
+  - Relationship count validation
+  - Constraint validation (irreflexive, asymmetric)
+  - CLI with `--json` output for CI integration
+  - `make validate-neo4j` Makefile target
+
+- **Neo4j Makefile commands**:
+  - `make neo4j-stop` - Clean shutdown (stop then down)
+  - `make neo4j-cycle` - Full cycle with wait (fixes stale PID issues)
+
+- **Neo4j Troubleshooting section** in README - Documents stale PID issue and recovery commands
+
+### Fixed
+
+- **Ontology row_count annotations** - Updated to match current seed.sql data:
+  - Part: 5003 → 5008, Inventory: 10056 → 10032, SupplierCertification: 721 → 707
+  - SuppliesTo: 817 → 822, ComponentOf/HasComponent: 14283 → 14285
+  - ConnectsTo: 197 → 212, CanSupply: 7582 → 7587, ContainsComponent: 619 → 612
+  - OrderContains: 60241 → 60246, InventoryAt/InventoryOf: 10056 → 10032
+
+---
+
 ## [0.9.3] - 2025-12-14
 
 ### Changed

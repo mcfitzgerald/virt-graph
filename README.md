@@ -85,6 +85,22 @@ make db-logs
 make neo4j-logs
 ```
 
+### Neo4j Troubleshooting
+
+If Neo4j fails to start with errors like `Neo4j is already running (pid:X)`, this indicates a stale PID file from an unclean shutdown. Use the cycle command to fully reset:
+
+```bash
+# Full cycle: stop, wipe volumes, restart (fixes PID issues)
+make neo4j-cycle
+```
+
+This performs a clean stop, removes all volumes (including stale PID files), and restarts. Wait ~20 seconds after restart for Neo4j to fully initialize before connecting.
+
+For a clean shutdown without wiping data:
+```bash
+make neo4j-stop
+```
+
 ### Database Credentials
 
 | Database   | Host      | Port | User        | Password     | Database/DB   |
