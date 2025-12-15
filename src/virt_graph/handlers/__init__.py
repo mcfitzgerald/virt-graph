@@ -72,14 +72,14 @@ __all__ = [
     "ResilienceResult",
     # Estimation config
     "EstimationConfig",
-    # Traversal handlers (YELLOW)
+    # Traversal handlers
     "traverse",
     "traverse_collecting",
     "path_aggregate",
-    # Pathfinding handlers (RED)
+    # Pathfinding handlers
     "shortest_path",
     "all_shortest_paths",
-    # Network handlers (RED)
+    # Network handlers
     "centrality",
     "connected_components",
     "graph_density",

@@ -69,7 +69,7 @@ make test
 
 ## Your First Query
 
-### YELLOW: Recursive Traversal
+### Recursive Traversal
 
 Find all upstream suppliers from a tier 1 supplier:
 
@@ -108,7 +108,7 @@ print(f"Reached depth {result['depth_reached']}")
 conn.close()
 ```
 
-### RED: Shortest Path
+### Algorithm: Shortest Path
 
 Find the shortest route between two facilities:
 

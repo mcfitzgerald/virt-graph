@@ -4,18 +4,18 @@ VG/SQL handlers are schema-parameterized Python functions that enable graph oper
 
 ## Handler Summary
 
-| Handler | Module | Complexity | Description |
-|---------|--------|------------|-------------|
-| `traverse()` | traversal | YELLOW | BFS/DFS traversal with direction control |
-| `traverse_collecting()` | traversal | YELLOW | Traverse while collecting matching nodes |
-| `bom_explode()` | traversal | YELLOW | Bill of materials explosion with quantities |
-| `shortest_path()` | pathfinding | RED | Dijkstra weighted shortest path |
-| `all_shortest_paths()` | pathfinding | RED | All shortest paths between two nodes |
-| `centrality()` | network | RED | Degree/betweenness/closeness/PageRank |
-| `connected_components()` | network | RED | Find connected subgraphs |
-| `graph_density()` | network | RED | Calculate graph density statistics |
-| `neighbors()` | network | RED | Direct neighbors of a node |
-| `resilience_analysis()` | network | RED | Impact analysis of node removal |
+| Handler | Module | Category | Description |
+|---------|--------|----------|-------------|
+| `traverse()` | traversal | Traversal | BFS/DFS traversal with direction control |
+| `traverse_collecting()` | traversal | Traversal | Traverse while collecting matching nodes |
+| `path_aggregate()` | traversal | Aggregation | Aggregate values along paths (SUM/MAX/MIN/multiply) |
+| `shortest_path()` | pathfinding | Algorithm | Dijkstra weighted shortest path |
+| `all_shortest_paths()` | pathfinding | Algorithm | All shortest paths between two nodes |
+| `centrality()` | network | Algorithm | Degree/betweenness/closeness/PageRank |
+| `connected_components()` | network | Algorithm | Find connected subgraphs |
+| `graph_density()` | network | Algorithm | Calculate graph density statistics |
+| `neighbors()` | network | Algorithm | Direct neighbors of a node |
+| `resilience_analysis()` | network | Algorithm | Impact analysis of node removal |
 
 ## Common Parameters
 
@@ -32,7 +32,7 @@ result = handler(
 )
 ```
 
-## YELLOW Complexity Handlers
+## Traversal and Aggregation Handlers
 
 These handlers use frontier-batched BFS for recursive traversal without loading the full graph into memory.
 
@@ -92,30 +92,35 @@ result = traverse_collecting(
 }
 ```
 
-### bom_explode()
+### path_aggregate()
 
-Bill of materials explosion with quantity aggregation.
+Aggregate values along paths (e.g., BOM explosion, cost rollups).
 
 ```python
-from virt_graph.handlers.traversal import bom_explode
+from virt_graph.handlers.traversal import path_aggregate
 
-result = bom_explode(
+result = path_aggregate(
     conn,
-    start_part_id=456,
+    nodes_table="parts",
+    edges_table="bill_of_materials",
+    edge_from_col="parent_part_id",
+    edge_to_col="child_part_id",
+    start_id=456,
+    value_col="quantity",
+    operation="multiply",           # sum, max, min, multiply, count
     max_depth=20,
-    include_quantities=True,
 )
 
 # Result structure:
 {
-    "parts": [...],              # All component parts
-    "unique_parts": 1024,        # Count of unique parts
-    "total_quantity": {...},     # Aggregated quantities per part
-    "depth_reached": 8,
+    "aggregates": [...],            # Aggregated values per node
+    "total_nodes": 1024,            # Count of unique nodes
+    "max_depth": 8,                 # Deepest level reached
+    "nodes_visited": 2048,          # Total nodes traversed
 }
 ```
 
-## RED Complexity Handlers
+## Algorithm Handlers
 
 These handlers load a subgraph into NetworkX for graph algorithms. Use the Estimator module for pre-flight size checks.
 
@@ -292,7 +297,7 @@ result = resilience_analysis(
 
 ## Pre-flight Estimation
 
-For RED handlers that load graphs into memory, use the Estimator to check sizes first:
+For algorithm handlers that load graphs into memory, use the Estimator to check sizes first:
 
 ```python
 from virt_graph.estimator import Estimator

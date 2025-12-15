@@ -96,15 +96,16 @@ Review class proposals:
 
 Claude proposes relationship classes for each FK. This is the most critical round.
 
-### Complexity Determination
+### Operation Type Determination
 
-| Pattern | Complexity |
-|---------|------------|
-| Simple FK (A → B) | GREEN |
-| Self-referential (A → A) | YELLOW |
-| Self-referential + weights | RED |
+| Pattern | Operation Types |
+|---------|-----------------|
+| Simple FK (A → B) | `direct_join` |
+| Self-referential (A → A) | `recursive_traversal` |
+| Self-referential + weights | `shortest_path`, `centrality`, etc. |
+| Hierarchy with quantities | `hierarchical_aggregation` |
 
-### Example GREEN Relationship
+### Example Direct Relationship
 
 ```yaml
 PlacedBy:
@@ -117,11 +118,11 @@ PlacedBy:
     vg:range_key: id
     vg:domain_class: Order
     vg:range_class: Customer
-    vg:traversal_complexity: GREEN
+    vg:operation_types: "[direct_join]"
     vg:functional: true
 ```
 
-### Example YELLOW Relationship
+### Example Traversal Relationship
 
 ```yaml
 SuppliesTo:
@@ -134,14 +135,14 @@ SuppliesTo:
     vg:range_key: buyer_id
     vg:domain_class: Supplier
     vg:range_class: Supplier
-    vg:traversal_complexity: YELLOW
+    vg:operation_types: "[recursive_traversal, temporal_traversal]"
     vg:asymmetric: true
     vg:irreflexive: true
     vg:acyclic: true
     vg:is_hierarchical: true
 ```
 
-### Example RED Relationship
+### Example Algorithm Relationship
 
 ```yaml
 ConnectsTo:
@@ -154,14 +155,14 @@ ConnectsTo:
     vg:range_key: destination_facility_id
     vg:domain_class: Facility
     vg:range_class: Facility
-    vg:traversal_complexity: RED
+    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
     vg:is_weighted: true
     vg:weight_columns: '[{"name": "distance_km", "type": "decimal"}]'
 ```
 
 ### Key Questions Claude Will Ask
 
-For YELLOW/RED relationships:
+For traversal/algorithm relationships:
 
 1. **Inverse pairs**: "Do users need to traverse in both directions?"
    - YES → Create inverse (e.g., `ComponentOf` / `HasComponent`)
@@ -203,14 +204,14 @@ from virt_graph.ontology import OntologyAccessor
 # Raises OntologyValidationError if invalid
 ontology = OntologyAccessor("ontology/my_domain.yaml", validate=True)
 ```
-Checks VG-specific requirements (required annotations, valid complexity values, etc.).
+Checks VG-specific requirements (required annotations, valid operation types, etc.).
 
 ### Common Validation Errors
 
 | Error | Fix |
 |-------|-----|
 | "Missing required annotation: vg:table" | Add `vg:table` to entity class |
-| "Invalid traversal_complexity: Yellow" | Use uppercase: `YELLOW` |
+| "Invalid operation_type: traverse" | Use valid types: `recursive_traversal` |
 | "Unknown domain_class: supplier" | Match class name exactly: `Supplier` |
 
 ### Your Input
@@ -251,11 +252,12 @@ ontology = OntologyAccessor("ontology/my_domain.yaml")
 # Get table for entity
 table = ontology.get_class_table("Supplier")
 
-# Get complexity for relationship
-complexity = ontology.get_role_complexity("SuppliesTo")
+# Get operation types for relationship
+op_types = ontology.get_operation_types("SuppliesTo")
 
-# List all relationships by complexity
-yellow_roles = ontology.get_roles_by_complexity("YELLOW")
+# List all relationships with traversal operations
+traversal_roles = [r for r in ontology.roles
+                   if 'recursive_traversal' in ontology.get_operation_types(r['name'])]
 ```
 
 ## Tips for Good Ontologies
@@ -268,7 +270,7 @@ Don't just accept default names. Use domain-specific terminology:
 
 ### 2. Document Traversal Direction
 
-For YELLOW/RED relationships, always clarify what inbound/outbound means:
+For traversal relationships, always clarify what inbound/outbound means:
 ```yaml
 SuppliesTo:
   description: "Supplier sells to another supplier. Inbound = upstream (who sells to me), Outbound = downstream (who do I sell to)"
@@ -280,11 +282,12 @@ If users will ask questions in both directions, create inverse relationships:
 - "What parts make up this assembly?" → `HasComponent`
 - "What assemblies use this part?" → `ComponentOf`
 
-### 4. Set Realistic Complexity
+### 4. Choose Appropriate Operation Types
 
-- Don't mark simple FKs as YELLOW
-- Don't mark hierarchies without weights as RED
-- The complexity determines handler dispatch
+- Simple FKs use `direct_join` only
+- Hierarchies without weights use `recursive_traversal`
+- Weighted networks use algorithm types (`shortest_path`, `centrality`, etc.)
+- The operation types determine handler dispatch
 
 ### 5. Include Row Counts
 

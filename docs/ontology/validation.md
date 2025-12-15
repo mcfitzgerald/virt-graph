@@ -85,8 +85,8 @@ The `OntologyAccessor` validates VG-specific requirements by reading rules from 
 - Optional fields have correct types
 
 **Relationship Classes (SQLMappedRelationship)**:
-- Required: `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:domain_class`, `vg:range_class`, `vg:traversal_complexity`
-- `traversal_complexity` is GREEN, YELLOW, or RED
+- Required: `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:domain_class`, `vg:range_class`, `vg:operation_types`
+- `operation_types` contains valid operation type values
 - `domain_class` and `range_class` reference existing entity classes
 
 ### Common Layer 2 Errors
@@ -101,13 +101,13 @@ annotations:
   vg:table: suppliers
 ```
 
-**Invalid complexity value**:
+**Invalid operation type**:
 ```
-ValidationError: role 'SuppliesTo' has invalid traversal_complexity: Yellow
+ValidationError: role 'SuppliesTo' has invalid operation_type: traverse
 ```
-Fix: Use uppercase:
+Fix: Use valid operation types:
 ```yaml
-vg:traversal_complexity: YELLOW
+vg:operation_types: "[recursive_traversal, temporal_traversal]"
 ```
 
 **Unknown class reference**:
@@ -233,7 +233,7 @@ After creating or modifying an ontology:
 - [ ] `make validate-ontology` passes
 - [ ] All entity classes have `vg:table` and `vg:primary_key`
 - [ ] All relationship classes have all six required annotations
-- [ ] `traversal_complexity` values are uppercase (GREEN/YELLOW/RED)
+- [ ] `operation_types` contains valid values (direct_join, recursive_traversal, etc.)
 - [ ] `domain_class` and `range_class` reference existing entity classes
 - [ ] `make test` passes
 
@@ -254,7 +254,8 @@ for cls in ontology.tbox:
 # List all relationship classes
 print("\nRelationship classes:")
 for role in ontology.rbox:
-    print(f"  {role['name']}: {role.get('traversal_complexity', 'NO COMPLEXITY')}")
+    op_types = ontology.get_operation_types(role['name'])
+    print(f"  {role['name']}: {op_types}")
 ```
 
 ### Check Metamodel Requirements

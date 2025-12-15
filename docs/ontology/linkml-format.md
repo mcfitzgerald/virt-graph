@@ -99,7 +99,7 @@ classes:
       vg:range_key: buyer_id
       vg:domain_class: Supplier
       vg:range_class: Supplier
-      vg:traversal_complexity: YELLOW
+      vg:operation_types: "[recursive_traversal, temporal_traversal]"
       vg:asymmetric: true
       vg:irreflexive: true
       vg:acyclic: true
@@ -119,7 +119,7 @@ classes:
 | `vg:domain_key` | FK pointing to source entity |
 | `vg:range_key` | FK pointing to target entity |
 | `vg:domain_class` / `vg:range_class` | Entity classes at each end |
-| `vg:traversal_complexity` | GREEN, YELLOW, or RED |
+| `vg:operation_types` | Supported operations (direct_join, recursive_traversal, etc.) |
 
 ## Attribute Ranges (Data Types)
 
@@ -320,7 +320,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Product
       vg:range_class: Category
-      vg:traversal_complexity: GREEN
+      vg:operation_types: "[direct_join]"
       vg:functional: true
 
   SubcategoryOf:
@@ -333,7 +333,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Category
       vg:range_class: Category
-      vg:traversal_complexity: YELLOW
+      vg:operation_types: "[recursive_traversal]"
       vg:acyclic: true
 ```
 

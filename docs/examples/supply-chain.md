@@ -58,7 +58,7 @@ The supply chain ontology is at `ontology/supply_chain.yaml`. It defines:
 
 ### Relationship Classes (RBox)
 
-**GREEN Complexity** (Direct SQL):
+**Direct (SQL joins)**:
 
 | Relationship | Description |
 |--------------|-------------|
@@ -68,14 +68,14 @@ The supply chain ontology is at `ontology/supply_chain.yaml`. It defines:
 | `PlacedBy` | Order placed by customer |
 | `HasCertification` | Supplier's certifications |
 
-**YELLOW Complexity** (Recursive Traversal):
+**Traversal (recursive operations)**:
 
 | Relationship | Description |
 |--------------|-------------|
 | `SuppliesTo` | Supplier network (who sells to whom) |
 | `ComponentOf` / `HasComponent` | Bill of materials hierarchy |
 
-**RED Complexity** (Network Algorithms):
+**Algorithm (network operations)**:
 
 | Relationship | Description |
 |--------------|-------------|
@@ -83,11 +83,11 @@ The supply chain ontology is at `ontology/supply_chain.yaml`. It defines:
 
 ## Example Queries
 
-### GREEN: Direct SQL
+### Direct SQL
 
 **Q: Which suppliers have ISO9001 certification?**
 
-The `HasCertification` relationship is GREEN—simple FK join:
+The `HasCertification` relationship supports `direct_join`—simple FK join:
 
 ```sql
 SELECT DISTINCT s.supplier_code, s.name, sc.certification_number
@@ -98,11 +98,11 @@ WHERE sc.certification_type = 'ISO9001' AND sc.is_valid = true;
 
 Result: 143 suppliers
 
-### YELLOW: Recursive Traversal
+### Recursive Traversal
 
 **Q: Find all upstream suppliers of Acme Corp**
 
-The `SuppliesTo` relationship is YELLOW—requires recursive traversal:
+The `SuppliesTo` relationship supports `recursive_traversal`—requires the `traverse()` handler:
 
 ```python
 from virt_graph.handlers.traversal import traverse
@@ -151,39 +151,44 @@ Result: 33 upstream suppliers across tiers 2 and 3
 
 **Q: What's the full BOM for the Turbo Encabulator?**
 
-The `ComponentOf` relationship is YELLOW—use `bom_explode()`:
+The `ComponentOf` relationship supports `hierarchical_aggregation`—use `path_aggregate()` with `operation="multiply"`:
 
 ```python
-from virt_graph.handlers.traversal import bom_explode
+from virt_graph.handlers.traversal import path_aggregate
 
 # Find the part ID
 cur.execute("SELECT id FROM parts WHERE name = 'Turbo Encabulator'")
 part_id = cur.fetchone()[0]
 
-result = bom_explode(
+result = path_aggregate(
     conn,
-    start_part_id=part_id,
+    nodes_table="parts",
+    edges_table="bill_of_materials",
+    edge_from_col="parent_part_id",
+    edge_to_col="child_part_id",
+    start_id=part_id,
+    value_col="quantity",
+    operation="multiply",              # Propagate quantities through hierarchy
     max_depth=20,
-    include_quantities=True,
 )
 
-print(f"BOM contains {result['total_parts']} unique parts")
+print(f"BOM contains {result['total_nodes']} unique parts")
 print(f"Maximum depth: {result['max_depth']}")
 
-# Show top 10 by quantity
-sorted_parts = sorted(result['components'], key=lambda x: x['total_quantity'], reverse=True)
+# Show top 10 by aggregated quantity
+sorted_aggs = sorted(result['aggregates'], key=lambda x: x['aggregated_value'], reverse=True)
 print("\nTop 10 parts by quantity:")
-for part in sorted_parts[:10]:
-    print(f"  {part['part_name']}: {part['total_quantity']} units")
+for agg in sorted_aggs[:10]:
+    print(f"  Node {agg['node_id']}: {agg['aggregated_value']} units")
 ```
 
 Result: 1,024 unique parts at 8 levels of assembly
 
-### RED: Network Algorithms
+### Network Algorithms
 
 **Q: What's the shortest route from Chicago to Los Angeles?**
 
-The `ConnectsTo` relationship is RED—weighted pathfinding:
+The `ConnectsTo` relationship supports `shortest_path`—weighted pathfinding:
 
 ```python
 from virt_graph.handlers.pathfinding import shortest_path
@@ -269,11 +274,11 @@ print(f"  Is critical: {result['is_critical']}")
 When you ask Claude a natural language question, it:
 
 1. **Reads the ontology** to understand available entities and relationships
-2. **Determines complexity** from the `vg:traversal_complexity` annotation
+2. **Checks operation types** from the `vg:operation_types` annotation
 3. **Generates the appropriate query**:
-   - GREEN → Direct SQL
-   - YELLOW → Handler call (traverse, bom_explode)
-   - RED → Handler call (shortest_path, centrality)
+   - `direct_join` → Direct SQL
+   - `recursive_traversal`, `path_aggregation` → Handler call (traverse, path_aggregate)
+   - `shortest_path`, `centrality` → Handler call (shortest_path, centrality)
 4. **Executes and returns results**
 
 All queries are generated on-the-fly—no templates.
@@ -298,12 +303,12 @@ make test
 poetry run pytest tests/test_traversal.py -v
 poetry run pytest tests/test_pathfinding.py -v
 poetry run pytest tests/test_network.py -v
-poetry run pytest tests/test_bom_explode.py -v
+poetry run pytest tests/test_bom_explode.py -v  # Tests path_aggregate for BOM use case
 ```
 
 ## Key Takeaways
 
-1. **Complexity classification matters**: GREEN/YELLOW/RED determines the query strategy
+1. **Operation types determine strategy**: `vg:operation_types` tells Claude which handler to use
 2. **Schema parameterization**: Handlers don't know about "suppliers"—they work with any table/column names
 3. **Ontology is the map**: It tells Claude what exists and how to traverse it
 4. **Handlers fill SQL gaps**: Recursive traversal and graph algorithms aren't native to SQL
@@ -311,5 +316,5 @@ poetry run pytest tests/test_bom_explode.py -v
 ## Next Steps
 
 - [Architecture](../concepts/architecture.md) - How the components work together
-- [Complexity Levels](../concepts/complexity-levels.md) - Deep dive on GREEN/YELLOW/RED
+- [Ontology System](../concepts/ontology.md) - Deep dive on operation types
 - [Creating Ontologies](../ontology/creating-ontologies.md) - Build your own domain ontology

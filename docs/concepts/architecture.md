@@ -16,7 +16,7 @@ VG/SQL enables graph queries over relational data through three components worki
 │                 (Claude Code, etc.)                         │
 │                                                             │
 │  1. Read ontology → understand entities & relationships     │
-│  2. Determine complexity → GREEN/YELLOW/RED                 │
+│  2. Check operation types → direct, traversal, algorithm    │
 │  3. Generate query → SQL or handler call                    │
 │  4. Execute → return results                                │
 └─────────────────────────┬───────────────────────────────────┘
@@ -46,7 +46,7 @@ The ontology defines the domain model using [LinkML](https://linkml.io) with VG 
 
 - **TBox (Entity Classes)**: What things exist (Supplier, Part, Facility)
 - **RBox (Relationship Classes)**: How things relate (SuppliesTo, ComponentOf, ConnectsTo)
-- **Complexity Annotations**: What strategy each relationship requires
+- **Operation Type Annotations**: What handler each relationship requires
 
 The ontology maps graph concepts to SQL structures without requiring data migration:
 
@@ -61,10 +61,10 @@ The ontology maps graph concepts to SQL structures without requiring data migrat
 
 Schema-parameterized Python functions that fill gaps in native SQL:
 
-| Complexity | Handlers | Why Not Plain SQL? |
-|------------|----------|-------------------|
-| YELLOW | `traverse()`, `bom_explode()` | Recursive CTEs are complex; handlers provide consistent interface |
-| RED | `shortest_path()`, `centrality()` | No native SQL support for graph algorithms |
+| Category | Handlers | Why Not Plain SQL? |
+|----------|----------|-------------------|
+| Traversal | `traverse()`, `path_aggregate()` | Recursive CTEs are complex; handlers provide consistent interface |
+| Algorithm | `shortest_path()`, `centrality()` | No native SQL support for graph algorithms |
 
 Handlers accept table/column names as arguments—they know nothing about "suppliers" or "parts", only about tables and foreign keys. This makes them reusable across any schema.
 
@@ -89,7 +89,7 @@ This prevents runaway queries that would load millions of nodes into memory.
 
 ## The Dispatch Pattern
 
-The agentic system uses complexity annotations to dispatch queries:
+The agentic system uses operation type annotations to dispatch queries:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -102,7 +102,7 @@ The agentic system uses complexity annotations to dispatch queries:
 │                  Read Ontology                                │
 │                                                               │
 │  HasCertification:                                           │
-│    vg:traversal_complexity: GREEN  ←── Simple FK join        │
+│    vg:operation_types: [direct_join]  ←── Simple FK join     │
 └──────────────────────────┬───────────────────────────────────┘
                            │
                            ▼
@@ -116,7 +116,7 @@ The agentic system uses complexity annotations to dispatch queries:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-For YELLOW/RED complexity:
+For traversal/algorithm operations:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -129,7 +129,7 @@ For YELLOW/RED complexity:
 │                  Read Ontology                                │
 │                                                               │
 │  SuppliesTo:                                                 │
-│    vg:traversal_complexity: YELLOW  ←── Recursive traversal  │
+│    vg:operation_types: [recursive_traversal]  ←── Handler    │
 └──────────────────────────┬───────────────────────────────────┘
                            │
                            ▼
@@ -198,13 +198,13 @@ This prevents traversing through logically deleted nodes.
 The VG metamodel (`ontology/virt_graph.yaml`) defines:
 
 - Required annotations for entity/relationship classes
-- Valid values for `traversal_complexity` enum
+- Valid values for `operation_types`
 - Validation rules
 
 The `OntologyAccessor` reads this file to dynamically validate domain ontologies—no hardcoded rules in Python.
 
 ## Next Steps
 
-- [Complexity Levels](complexity-levels.md) - Deep dive on GREEN/YELLOW/RED
-- [Handlers Overview](../handlers/overview.md) - Available operations
 - [Ontology System](ontology.md) - Defining your domain
+- [Handlers Overview](../handlers/overview.md) - Available operations
+- [Creating Ontologies](../ontology/creating-ontologies.md) - Build your own

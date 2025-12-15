@@ -95,7 +95,7 @@ Handlers filter out soft-deleted rows during traversal.
 | `vg:range_key` | string | FK column pointing to range (target) |
 | `vg:domain_class` | string | Name of domain entity class |
 | `vg:range_class` | string | Name of range entity class |
-| `vg:traversal_complexity` | enum | GREEN, YELLOW, or RED |
+| `vg:operation_types` | JSON array | List of supported operation types |
 
 ```yaml
 SuppliesTo:
@@ -107,16 +107,17 @@ SuppliesTo:
     vg:range_key: buyer_id
     vg:domain_class: Supplier
     vg:range_class: Supplier
-    vg:traversal_complexity: YELLOW
+    vg:operation_types: "[recursive_traversal, temporal_traversal]"
 ```
 
-### Traversal Complexity
+### Operation Types
 
-| Value | Meaning | Handler |
-|-------|---------|---------|
-| `GREEN` | Direct SQL join | None needed |
-| `YELLOW` | Recursive traversal | `traverse()`, `bom_explode()` |
-| `RED` | Graph algorithms | `shortest_path()`, `centrality()`, etc. |
+| Category | Values | Handler |
+|----------|--------|---------|
+| Direct | `direct_join` | None needed (SQL) |
+| Traversal | `recursive_traversal`, `temporal_traversal` | `traverse()` |
+| Aggregation | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
+| Algorithm | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | NetworkX-based handlers |
 
 ### OWL 2 Role Axioms
 
@@ -229,7 +230,7 @@ SuppliesTo:
 
 ## Common Patterns
 
-### Simple FK (GREEN)
+### Simple FK (Direct)
 
 Entity A has a foreign key to entity B:
 
@@ -243,11 +244,11 @@ BelongsToCategory:
     vg:range_key: id                 # References categories.id
     vg:domain_class: Product
     vg:range_class: Category
-    vg:traversal_complexity: GREEN
+    vg:operation_types: "[direct_join]"
     vg:functional: true              # Each product has one category
 ```
 
-### Self-Referential Hierarchy (YELLOW)
+### Self-Referential Hierarchy (Traversal)
 
 Entity references itself in a hierarchy:
 
@@ -261,14 +262,14 @@ ReportsTo:
     vg:range_key: id
     vg:domain_class: Employee
     vg:range_class: Employee
-    vg:traversal_complexity: YELLOW
+    vg:operation_types: "[recursive_traversal]"
     vg:acyclic: true
     vg:is_hierarchical: true
 ```
 
-### Junction Table with Attributes (YELLOW)
+### Junction Table with Attributes (Aggregation)
 
-Many-to-many with edge attributes:
+Many-to-many with edge attributes (e.g., BOM):
 
 ```yaml
 ComponentOf:
@@ -280,7 +281,7 @@ ComponentOf:
     vg:range_key: parent_part_id
     vg:domain_class: Part
     vg:range_class: Part
-    vg:traversal_complexity: YELLOW
+    vg:operation_types: "[recursive_traversal, hierarchical_aggregation]"
     vg:inverse_of: HasComponent
   attributes:
     quantity:
@@ -288,7 +289,7 @@ ComponentOf:
       description: "Quantity of child part in parent"
 ```
 
-### Weighted Network (RED)
+### Weighted Network (Algorithm)
 
 Edges with weights for pathfinding:
 
@@ -302,7 +303,7 @@ ConnectsTo:
     vg:range_key: destination_facility_id
     vg:domain_class: Facility
     vg:range_class: Facility
-    vg:traversal_complexity: RED
+    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
     vg:is_weighted: true
     vg:weight_columns: '[
       {"name": "distance_km", "type": "decimal"},

@@ -412,8 +412,8 @@ def path_aggregate(
     Aggregate values along all paths from a start node.
 
     This is a generalized aggregation handler that computes values along
-    graph paths using various operations. It replaces the domain-specific
-    bom_explode() with a generic, reusable function.
+    graph paths using various operations. Common use cases include bill of
+    materials (BOM) explosion with quantity propagation (operation='multiply').
 
     Args:
         conn: Database connection

@@ -1,6 +1,6 @@
 # Traversal Handlers
 
-The traversal module provides handlers for recursive graph traversal over relational data. These are YELLOW complexity operations.
+The traversal module provides handlers for recursive graph traversal over relational data. These handlers support `recursive_traversal`, `temporal_traversal`, `path_aggregation`, and `hierarchical_aggregation` operation types.
 
 ## Overview
 
@@ -8,7 +8,7 @@ The traversal module provides handlers for recursive graph traversal over relati
 |---------|---------|
 | `traverse()` | Multi-hop BFS traversal with direction control |
 | `traverse_collecting()` | Traverse while collecting nodes matching a condition |
-| `bom_explode()` | Bill of materials explosion with quantity aggregation |
+| `path_aggregate()` | Aggregate values along paths (SUM/MAX/MIN/multiply) |
 
 ## traverse()
 
@@ -171,30 +171,45 @@ result = traverse_collecting(
 print(f"Found {len(result['matching_nodes'])} certified suppliers")
 ```
 
-## bom_explode()
+## path_aggregate()
 
-Bill of materials explosion with proper quantity aggregation across all paths.
+Aggregate values along paths in a graph. This is the generic handler for operations like bill of materials (BOM) explosion, cost rollups, and hierarchical aggregations.
 
 ### Signature
 
 ```python
-from virt_graph.handlers.traversal import bom_explode
+from virt_graph.handlers.traversal import path_aggregate
 
-result = bom_explode(
-    conn,
-    start_part_id,                 # Root part/assembly ID
-    max_depth=20,                  # Maximum BOM depth
-    include_quantities=True,       # Aggregate quantities
+result = path_aggregate(
+    conn,                          # Database connection
+    nodes_table,                   # Node/entity table name
+    edges_table,                   # Edge/relationship table name
+    edge_from_col,                 # FK column for edge source
+    edge_to_col,                   # FK column for edge target
+    start_id,                      # Starting node ID
+    value_col,                     # Column containing values to aggregate
+    operation="sum",               # "sum", "max", "min", "multiply", "count"
+    direction="outbound",          # "inbound" or "outbound"
+    max_depth=20,                  # Maximum traversal depth
     max_nodes=None,                # Override node limit
     skip_estimation=False,
-    estimation_config=None,
     soft_delete_column=None,
 )
 ```
 
+### Operations
+
+| Operation | Description | Use Case |
+|-----------|-------------|----------|
+| `sum` | Sum values at each depth | Cost rollups |
+| `max` | Maximum value along path | Critical path duration |
+| `min` | Minimum value along path | Bottleneck detection |
+| `multiply` | Multiply quantities through hierarchy | BOM explosion |
+| `count` | Count nodes at each depth | Network analysis |
+
 ### The Diamond Problem
 
-BOMs often have shared components:
+Hierarchical structures often have shared components:
 
 ```
         Product A
@@ -208,54 +223,71 @@ BOMs often have shared components:
 Total Part D needed: (2 × 3) + (1 × 5) = 11
 ```
 
-`bom_explode()` handles this correctly using a recursive CTE that aggregates quantities across all paths.
+`path_aggregate()` with `operation="multiply"` handles this correctly using a recursive CTE that aggregates quantities across all paths.
 
 ### Result Structure
 
 ```python
 {
-    "components": [
+    "aggregates": [
         {
-            "part_id": 123,
-            "part_name": "Bolt M8",
+            "node_id": 123,
             "depth": 3,
-            "total_quantity": 48,      # Aggregated across all paths
-            "unit_cost": 0.50,
-            "extended_cost": 24.00,    # total_quantity × unit_cost
+            "aggregated_value": 48.0,  # Based on operation
         },
         ...
     ],
-    "total_parts": 1024,               # Unique parts count
+    "total_nodes": 1024,               # Unique nodes count
     "max_depth": 8,                    # Deepest level reached
     "nodes_visited": 2048,             # Total nodes traversed
 }
 ```
 
-### Example: Full BOM with Costs
+### Example: BOM Explosion
 
 ```python
 # "What parts do we need to build a Turbo Encabulator?"
-result = bom_explode(
+result = path_aggregate(
     conn,
-    start_part_id=turbo_encabulator_id,
+    nodes_table="parts",
+    edges_table="bill_of_materials",
+    edge_from_col="parent_part_id",
+    edge_to_col="child_part_id",
+    start_id=turbo_encabulator_id,
+    value_col="quantity",
+    operation="multiply",              # Propagate quantities through hierarchy
     max_depth=20,
-    include_quantities=True,
 )
 
-print(f"BOM contains {result['total_parts']} unique parts")
+print(f"BOM contains {result['total_nodes']} unique parts")
 print(f"Maximum assembly depth: {result['max_depth']}")
-
-total_cost = sum(c.get('extended_cost', 0) for c in result['components'])
-print(f"Total material cost: ${total_cost:,.2f}")
 
 # Group by depth level
 from collections import defaultdict
 by_depth = defaultdict(list)
-for comp in result['components']:
-    by_depth[comp['depth']].append(comp)
+for agg in result['aggregates']:
+    by_depth[agg['depth']].append(agg)
 
 for depth in sorted(by_depth.keys()):
     print(f"\nLevel {depth}: {len(by_depth[depth])} parts")
+```
+
+### Example: Cost Rollup
+
+```python
+# "Sum costs along the supply chain"
+result = path_aggregate(
+    conn,
+    nodes_table="suppliers",
+    edges_table="supplier_relationships",
+    edge_from_col="seller_id",
+    edge_to_col="buyer_id",
+    start_id=end_customer_id,
+    value_col="unit_price",
+    operation="sum",                   # Sum costs
+    direction="inbound",
+    max_depth=10,
+)
 ```
 
 ## Algorithm: Frontier-Batched BFS
@@ -301,7 +333,7 @@ Default limits (from `base.py`):
 |-------|---------|---------|
 | `MAX_DEPTH` | 50 | Absolute depth ceiling |
 | `MAX_NODES` | 10,000 | Maximum nodes to visit |
-| `MAX_RESULTS` | 1,000 | Maximum rows returned |
+| `MAX_RESULTS` | 100,000 | Maximum rows returned |
 | `QUERY_TIMEOUT_SEC` | 30 | Per-query timeout |
 
 Override per-call:
@@ -339,4 +371,4 @@ result = traverse(conn, ..., estimation_config=config)
 
 - [Pathfinding Handlers](pathfinding.md) - Shortest path algorithms
 - [Network Handlers](network.md) - Centrality, components, resilience
-- [Complexity Levels](../concepts/complexity-levels.md) - When to use which handler
+- [Operation Types](../concepts/ontology.md) - When to use which handler

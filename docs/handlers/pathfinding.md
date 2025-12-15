@@ -1,6 +1,6 @@
 # Pathfinding Handlers
 
-The pathfinding module provides handlers for finding optimal paths through weighted graphs. These are RED complexity operations that load subgraphs into NetworkX.
+The pathfinding module provides handlers for finding optimal paths through weighted graphs. These are algorithm operations that load subgraphs into NetworkX.
 
 ## Overview
 

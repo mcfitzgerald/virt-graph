@@ -1,6 +1,6 @@
 # Network Analysis Handlers
 
-The network module provides handlers for graph-wide analysis algorithms. These are RED complexity operations that load the full graph into NetworkX.
+The network module provides handlers for graph-wide analysis algorithms. These are algorithm operations that load the full graph into NetworkX.
 
 ## Overview
 
@@ -395,4 +395,4 @@ All network handlers load the **full graph** into memory. This is unavoidable fo
 
 - [Pathfinding Handlers](pathfinding.md) - Shortest path without loading full graph
 - [Traversal Handlers](traversal.md) - BFS without loading full graph
-- [Complexity Levels](../concepts/complexity-levels.md) - Understanding RED complexity
+- [Ontology System](../concepts/ontology.md) - Understanding operation types

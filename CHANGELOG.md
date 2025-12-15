@@ -20,7 +20,11 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - `show_ontology.py` now displays `operation_types` instead of complexity colors
-- Documentation updated throughout to reference operation types
+- **Complete documentation overhaul** - All docs now use operation types instead of complexity colors:
+  - Deleted `docs/concepts/complexity-levels.md` (obsolete)
+  - Updated all handler docs to use category names (Traversal, Algorithm) instead of colors
+  - Replaced all `bom_explode()` examples with `path_aggregate(operation='multiply')`
+  - Updated ontology docs with new `vg:operation_types` annotation examples
 - Test fixtures in `test_pathfinding.py` now use dynamic data fetching instead of hardcoded facility names
 
 ### Fixed

@@ -16,17 +16,18 @@ The ontology separates entity definitions from relationship definitions:
 This separation follows description logic conventions and enables clear reasoning about:
 - What entities exist (TBox)
 - How entities relate (RBox)
-- What operations are needed to traverse relationships (complexity annotations)
+- What operations are needed to traverse relationships (operation type annotations)
 
-### Complexity Classification
+### Operation Types
 
-Each relationship is annotated with a traversal complexity level:
+Each relationship is annotated with operation types that determine which handlers can be used:
 
-| Complexity | Strategy | Handler |
-|------------|----------|---------|
-| **GREEN** | Direct SQL join | None needed |
-| **YELLOW** | Recursive traversal | `traverse()`, `bom_explode()` |
-| **RED** | Graph algorithms | `shortest_path()`, `centrality()`, etc. |
+| Category | Operation Types | Handler |
+|----------|-----------------|---------|
+| **Direct** | `direct_join` | None needed (SQL) |
+| **Traversal** | `recursive_traversal`, `temporal_traversal` | `traverse()` |
+| **Aggregation** | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
+| **Algorithm** | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | NetworkX-based handlers |
 
 This classification enables the agentic system to dispatch queries appropriately.
 
@@ -44,7 +45,7 @@ The VG metamodel is defined in `ontology/virt_graph.yaml` and serves as the **si
 
 - **Extension classes**: `vg:SQLMappedClass`, `vg:SQLMappedRelationship`
 - **Validation rules**: Required fields are derived from the metamodel automatically
-- **Enums**: `vg:TraversalComplexity` (GREEN/YELLOW/RED)
+- **Enums**: `vg:OperationType` (direct_join, recursive_traversal, etc.)
 - **Supporting types**: `vg:WeightColumn`, `vg:DatabaseConnection`
 
 The `OntologyAccessor` reads `virt_graph.yaml` via LinkML's SchemaView to dynamically extract validation rules. This means:
@@ -140,7 +141,7 @@ Relationship classes represent foreign key relationships. They must instantiate 
 - `vg:range_key` - FK column pointing to range class
 - `vg:domain_class` - Name of the domain class
 - `vg:range_class` - Name of the range class
-- `vg:traversal_complexity` - GREEN, YELLOW, or RED (from TraversalComplexity enum)
+- `vg:operation_types` - List of supported operations (from OperationType enum)
 
 **Optional annotations** (also from SQLMappedRelationship):
 
@@ -164,7 +165,7 @@ Relationship classes represent foreign key relationships. They must instantiate 
 - `vg:cardinality_domain` - e.g., "0..*", "1..1"
 - `vg:cardinality_range` - e.g., "0..*", "0..1"
 
-**Example (GREEN - Simple FK):**
+**Example (Direct - Simple FK):**
 ```yaml
 BelongsToCategory:
   description: "Entity belongs to a category"
@@ -176,11 +177,11 @@ BelongsToCategory:
     vg:range_key: id
     vg:domain_class: Entity
     vg:range_class: Category
-    vg:traversal_complexity: GREEN
+    vg:operation_types: "[direct_join]"
     vg:functional: true
 ```
 
-**Example (YELLOW - Recursive)** *Supply Chain Use Case:*
+**Example (Traversal - Recursive)** *Supply Chain Use Case:*
 ```yaml
 SuppliesTo:
   description: "Supplier sells to another supplier"
@@ -192,14 +193,14 @@ SuppliesTo:
     vg:range_key: buyer_id
     vg:domain_class: Supplier
     vg:range_class: Supplier
-    vg:traversal_complexity: YELLOW
+    vg:operation_types: "[recursive_traversal, temporal_traversal]"
     vg:asymmetric: true
     vg:irreflexive: true
     vg:acyclic: true
     vg:is_hierarchical: true
 ```
 
-**Example (RED - Network Algorithm)** *Supply Chain Use Case:*
+**Example (Algorithm - Network)** *Supply Chain Use Case:*
 ```yaml
 TransportRoute:
   description: "Transport connection between facilities"
@@ -211,7 +212,7 @@ TransportRoute:
     vg:range_key: destination_facility_id
     vg:domain_class: Facility
     vg:range_class: Facility
-    vg:traversal_complexity: RED
+    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
     vg:is_weighted: true
     vg:weight_columns: '[{"name": "distance_km", "type": "decimal"}, {"name": "cost_usd", "type": "decimal"}]'
   attributes:
@@ -255,7 +256,7 @@ ontology = OntologyAccessor("ontology/my_domain.yaml", validate=True)
 
 The `OntologyAccessor` loads `virt_graph.yaml` via LinkML's SchemaView to:
 - Extract required fields from `SQLMappedClass` and `SQLMappedRelationship`
-- Extract valid values from `TraversalComplexity` enum
+- Extract valid values from `OperationType` enum
 - Validate domain ontologies against these dynamically-loaded rules
 
 ### Full Validation Script
@@ -283,11 +284,12 @@ for cls in ontology.classes:
 
 # Get all relationship classes (RBox)
 for role in ontology.roles:
-    print(f"{role['name']}: {role['complexity']}")
+    op_types = ontology.get_operation_types(role['name'])
+    print(f"{role['name']}: {op_types}")
 
-# Get relationship by complexity
-yellow_roles = ontology.get_roles_by_complexity("YELLOW")
-red_roles = ontology.get_roles_by_complexity("RED")
+# Get relationships by operation type
+traversal_roles = [r for r in ontology.roles
+                   if 'recursive_traversal' in ontology.get_operation_types(r['name'])]
 ```
 
 ## Creating a New Ontology
@@ -300,7 +302,7 @@ Ontologies are created through an interactive, guided process using Claude. The 
 
 2. **Round 2: Entity Class Discovery (TBox)** - For each entity table, Claude proposes LinkML classes with `vg:SQLMappedClass`, including required annotations (`vg:table`, `vg:primary_key`) and optional ones (`vg:identifier`, `vg:soft_delete_column`, `vg:row_count`)
 
-3. **Round 3: Relationship Class Discovery (RBox)** - For each foreign key relationship, Claude proposes LinkML classes with `vg:SQLMappedRelationship`, determining traversal complexity (GREEN/YELLOW/RED) and OWL 2 role axioms based on the schema structure
+3. **Round 3: Relationship Class Discovery (RBox)** - For each foreign key relationship, Claude proposes LinkML classes with `vg:SQLMappedRelationship`, determining operation types and OWL 2 role axioms based on the schema structure
 
 4. **Round 4: Draft, Validate & Finalize** - Claude writes the complete ontology file, performs two-layer validation (LinkML structure + VG annotations), and fixes any errors
 
