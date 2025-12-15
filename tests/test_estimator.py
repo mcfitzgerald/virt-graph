@@ -371,9 +371,9 @@ class TestIntegration:
             assert estimated >= sample.visited_count
             assert estimated <= sample.visited_count * 1.2
 
-    def test_bom_with_skip_estimation(self, conn):
-        """BOM with skip_estimation=True succeeds."""
-        from virt_graph.handlers.traversal import bom_explode
+    def test_path_aggregate_with_skip_estimation(self, conn):
+        """path_aggregate with skip_estimation=True succeeds."""
+        from virt_graph.handlers.traversal import path_aggregate
 
         # Get any part with children
         with conn.cursor() as cur:
@@ -388,19 +388,25 @@ class TestIntegration:
             part_id = row[0]
 
         # Should succeed without raising SubgraphTooLarge
-        result = bom_explode(
+        result = path_aggregate(
             conn,
-            start_part_id=part_id,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
             max_depth=5,
             skip_estimation=True,
         )
 
-        assert "components" in result
+        assert "nodes" in result
         assert result["nodes_visited"] >= 1
 
-    def test_bom_with_increased_limit(self, conn):
-        """BOM with max_nodes override works."""
-        from virt_graph.handlers.traversal import bom_explode
+    def test_path_aggregate_with_increased_limit(self, conn):
+        """path_aggregate with max_nodes override works."""
+        from virt_graph.handlers.traversal import path_aggregate
 
         with conn.cursor() as cur:
             cur.execute("""
@@ -414,14 +420,20 @@ class TestIntegration:
             part_id = row[0]
 
         # Should succeed with increased limit
-        result = bom_explode(
+        result = path_aggregate(
             conn,
-            start_part_id=part_id,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
             max_depth=10,
             max_nodes=50_000,  # Increased limit
         )
 
-        assert "components" in result
+        assert "nodes" in result
 
     def test_traverse_with_custom_config(self, conn):
         """Traverse with custom estimation config."""

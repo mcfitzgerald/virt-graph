@@ -80,7 +80,7 @@ For each question:
 3. Execute equivalent Neo4j Cypher
 4. Record both results
 
-Write all results to BENCHMARK_STUDY/benchmark_results.md
+Write all results to `blind_benchmark_results.md`
 
 Use soft_delete_column="deleted_at" for all handler calls.
 ```

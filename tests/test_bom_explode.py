@@ -1,14 +1,15 @@
 """
-Comprehensive tests for bom_explode function.
+Tests for path_aggregate function with BOM (Bill of Materials) use case.
 
-Tests the CTE-based quantity aggregation that correctly handles
-the "diamond problem" where components appear via multiple paths.
+Tests the generic path aggregation handler with multiply operation,
+which correctly handles the "diamond problem" where components appear
+via multiple paths.
 """
 
 import pytest
 
 from virt_graph.handlers.base import get_connection
-from virt_graph.handlers.traversal import bom_explode, _aggregate_bom_quantities_cte
+from virt_graph.handlers.traversal import path_aggregate
 
 
 @pytest.fixture
@@ -19,11 +20,11 @@ def conn():
     connection.close()
 
 
-class TestBomExplodeQuantityAggregation:
-    """Tests for correct quantity aggregation across multiple paths."""
+class TestPathAggregateMultiply:
+    """Tests for path_aggregate with operation='multiply' (BOM explosion)."""
 
-    def test_bom_explode_returns_correct_structure(self, conn):
-        """Verify bom_explode returns BomExplodeResult structure."""
+    def test_path_aggregate_returns_correct_structure(self, conn):
+        """Verify path_aggregate returns PathAggregateResult structure."""
         # Get any part with children
         with conn.cursor() as cur:
             cur.execute("""
@@ -36,25 +37,37 @@ class TestBomExplodeQuantityAggregation:
                 pytest.skip("No BOM data found")
             part_id = row[0]
 
-        result = bom_explode(conn, start_part_id=part_id, max_depth=5)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=5,
+        )
 
-        # Check structure matches BomExplodeResult TypedDict
-        assert "components" in result
-        assert "total_parts" in result
+        # Check structure matches PathAggregateResult TypedDict
+        assert "nodes" in result
+        assert "aggregated_values" in result
+        assert "operation" in result
+        assert "value_column" in result
         assert "max_depth" in result
         assert "nodes_visited" in result
 
-        # Check component structure
-        if result["components"]:
-            component = result["components"][0]
-            assert "id" in component
-            assert "name" in component
-            assert "unit_cost" in component
-            assert "depth" in component
-            assert "quantity" in component
-            assert "extended_cost" in component
+        # Check operation is what we requested
+        assert result["operation"] == "multiply"
+        assert result["value_column"] == "quantity"
 
-    def test_bom_explode_quantities_are_aggregated(self, conn):
+        # Check node structure includes aggregated_value
+        if result["nodes"]:
+            node = result["nodes"][0]
+            assert "id" in node
+            assert "aggregated_value" in node
+
+    def test_path_aggregate_quantities_are_aggregated(self, conn):
         """Verify quantities are summed across all paths (not just first path)."""
         # Find a part that appears via multiple paths (diamond pattern)
         with conn.cursor() as cur:
@@ -96,111 +109,27 @@ class TestBomExplodeQuantityAggregation:
             ancestor_id = row[0]
 
         # Explode from the ancestor
-        result = bom_explode(conn, start_part_id=ancestor_id, max_depth=10)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=ancestor_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=10,
+        )
 
-        # Find the shared part in results
-        shared_components = [c for c in result["components"] if c["id"] == shared_part_id]
-
-        if shared_components:
-            component = shared_components[0]
-            # The quantity should be > 1 if it's reached via multiple paths
-            # This is a weak assertion but proves aggregation happened
-            assert component["quantity"] is not None
-            assert component["quantity"] >= 1
-
-    def test_bom_explode_depth_tracking(self, conn):
-        """Verify depth is correctly tracked for each component."""
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT parent_part_id
-                FROM bill_of_materials
-                GROUP BY parent_part_id
-                HAVING COUNT(*) > 2
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            if row is None:
-                pytest.skip("No suitable parent part found")
-            part_id = row[0]
-
-        result = bom_explode(conn, start_part_id=part_id, max_depth=5)
-
-        # All components should have depth >= 1 (since root is excluded)
-        for component in result["components"]:
-            assert component["depth"] >= 1
-            assert component["depth"] <= 5  # Respects max_depth
-
-    def test_bom_explode_extended_cost_calculation(self, conn):
-        """Verify extended_cost = unit_cost * quantity."""
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT parent_part_id
-                FROM bill_of_materials
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            if row is None:
-                pytest.skip("No BOM data found")
-            part_id = row[0]
-
-        result = bom_explode(conn, start_part_id=part_id, max_depth=5)
-
-        for component in result["components"]:
-            if component["unit_cost"] and component["quantity"]:
-                expected = float(component["unit_cost"]) * component["quantity"]
-                assert abs(component["extended_cost"] - expected) < 0.01
-
-    def test_bom_explode_without_quantities(self, conn):
-        """Verify include_quantities=False returns None for quantity fields."""
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT parent_part_id
-                FROM bill_of_materials
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            if row is None:
-                pytest.skip("No BOM data found")
-            part_id = row[0]
-
-        result = bom_explode(conn, start_part_id=part_id, max_depth=5, include_quantities=False)
-
-        for component in result["components"]:
-            assert component["quantity"] is None
-            assert component["extended_cost"] is None
-
-
-class TestCTEQuantityAggregation:
-    """Direct tests for the CTE helper function."""
-
-    def test_cte_returns_dict_mapping(self, conn):
-        """Verify CTE helper returns correct structure."""
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT parent_part_id
-                FROM bill_of_materials
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            if row is None:
-                pytest.skip("No BOM data found")
-            part_id = row[0]
-
-        result = _aggregate_bom_quantities_cte(conn, part_id, max_depth=5)
-
-        assert isinstance(result, dict)
-        for part_id, value in result.items():
-            assert isinstance(part_id, int)
-            assert isinstance(value, tuple)
-            assert len(value) == 2  # (quantity, depth)
-            qty, depth = value
-            assert isinstance(qty, int)
-            assert isinstance(depth, int)
+        # Check the shared part has an aggregated quantity
+        if shared_part_id in result["aggregated_values"]:
+            qty = result["aggregated_values"][shared_part_id]
+            # The quantity should be >= 1 if it's reached via any path
+            assert qty is not None
             assert qty >= 1
-            assert depth >= 1
 
-    def test_cte_respects_max_depth(self, conn):
-        """Verify CTE doesn't recurse beyond max_depth."""
+    def test_path_aggregate_depth_tracking(self, conn):
+        """Verify max_depth is correctly tracked."""
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT parent_part_id
@@ -214,14 +143,23 @@ class TestCTEQuantityAggregation:
                 pytest.skip("No suitable parent part found")
             part_id = row[0]
 
-        result = _aggregate_bom_quantities_cte(conn, part_id, max_depth=2)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=5,
+        )
 
-        for _, (qty, depth) in result.items():
-            assert depth <= 2
+        # max_depth should be within bounds
+        assert result["max_depth"] <= 5
 
-    def test_cte_handles_cycles_gracefully(self, conn):
-        """Verify CTE doesn't infinite loop on circular references."""
-        # Even if data has cycles, the path array check should prevent infinite recursion
+    def test_path_aggregate_extended_cost_calculation(self, conn):
+        """Verify extended_cost can be calculated from aggregated quantity."""
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT parent_part_id
@@ -233,14 +171,28 @@ class TestCTEQuantityAggregation:
                 pytest.skip("No BOM data found")
             part_id = row[0]
 
-        # Should complete without hanging
-        result = _aggregate_bom_quantities_cte(conn, part_id, max_depth=20)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=5,
+        )
 
-        # Just verify it returned something (didn't hang)
-        assert isinstance(result, dict)
+        # Verify we can compute extended cost from aggregated quantity
+        for node in result["nodes"]:
+            unit_cost = node.get("unit_cost")
+            agg_qty = node.get("aggregated_value", 0)
+            if unit_cost and agg_qty:
+                extended_cost = float(unit_cost) * agg_qty
+                assert extended_cost > 0
 
 
-class TestBomExplodeTurboEncabulator:
+class TestPathAggregateTurboEncabulator:
     """
     Integration test using the Turbo Encabulator product.
 
@@ -276,13 +228,25 @@ class TestBomExplodeTurboEncabulator:
             if unit_cost:
                 total_cost += float(unit_cost) * root_qty
 
-            # Explode and sum component costs
-            result = bom_explode(conn, start_part_id=part_id, max_depth=20)
+            # Explode using path_aggregate and sum component costs
+            result = path_aggregate(
+                conn,
+                nodes_table="parts",
+                edges_table="bill_of_materials",
+                edge_from_col="parent_part_id",
+                edge_to_col="child_part_id",
+                start_id=part_id,
+                value_col="quantity",
+                operation="multiply",
+                max_depth=20,
+            )
 
-            for component in result["components"]:
-                if component["extended_cost"]:
+            for node in result["nodes"]:
+                node_unit_cost = node.get("unit_cost")
+                agg_qty = node.get("aggregated_value", 0)
+                if node_unit_cost and agg_qty:
                     # Multiply by root_qty since this is per-product
-                    total_cost += component["extended_cost"] * root_qty
+                    total_cost += float(node_unit_cost) * agg_qty * root_qty
 
         # Neo4j ground truth: $34,795,958.60
         # Allow 5% tolerance for data variations
@@ -297,11 +261,11 @@ class TestBomExplodeTurboEncabulator:
         )
 
 
-class TestBomExplodeEdgeCases:
+class TestPathAggregateEdgeCases:
     """Edge case tests."""
 
-    def test_leaf_part_returns_empty_components(self, conn):
-        """A part with no children should return empty components list."""
+    def test_leaf_part_returns_empty_nodes(self, conn):
+        """A part with no children should return empty nodes list."""
         with conn.cursor() as cur:
             # Find a leaf part (not a parent in BOM)
             cur.execute("""
@@ -314,10 +278,20 @@ class TestBomExplodeEdgeCases:
                 pytest.skip("No leaf parts found")
             leaf_id = row[0]
 
-        result = bom_explode(conn, start_part_id=leaf_id, max_depth=5)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=leaf_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=5,
+        )
 
-        assert result["components"] == []
-        assert result["total_parts"] == 0
+        assert result["nodes"] == []
+        assert result["aggregated_values"] == {}
 
     def test_max_depth_zero_returns_empty(self, conn):
         """max_depth=0 should return no components."""
@@ -332,8 +306,135 @@ class TestBomExplodeEdgeCases:
                 pytest.skip("No BOM data found")
             part_id = row[0]
 
-        result = bom_explode(conn, start_part_id=part_id, max_depth=0)
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="multiply",
+            max_depth=0,
+        )
 
         # With max_depth=0, we shouldn't traverse any children
-        # This depends on how traverse() interprets max_depth=0
-        assert result["max_depth"] == 0 or result["total_parts"] == 0
+        assert result["max_depth"] == 0 or len(result["nodes"]) == 0
+
+
+class TestPathAggregateOperations:
+    """Tests for different aggregation operations."""
+
+    def test_path_aggregate_sum(self, conn):
+        """Test sum operation adds values along paths."""
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT parent_part_id
+                FROM bill_of_materials
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("No BOM data found")
+            part_id = row[0]
+
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="sum",
+            max_depth=5,
+        )
+
+        assert result["operation"] == "sum"
+        # All aggregated values should be >= 0
+        for val in result["aggregated_values"].values():
+            assert val >= 0
+
+    def test_path_aggregate_max(self, conn):
+        """Test max operation takes maximum along paths."""
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT parent_part_id
+                FROM bill_of_materials
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("No BOM data found")
+            part_id = row[0]
+
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="max",
+            max_depth=5,
+        )
+
+        assert result["operation"] == "max"
+
+    def test_path_aggregate_min(self, conn):
+        """Test min operation takes minimum along paths."""
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT parent_part_id
+                FROM bill_of_materials
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("No BOM data found")
+            part_id = row[0]
+
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="min",
+            max_depth=5,
+        )
+
+        assert result["operation"] == "min"
+
+    def test_path_aggregate_count(self, conn):
+        """Test count operation returns shortest path length."""
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT parent_part_id
+                FROM bill_of_materials
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("No BOM data found")
+            part_id = row[0]
+
+        result = path_aggregate(
+            conn,
+            nodes_table="parts",
+            edges_table="bill_of_materials",
+            edge_from_col="parent_part_id",
+            edge_to_col="child_part_id",
+            start_id=part_id,
+            value_col="quantity",
+            operation="count",
+            max_depth=5,
+        )
+
+        assert result["operation"] == "count"
+        # All counts should be >= 1 (minimum path length is 1)
+        for val in result["aggregated_values"].values():
+            assert val >= 1

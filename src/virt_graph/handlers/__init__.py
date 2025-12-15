@@ -23,8 +23,8 @@ from .base import (
     fetch_nodes,
     # Result TypedDicts for type hints
     AllShortestPathsResult,
-    BomExplodeResult,
     CentralityResult,
+    PathAggregateResult,
     ResilienceResult,
     ShortestPathResult,
     TraverseResult,
@@ -41,7 +41,7 @@ from .pathfinding import (
     shortest_path,
 )
 from .traversal import (
-    bom_explode,
+    path_aggregate,
     traverse,
     traverse_collecting,
 )
@@ -65,7 +65,7 @@ __all__ = [
     "fetch_nodes",
     # Result TypedDicts
     "TraverseResult",
-    "BomExplodeResult",
+    "PathAggregateResult",
     "ShortestPathResult",
     "AllShortestPathsResult",
     "CentralityResult",
@@ -75,7 +75,7 @@ __all__ = [
     # Traversal handlers (YELLOW)
     "traverse",
     "traverse_collecting",
-    "bom_explode",
+    "path_aggregate",
     # Pathfinding handlers (RED)
     "shortest_path",
     "all_shortest_paths",

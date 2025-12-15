@@ -4,7 +4,7 @@
 # This metamodel provides:
 # - SQLMappedClass: For entity classes (TBox concepts)
 # - SQLMappedRelationship: For relationship classes (RBox roles)
-# - Supporting types for traversal complexity, weight columns, etc.
+# - Supporting types for operation types, weight columns, etc.
 
 id: https://virt-graph.dev/metamodel
 name: virt_graph_metamodel
@@ -28,18 +28,6 @@ default_range: string
 # =============================================================================
 
 enums:
-  TraversalComplexity:
-    description: >-
-      Complexity classification for relationship traversal.
-      Determines which handler/strategy to use for queries.
-    permissible_values:
-      GREEN:
-        description: "Simple FK join - direct SQL query, no special handling needed"
-      YELLOW:
-        description: "Recursive traversal - uses frontier-batched BFS via traverse() handler"
-      RED:
-        description: "Network algorithm - loads subgraph into NetworkX for pathfinding/centrality"
-
   Cardinality:
     description: "Cardinality constraints for relationship endpoints"
     permissible_values:
@@ -51,6 +39,48 @@ enums:
         description: "0..* - Optional multiple values"
       ONE_OR_MORE:
         description: "1..* - Required multiple values"
+
+  OperationCategory:
+    description: >-
+      High-level classification of graph operation families.
+      Determines which handler type to use for queries.
+    permissible_values:
+      direct:
+        description: "Simple SQL joins/filters - standard SQL"
+      traversal:
+        description: "Recursive path-following (BFS/DFS) - traverse() handler"
+      temporal:
+        description: "Time-aware queries - traverse(valid_at=...) handler"
+      aggregation:
+        description: "Value aggregation along paths - path_aggregate() handler"
+      algorithm:
+        description: "Global graph analysis - NetworkX-based handlers"
+      pattern:
+        description: "Subgraph pattern matching (future)"
+
+  OperationType:
+    description: >-
+      Specific handler operations. Each type belongs to exactly one category.
+      Maps directly to handler functions for query execution.
+    permissible_values:
+      direct_join:
+        description: "Simple FK lookups, junction tables (category: direct)"
+      recursive_traversal:
+        description: "Multi-hop paths through relationships (category: traversal)"
+      temporal_traversal:
+        description: "Time-bounded path following (category: temporal)"
+      path_aggregation:
+        description: "SUM/MAX/MIN along paths (category: aggregation)"
+      hierarchical_aggregation:
+        description: "Quantity propagation like BOM explosion (category: aggregation)"
+      shortest_path:
+        description: "Optimal route between nodes (category: algorithm)"
+      centrality:
+        description: "Node importance ranking (category: algorithm)"
+      connected_components:
+        description: "Find isolated clusters (category: algorithm)"
+      resilience_analysis:
+        description: "Impact of node removal (category: algorithm)"
 
 # =============================================================================
 # EXTENSION CLASSES
@@ -116,11 +146,17 @@ classes:
         required: true
         description: "Name of the range class"
 
-      # === Traversal ===
-      traversal_complexity:
-        range: TraversalComplexity
-        required: true
-        description: "GREEN (simple join), YELLOW (recursive), or RED (network algo)"
+      # === Operation Types ===
+      operation_types:
+        range: OperationType
+        multivalued: true
+        description: >-
+          Operations supported on this relationship.
+          Maps to specific handler functions for query execution.
+
+      temporal_bounds:
+        range: TemporalBounds
+        description: "Time validity configuration for temporal_traversal operations"
 
       # === OWL 2 Role Axioms ===
       transitive:
@@ -179,7 +215,7 @@ classes:
         multivalued: true
         description: "List of indexed column names"
 
-      # === Weight Columns (for RED complexity) ===
+      # === Weight Columns (for network algorithms) ===
       weight_columns:
         range: WeightColumn
         multivalued: true
@@ -212,6 +248,24 @@ classes:
       unit:
         range: string
         description: "Unit of measurement (e.g., 'km', 'usd', 'hours')"
+
+  # ---------------------------------------------------------------------------
+  # TemporalBounds: Configuration for time-bounded edge filtering
+  # ---------------------------------------------------------------------------
+  TemporalBounds:
+    class_uri: vg:TemporalBounds
+    description: >-
+      Configuration for time-bounded edge filtering in temporal_traversal operations.
+      Specifies which columns contain the validity period for edges.
+    attributes:
+      start_col:
+        range: string
+        required: true
+        description: "Column containing edge start/effective date"
+      end_col:
+        range: string
+        required: true
+        description: "Column containing edge end/expiry date"
 
   # ---------------------------------------------------------------------------
   # DatabaseConnection: Schema-level metadata for database connection

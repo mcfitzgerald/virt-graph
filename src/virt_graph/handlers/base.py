@@ -11,6 +11,7 @@ Note: estimate_reachable_nodes is deprecated. Use the estimator module instead.
 """
 
 import warnings
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, TypedDict
 
@@ -44,20 +45,26 @@ class TraverseResult(TypedDict):
     """Node IDs where traversal stopped due to stop_condition."""
 
 
-class BomExplodeResult(TypedDict):
-    """Result type for bom_explode()."""
+class PathAggregateResult(TypedDict):
+    """Result type for path_aggregate()."""
 
-    components: list[dict[str, Any]]
-    """Flattened list of all components with depth and quantities."""
+    nodes: list[dict[str, Any]]
+    """Node data with aggregated values included."""
 
-    total_parts: int
-    """Total number of unique parts in the BOM."""
+    aggregated_values: dict[int, float]
+    """Map of node_id to aggregated value."""
+
+    operation: str
+    """Aggregation operation performed (sum/max/min/multiply/count)."""
+
+    value_column: str
+    """Column that was aggregated."""
 
     max_depth: int
-    """Maximum depth of the BOM hierarchy."""
+    """Deepest level reached during traversal."""
 
     nodes_visited: int
-    """Total nodes visited during explosion."""
+    """Total unique nodes visited."""
 
 
 class ShortestPathResult(TypedDict):
@@ -252,6 +259,10 @@ def fetch_edges_for_frontier(
     nodes_table: str | None = None,
     node_id_column: str = "id",
     soft_delete_column: str | None = None,
+    # Temporal filtering
+    valid_at: datetime | None = None,
+    temporal_start_col: str | None = None,
+    temporal_end_col: str | None = None,
 ) -> list[tuple[int, int]]:
     """
     Fetch all edges for a frontier in a SINGLE query.
@@ -270,6 +281,12 @@ def fetch_edges_for_frontier(
         node_id_column: ID column in nodes_table (default "id")
         soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
                            If provided, filters out edges to/from soft-deleted nodes.
+        valid_at: Point in time for temporal filtering. Only edges valid at this
+                  time will be returned.
+        temporal_start_col: Column containing edge start/effective date.
+                           Required if valid_at is provided.
+        temporal_end_col: Column containing edge end/expiry date.
+                         Required if valid_at is provided.
 
     Returns:
         List of (from_id, to_id) tuples
@@ -290,6 +307,16 @@ def fetch_edges_for_frontier(
                 AND n_to.{soft_delete_column} IS NULL
         """
 
+    # Build temporal filter clause if needed
+    temporal_filter = ""
+    temporal_params: list = []
+    if valid_at is not None and temporal_start_col and temporal_end_col:
+        temporal_filter = f"""
+            AND (e.{temporal_start_col} IS NULL OR e.{temporal_start_col} <= %s)
+            AND (e.{temporal_end_col} IS NULL OR e.{temporal_end_col} >= %s)
+        """
+        temporal_params = [valid_at, valid_at]
+
     with conn.cursor() as cur:
         # Set statement timeout for safety
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
@@ -302,47 +329,56 @@ def fetch_edges_for_frontier(
                     FROM {edges_table} e
                     {soft_delete_join}
                     WHERE e.{edge_from_col} = ANY(%s)
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids,))
+                cur.execute(query, [frontier_ids] + temporal_params)
             elif direction == "inbound":
                 query = f"""
                     SELECT e.{edge_from_col}, e.{edge_to_col}
                     FROM {edges_table} e
                     {soft_delete_join}
                     WHERE e.{edge_to_col} = ANY(%s)
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids,))
+                cur.execute(query, [frontier_ids] + temporal_params)
             else:  # both
                 query = f"""
                     SELECT e.{edge_from_col}, e.{edge_to_col}
                     FROM {edges_table} e
                     {soft_delete_join}
-                    WHERE e.{edge_from_col} = ANY(%s) OR e.{edge_to_col} = ANY(%s)
+                    WHERE (e.{edge_from_col} = ANY(%s) OR e.{edge_to_col} = ANY(%s))
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids, frontier_ids))
+                cur.execute(query, [frontier_ids, frontier_ids] + temporal_params)
         else:
-            # Original logic without soft-delete filtering
+            # Logic without soft-delete filtering (may still have temporal filter)
+            # Use aliased table if temporal filter is present
+            table_alias = "e." if temporal_filter else ""
+            table_ref = f"{edges_table} e" if temporal_filter else edges_table
             if direction == "outbound":
                 query = f"""
-                    SELECT {edge_from_col}, {edge_to_col}
-                    FROM {edges_table}
-                    WHERE {edge_from_col} = ANY(%s)
+                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
+                    FROM {table_ref}
+                    WHERE {table_alias}{edge_from_col} = ANY(%s)
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids,))
+                cur.execute(query, [frontier_ids] + temporal_params)
             elif direction == "inbound":
                 query = f"""
-                    SELECT {edge_from_col}, {edge_to_col}
-                    FROM {edges_table}
-                    WHERE {edge_to_col} = ANY(%s)
+                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
+                    FROM {table_ref}
+                    WHERE {table_alias}{edge_to_col} = ANY(%s)
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids,))
+                cur.execute(query, [frontier_ids] + temporal_params)
             else:  # both
                 query = f"""
-                    SELECT {edge_from_col}, {edge_to_col}
-                    FROM {edges_table}
-                    WHERE {edge_from_col} = ANY(%s) OR {edge_to_col} = ANY(%s)
+                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
+                    FROM {table_ref}
+                    WHERE ({table_alias}{edge_from_col} = ANY(%s) OR {table_alias}{edge_to_col} = ANY(%s))
+                    {temporal_filter}
                 """
-                cur.execute(query, (frontier_ids, frontier_ids))
+                cur.execute(query, [frontier_ids, frontier_ids] + temporal_params)
 
         results = cur.fetchall()
 

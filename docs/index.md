@@ -39,32 +39,33 @@ VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational data **
 
 ## How It Works
 
-### Complexity Classification
+### Operation Types
 
-VG/SQL classifies graph operations by query strategy:
+VG/SQL classifies graph operations by what handler they require:
 
-| Complexity | Strategy | Description |
-|------------|----------|-------------|
-| **GREEN** | Direct SQL | Simple joins, aggregations—no handler needed |
-| **YELLOW** | Recursive handlers | Multi-hop traversals, BOM explosion |
-| **RED** | Graph algorithms | Shortest path, centrality, connected components |
+| Category | Operations | Description |
+|----------|------------|-------------|
+| **Direct** | `direct_join` | Simple joins, aggregations—no handler needed |
+| **Traversal** | `recursive_traversal`, `temporal_traversal` | Multi-hop path following |
+| **Aggregation** | `path_aggregation`, `hierarchical_aggregation` | Value aggregation along paths |
+| **Algorithm** | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | NetworkX-based graph algorithms |
 
-The ontology annotates each relationship with its complexity level, enabling the agentic system to dispatch queries appropriately.
+The ontology annotates each relationship with its supported operation types, enabling the agentic system to dispatch queries appropriately.
 
 ### The Handlers
 
 Schema-parameterized Python functions that enable full graph operations over SQL:
 
-| Handler | Complexity | Description |
-|---------|------------|-------------|
-| `traverse()` | YELLOW | BFS/DFS traversal with direction control |
-| `bom_explode()` | YELLOW | Bill of materials explosion with quantities |
-| `shortest_path()` | RED | Dijkstra weighted shortest path |
-| `all_shortest_paths()` | RED | All shortest paths between nodes |
-| `centrality()` | RED | Betweenness/closeness/degree/PageRank |
-| `connected_components()` | RED | Find connected subgraphs |
-| `neighbors()` | RED | Direct neighbors of a node |
-| `resilience_analysis()` | RED | Impact analysis of node removal |
+| Handler | Operation Types | Description |
+|---------|-----------------|-------------|
+| `traverse()` | `recursive_traversal`, `temporal_traversal` | BFS/DFS traversal with direction control |
+| `path_aggregate()` | `path_aggregation`, `hierarchical_aggregation` | Aggregate values along paths (SUM/MAX/MIN/multiply) |
+| `shortest_path()` | `shortest_path` | Dijkstra weighted shortest path |
+| `all_shortest_paths()` | `shortest_path` | All shortest paths between nodes |
+| `centrality()` | `centrality` | Betweenness/closeness/degree/PageRank |
+| `connected_components()` | `connected_components` | Find connected subgraphs |
+| `neighbors()` | (any) | Direct neighbors of a node |
+| `resilience_analysis()` | `resilience_analysis` | Impact analysis of node removal |
 
 Handlers are **schema-parameterized**—they accept table and column names as arguments, making them reusable across any relational schema.
 
@@ -74,7 +75,7 @@ VG/SQL uses [LinkML](https://linkml.io) with custom extensions (`vg:` prefix) to
 
 - **Entity classes** (TBox): Map to SQL tables via `vg:SQLMappedClass`
 - **Relationship classes** (RBox): Map to foreign keys via `vg:SQLMappedRelationship`
-- **Complexity annotations**: `vg:traversal_complexity` marks GREEN/YELLOW/RED
+- **Operation types**: `vg:operation_types` specifies which handlers are applicable
 
 See [Ontology System](concepts/ontology.md) for details.
 
@@ -97,7 +98,7 @@ See [Quick Start Guide](getting-started/quickstart.md) for a complete walkthroug
 
 VG/SQL includes a supply chain proof-of-concept with 500 suppliers, 50 facilities, and complex relationships.
 
-**YELLOW - Recursive Traversal** (Find upstream suppliers):
+**Recursive Traversal** (Find upstream suppliers):
 ```python
 from virt_graph.handlers.traversal import traverse
 
@@ -113,7 +114,7 @@ result = traverse(
 )
 ```
 
-**RED - Shortest Path** (Find optimal route):
+**Shortest Path** (Find optimal route):
 ```python
 from virt_graph.handlers.pathfinding import shortest_path
 
@@ -136,7 +137,7 @@ See [Supply Chain Tutorial](examples/supply-chain.md) for the complete example.
 VG/SQL is built for **tools running in a loop** ([Willison, 2025](https://simonwillison.net/2025/Sep/18/agents/)). General-purpose agentic systems like Claude Code provide a complete environment with:
 
 - **Ontology discovery**: Introspect schema, understand relationships
-- **Dispatch**: Determine if handler is needed based on complexity
+- **Dispatch**: Determine if handler is needed based on operation types
 - **Query generation**: On-the-fly SQL or handler calls
 
 The ontology + handlers are the contribution; the agentic system is the enabler.
@@ -147,11 +148,11 @@ The ontology + handlers are the contribution; the agentic system is the enabler.
 virt-graph/
 ├── src/virt_graph/
 │   ├── handlers/          # Graph operation handlers
-│   │   ├── traversal.py   # traverse(), bom_explode()
+│   │   ├── traversal.py   # traverse(), path_aggregate()
 │   │   ├── pathfinding.py # shortest_path(), all_shortest_paths()
 │   │   └── network.py     # centrality(), neighbors(), etc.
 │   ├── ontology.py        # OntologyAccessor class
-│   └── estimator.py       # Pre-flight size estimation
+│   └── estimator/         # Pre-flight size estimation
 ├── ontology/
 │   ├── virt_graph.yaml    # VG metamodel (single source of truth)
 │   └── *.yaml             # Domain ontologies

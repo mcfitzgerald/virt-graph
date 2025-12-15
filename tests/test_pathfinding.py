@@ -24,29 +24,64 @@ def conn():
 
 
 @pytest.fixture
-def facility_ids(conn):
-    """Get named facility IDs for testing."""
+def connected_facilities(conn):
+    """Get facility IDs that are actually connected by routes."""
+    with conn.cursor() as cur:
+        # Find facilities that appear in transport_routes (as origin or destination)
+        cur.execute("""
+            SELECT DISTINCT f.id, f.name
+            FROM facilities f
+            WHERE f.id IN (
+                SELECT origin_facility_id FROM transport_routes
+                UNION
+                SELECT destination_facility_id FROM transport_routes
+            )
+            LIMIT 10
+        """)
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+@pytest.fixture
+def route_pair(conn):
+    """Get a pair of facilities that have a direct or indirect path."""
+    with conn.cursor() as cur:
+        # Find two facilities connected by at least one route
+        cur.execute("""
+            SELECT DISTINCT tr.origin_facility_id, tr.destination_facility_id
+            FROM transport_routes tr
+            LIMIT 1
+        """)
+        row = cur.fetchone()
+        if row:
+            return (row[0], row[1])
+        return None
+
+
+@pytest.fixture
+def intermediate_node(conn):
+    """Find a facility that's an intermediate node (both incoming and outgoing routes)."""
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, name FROM facilities
-            WHERE name IN (
-                'Chicago Warehouse', 'LA Distribution', 'Denver Hub',
-                'NYC Hub', 'Seattle Port', 'Miami Port'
-            )
+            SELECT f.id
+            FROM facilities f
+            WHERE f.id IN (SELECT origin_facility_id FROM transport_routes)
+              AND f.id IN (SELECT destination_facility_id FROM transport_routes)
+            LIMIT 1
         """)
-        return {row[1]: row[0] for row in cur.fetchall()}
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 class TestShortestPath:
     """Tests for shortest_path function."""
 
-    def test_shortest_path_returns_correct_structure(self, conn, facility_ids):
+    def test_shortest_path_returns_correct_structure(self, conn, connected_facilities):
         """Verify shortest_path returns expected result structure."""
-        if len(facility_ids) < 2:
-            pytest.skip("Not enough named facilities found")
+        if len(connected_facilities) < 2:
+            pytest.skip("Not enough connected facilities found")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = shortest_path(
             conn,
@@ -66,13 +101,12 @@ class TestShortestPath:
         assert "nodes_explored" in result
         assert "error" in result
 
-    def test_shortest_path_unweighted(self, conn, facility_ids):
+    def test_shortest_path_unweighted(self, conn, route_pair):
         """Find path using hop count (unweighted)."""
-        if "Chicago Warehouse" not in facility_ids or "LA Distribution" not in facility_ids:
-            pytest.skip("Chicago or LA facility not found")
+        if route_pair is None:
+            pytest.skip("No connected facility pair found")
 
-        chicago_id = facility_ids["Chicago Warehouse"]
-        la_id = facility_ids["LA Distribution"]
+        start_id, end_id = route_pair
 
         result = shortest_path(
             conn,
@@ -80,27 +114,24 @@ class TestShortestPath:
             edges_table="transport_routes",
             edge_from_col="origin_facility_id",
             edge_to_col="destination_facility_id",
-            start_id=chicago_id,
-            end_id=la_id,
+            start_id=start_id,
+            end_id=end_id,
         )
 
-        if result["path"] is None:
-            pytest.skip("No path between Chicago and LA in test data")
-
-        # Path should exist and have reasonable hop count
+        # Path should exist for directly connected facilities
         assert result["path"] is not None
         assert len(result["path"]) >= 2  # At least start and end
-        assert result["path"][0] == chicago_id
-        assert result["path"][-1] == la_id
+        assert result["path"][0] == start_id
+        assert result["path"][-1] == end_id
         assert result["distance"] == len(result["path"]) - 1  # Hop count
 
-    def test_shortest_path_weighted_by_distance(self, conn, facility_ids):
+    def test_shortest_path_weighted_by_distance(self, conn, connected_facilities):
         """Find path using distance_km weight column."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities found")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = shortest_path(
             conn,
@@ -126,19 +157,18 @@ class TestShortestPath:
             assert "weight" in edge
             assert edge["weight"] > 0
 
-    def test_shortest_path_with_excluded_nodes(self, conn, facility_ids):
+    def test_shortest_path_with_excluded_nodes(self, conn, connected_facilities, intermediate_node):
         """Find path while excluding a specific node."""
-        if "Denver Hub" not in facility_ids:
-            pytest.skip("Denver Hub not found")
+        if intermediate_node is None:
+            pytest.skip("No intermediate node found")
 
-        denver_id = facility_ids["Denver Hub"]
-        other_ids = [fid for name, fid in facility_ids.items() if name != "Denver Hub"]
+        # Find two facilities that aren't the intermediate node
+        other_facilities = [f for f in connected_facilities if f[0] != intermediate_node]
+        if len(other_facilities) < 2:
+            pytest.skip("Not enough non-intermediate facilities")
 
-        if len(other_ids) < 2:
-            pytest.skip("Not enough non-Denver facilities")
-
-        start_id = other_ids[0]
-        end_id = other_ids[1]
+        start_id = other_facilities[0][0]
+        end_id = other_facilities[1][0]
 
         result = shortest_path(
             conn,
@@ -148,13 +178,13 @@ class TestShortestPath:
             edge_to_col="destination_facility_id",
             start_id=start_id,
             end_id=end_id,
-            excluded_nodes=[denver_id],
+            excluded_nodes=[intermediate_node],
         )
 
-        # If path found, Denver should not be in it
+        # If path found, excluded node should not be in it
         if result["path"]:
-            assert denver_id not in result["path"]
-            assert result["excluded_nodes"] == [denver_id]
+            assert intermediate_node not in result["path"]
+            assert result["excluded_nodes"] == [intermediate_node]
 
     def test_shortest_path_no_path_exists(self, conn):
         """Test error handling when no path exists."""
@@ -172,12 +202,12 @@ class TestShortestPath:
         assert result["path"] is None
         assert result["error"] is not None
 
-    def test_shortest_path_same_start_and_end(self, conn, facility_ids):
+    def test_shortest_path_same_start_and_end(self, conn, connected_facilities):
         """Edge case: start_id equals end_id."""
-        if not facility_ids:
+        if not connected_facilities:
             pytest.skip("No facilities found")
 
-        node_id = list(facility_ids.values())[0]
+        node_id = connected_facilities[0][0]
 
         result = shortest_path(
             conn,
@@ -194,13 +224,13 @@ class TestShortestPath:
             assert result["path"] == [node_id]
             assert result["distance"] == 0
 
-    def test_shortest_path_nodes_explored(self, conn, facility_ids):
+    def test_shortest_path_nodes_explored(self, conn, connected_facilities):
         """Verify nodes_explored is tracked."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = shortest_path(
             conn,
@@ -218,13 +248,13 @@ class TestShortestPath:
 class TestAllShortestPaths:
     """Tests for all_shortest_paths function."""
 
-    def test_all_shortest_paths_returns_structure(self, conn, facility_ids):
+    def test_all_shortest_paths_returns_structure(self, conn, connected_facilities):
         """Verify all_shortest_paths returns expected structure."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = all_shortest_paths(
             conn,
@@ -242,13 +272,13 @@ class TestAllShortestPaths:
         assert "nodes_explored" in result
         assert "excluded_nodes" in result
 
-    def test_all_shortest_paths_multiple_routes(self, conn, facility_ids):
+    def test_all_shortest_paths_multiple_routes(self, conn, connected_facilities):
         """Test finding multiple equal-length paths if they exist."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = all_shortest_paths(
             conn,
@@ -270,13 +300,13 @@ class TestAllShortestPaths:
                 assert path[0] == start_id
                 assert path[-1] == end_id
 
-    def test_all_shortest_paths_max_paths_limit(self, conn, facility_ids):
+    def test_all_shortest_paths_max_paths_limit(self, conn, connected_facilities):
         """Verify max_paths parameter limits results."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         result = all_shortest_paths(
             conn,
@@ -291,19 +321,17 @@ class TestAllShortestPaths:
 
         assert result["path_count"] <= 3
 
-    def test_all_shortest_paths_with_excluded_nodes(self, conn, facility_ids):
+    def test_all_shortest_paths_with_excluded_nodes(self, conn, connected_facilities, intermediate_node):
         """Verify excluded nodes not in any returned path."""
-        if "Denver Hub" not in facility_ids:
-            pytest.skip("Denver Hub not found")
+        if intermediate_node is None:
+            pytest.skip("No intermediate node found")
 
-        denver_id = facility_ids["Denver Hub"]
-        other_ids = [fid for name, fid in facility_ids.items() if name != "Denver Hub"]
+        other_facilities = [f for f in connected_facilities if f[0] != intermediate_node]
+        if len(other_facilities) < 2:
+            pytest.skip("Not enough non-intermediate facilities")
 
-        if len(other_ids) < 2:
-            pytest.skip("Not enough non-Denver facilities")
-
-        start_id = other_ids[0]
-        end_id = other_ids[1]
+        start_id = other_facilities[0][0]
+        end_id = other_facilities[1][0]
 
         result = all_shortest_paths(
             conn,
@@ -313,12 +341,12 @@ class TestAllShortestPaths:
             edge_to_col="destination_facility_id",
             start_id=start_id,
             end_id=end_id,
-            excluded_nodes=[denver_id],
+            excluded_nodes=[intermediate_node],
         )
 
-        # No path should contain Denver
+        # No path should contain the excluded node
         for path in result["paths"]:
-            assert denver_id not in path
+            assert intermediate_node not in path
 
     def test_all_shortest_paths_no_path(self, conn):
         """Verify empty paths list when no path exists."""
@@ -340,13 +368,13 @@ class TestAllShortestPaths:
 class TestPathfindingWithWeights:
     """Tests comparing weighted vs unweighted pathfinding."""
 
-    def test_different_weights_may_produce_different_paths(self, conn, facility_ids):
+    def test_different_weights_may_produce_different_paths(self, conn, connected_facilities):
         """Compare paths using different weight columns."""
-        if len(facility_ids) < 2:
+        if len(connected_facilities) < 2:
             pytest.skip("Not enough facilities")
 
-        start_id = list(facility_ids.values())[0]
-        end_id = list(facility_ids.values())[1]
+        start_id = connected_facilities[0][0]
+        end_id = connected_facilities[1][0]
 
         # Path by distance
         result_distance = shortest_path(

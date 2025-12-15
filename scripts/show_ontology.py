@@ -64,13 +64,13 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
     rbox_data = []
 
     for name in sorted(ontology.roles.keys()):
-        complexity = ontology.get_role_complexity(name)
+        operation_types = ontology.get_operation_types(name)
         domain_key, range_key = ontology.get_role_keys(name)
         props = ontology.get_role_properties(name)
 
         entry = {
             "relationship": name,
-            "complexity": complexity,
+            "operation_types": operation_types,
             "edge_table": ontology.get_role_table(name),
             "domain_class": ontology.get_role_domain(name),
             "range_class": ontology.get_role_range(name),
@@ -86,40 +86,43 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
         if props.get("inverse_of"):
             entry["inverse_of"] = props["inverse_of"]
 
-        # Add weight columns for RED complexity
-        if complexity == "RED":
+        # Add weight columns for algorithm operations
+        if any(op in operation_types for op in ["shortest_path", "centrality", "connected_components", "resilience_analysis"]):
             weights = ontology.get_role_weight_columns(name)
             if weights:
                 entry["weight_columns"] = [w["name"] for w in weights]
+
+        # Add temporal bounds if present
+        temporal = ontology.get_temporal_bounds(name)
+        if temporal:
+            entry["temporal_bounds"] = temporal
 
         rbox_data.append(entry)
 
     if as_json:
         return json.dumps({"rbox": rbox_data}, indent=2)
 
-    # Text format - group by complexity
+    # Text format - alphabetically sorted
     lines = ["RBox (Relationship Classes)", "=" * 60]
 
-    for complexity in ["GREEN", "YELLOW", "RED"]:
-        entries = [e for e in rbox_data if e["complexity"] == complexity]
-        if not entries:
-            continue
-
-        lines.append(f"\n[{complexity}]")
-        for entry in entries:
-            domain = entry["domain_class"]
-            range_ = entry["range_class"]
-            lines.append(f"\n  {entry['relationship']}: {domain} -> {range_}")
-            lines.append(f"    table: {entry['edge_table']}")
-            lines.append(f"    keys: {entry['domain_key']} -> {entry['range_key']}")
-            if entry['row_count']:
-                lines.append(f"    edges: {entry['row_count']:,}")
-            if entry.get('properties'):
-                lines.append(f"    properties: {', '.join(entry['properties'])}")
-            if entry.get('inverse_of'):
-                lines.append(f"    inverse_of: {entry['inverse_of']}")
-            if entry.get('weight_columns'):
-                lines.append(f"    weights: {', '.join(entry['weight_columns'])}")
+    for entry in rbox_data:
+        domain = entry["domain_class"]
+        range_ = entry["range_class"]
+        ops = ", ".join(entry["operation_types"]) if entry["operation_types"] else "none"
+        lines.append(f"\n{entry['relationship']}: {domain} -> {range_}")
+        lines.append(f"  table: {entry['edge_table']}")
+        lines.append(f"  keys: {entry['domain_key']} -> {entry['range_key']}")
+        lines.append(f"  operations: {ops}")
+        if entry['row_count']:
+            lines.append(f"  edges: {entry['row_count']:,}")
+        if entry.get('properties'):
+            lines.append(f"  properties: {', '.join(entry['properties'])}")
+        if entry.get('inverse_of'):
+            lines.append(f"  inverse_of: {entry['inverse_of']}")
+        if entry.get('weight_columns'):
+            lines.append(f"  weights: {', '.join(entry['weight_columns'])}")
+        if entry.get('temporal_bounds'):
+            lines.append(f"  temporal: {entry['temporal_bounds']['start_col']} -> {entry['temporal_bounds']['end_col']}")
 
     return "\n".join(lines)
 

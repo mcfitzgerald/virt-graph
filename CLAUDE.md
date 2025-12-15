@@ -25,7 +25,7 @@ make neo4j-down           # Stop Neo4j
 # Testing
 make test                 # Run all tests
 poetry run pytest tests/test_handler_safety.py -v           # Run specific test file
-poetry run pytest tests/test_bom_explode.py::test_name -v   # Run single test
+poetry run pytest tests/test_bom_explode.py::test_name -v   # Run single BOM/path_aggregate test
 
 # Ontology
 make validate-ontology    # Full two-layer validation
@@ -37,16 +37,6 @@ make show-ontology        # Show TBox/RBox definitions
 make serve-docs           # Serve MkDocs locally (http://localhost:8000)
 ```
 
-## Architecture
-
-### Complexity Classification (GREEN/YELLOW/RED)
-
-The ontology classifies relationships by query strategy in `vg:traversal_complexity`:
-
-- **GREEN**: Direct SQL joins/aggregations - use standard SQL
-- **YELLOW**: Recursive traversal - use `traverse()` or `bom_explode()` handlers
-- **RED**: Graph algorithms - use `shortest_path()`, `centrality()`, etc. via NetworkX
-
 ### Core Components
 
 **Ontology** (`ontology/supply_chain.yaml`):
@@ -56,9 +46,9 @@ The ontology classifies relationships by query strategy in `vg:traversal_complex
 - Access via `OntologyAccessor` in `src/virt_graph/ontology.py`
 
 **Handlers** (`src/virt_graph/handlers/`):
-- `traversal.py`: `traverse()`, `bom_explode()`, `traverse_collecting()` - YELLOW complexity
-- `pathfinding.py`: `shortest_path()`, `all_shortest_paths()` - RED complexity
-- `network.py`: `centrality()`, `connected_components()`, `neighbors()`, `resilience_analysis()` - RED complexity
+- `traversal.py`: `traverse()`, `path_aggregate()`, `traverse_collecting()`
+- `pathfinding.py`: `shortest_path()`, `all_shortest_paths()`
+- `network.py`: `centrality()`, `connected_components()`, `neighbors()`, `resilience_analysis()`
 - `base.py`: Safety limits, edge fetching utilities, result TypedDicts
 
 **Estimator** (`src/virt_graph/estimator/`):
@@ -73,7 +63,29 @@ Default limits in `handlers/base.py` (can be overridden per-call via `max_nodes`
 - `MAX_RESULTS=100,000` - Max rows returned (covers demo DB's largest table ~60K)
 - `QUERY_TIMEOUT_SEC=30` - Per-query timeout
 
-All handlers use **frontier-batched BFS** (never one query per node). Soft-delete filtering supported via `soft_delete_column` parameter.
+All handlers use **frontier-batched BFS** (never one query per node). Soft-delete filtering supported via `soft_delete_column` parameter. Temporal filtering supported via `valid_at`, `temporal_start_col`, and `temporal_end_col` parameters.
+
+### Operation Types
+
+Relationships are classified by `vg:operation_types` which map to specific handlers:
+
+| Operation Type | Handler | Use Case |
+|----------------|---------|----------|
+| `direct_join` | SQL | Simple FK lookups |
+| `recursive_traversal` | `traverse()` | Multi-hop paths |
+| `temporal_traversal` | `traverse(valid_at=...)` | Time-bounded paths |
+| `path_aggregation` | `path_aggregate()` | SUM/MAX/MIN along paths |
+| `hierarchical_aggregation` | `path_aggregate(op='multiply')` | BOM quantity propagation |
+| `shortest_path` | `shortest_path()` | Optimal routes |
+| `centrality` | `centrality()` | Node importance |
+| `connected_components` | `connected_components()` | Cluster detection |
+| `resilience_analysis` | `resilience_analysis()` | Impact of node removal |
+
+Access operation types via ontology:
+```python
+op_types = ontology.get_operation_types("SuppliesTo")  # ["recursive_traversal", "temporal_traversal"]
+temporal = ontology.get_temporal_bounds("SuppliesTo")  # {"start_col": "contract_start_date", ...}
+```
 
 ### Handler Pattern
 
@@ -99,16 +111,9 @@ from virt_graph.ontology import OntologyAccessor
 
 ontology = OntologyAccessor()  # Uses default ontology/supply_chain.yaml
 table = ontology.get_class_table("Supplier")
-complexity = ontology.get_role_complexity("SuppliesTo")
+op_types = ontology.get_operation_types("SuppliesTo")
 domain_key, range_key = ontology.get_role_keys("SuppliesTo")
 ```
-
-### Workflow for Answering Questions
-
-1. Read the ontology to understand available entities and relationships
-2. Determine complexity: GREEN (direct SQL), YELLOW (traverse/bom_explode), or RED (graph algorithms)
-3. Generate query on-the-fly: SQL for GREEN, handler call for YELLOW/RED
-4. Execute and return results
 
 ## Database Access
 

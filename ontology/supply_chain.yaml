@@ -387,7 +387,8 @@ classes:
       vg:range_key: buyer_id
       vg:domain_class: Supplier
       vg:range_class: Supplier
-      vg:traversal_complexity: YELLOW
+      vg:operation_types: '["recursive_traversal", "temporal_traversal"]'
+      vg:temporal_bounds: '{"start_col": "contract_start_date", "end_col": "contract_end_date"}'
       vg:traversal_semantics: >-
         inbound: Find suppliers who sell TO this entity (upstream suppliers).
         outbound: Find entities this supplier sells TO (downstream buyers).
@@ -424,7 +425,7 @@ classes:
       vg:range_key: parent_part_id
       vg:domain_class: Part
       vg:range_class: Part
-      vg:traversal_complexity: YELLOW
+      vg:operation_types: '["recursive_traversal", "path_aggregation", "hierarchical_aggregation"]'
       vg:traversal_semantics: >-
         inbound: Find parts that are components OF me (my sub-components).
         outbound: Find parts that contain me (what I am a component of).
@@ -465,7 +466,7 @@ classes:
       vg:range_key: child_part_id
       vg:domain_class: Part
       vg:range_class: Part
-      vg:traversal_complexity: YELLOW
+      vg:operation_types: '["recursive_traversal", "path_aggregation", "hierarchical_aggregation"]'
       vg:traversal_semantics: >-
         inbound: Find parts that contain me (parent assemblies).
         outbound: Find parts that are my sub-components (BOM explosion).
@@ -507,7 +508,7 @@ classes:
       vg:range_key: destination_facility_id
       vg:domain_class: Facility
       vg:range_class: Facility
-      vg:traversal_complexity: RED
+      vg:operation_types: '["recursive_traversal", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
       vg:traversal_semantics: >-
         inbound: Find facilities with routes arriving at this facility.
         outbound: Find facilities reachable from this facility (departing routes).
@@ -554,7 +555,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Part
       vg:range_class: Supplier
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "0..1"
       vg:cardinality_range: "0..*"
@@ -569,7 +570,7 @@ classes:
       vg:range_key: part_id
       vg:domain_class: Supplier
       vg:range_class: Part
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:row_count: 7587
@@ -600,7 +601,7 @@ classes:
       vg:range_key: part_id
       vg:domain_class: Product
       vg:range_class: Part
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "0..*"
       vg:row_count: 612
@@ -623,7 +624,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Order
       vg:range_class: Customer
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "0..1"
       vg:cardinality_range: "0..*"
@@ -638,7 +639,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Order
       vg:range_class: Facility
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "0..1"
       vg:cardinality_range: "0..*"
@@ -653,7 +654,7 @@ classes:
       vg:range_key: product_id
       vg:domain_class: Order
       vg:range_class: Product
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:cardinality_domain: "1..*"
       vg:cardinality_range: "0..*"
       vg:row_count: 60246
@@ -680,7 +681,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Inventory
       vg:range_class: Facility
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "1..1"
       vg:cardinality_range: "0..*"
@@ -696,7 +697,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Inventory
       vg:range_class: Part
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "1..1"
       vg:cardinality_range: "0..*"
@@ -712,7 +713,8 @@ classes:
       vg:range_key: id
       vg:domain_class: Supplier
       vg:range_class: SupplierCertification
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join", "temporal_traversal"]'
+      vg:temporal_bounds: '{"start_col": "issued_date", "end_col": "expiry_date"}'
       vg:cardinality_domain: "0..*"
       vg:cardinality_range: "1..1"
       vg:row_count: 707
@@ -727,7 +729,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Shipment
       vg:range_class: Order
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "0..1"
       vg:cardinality_range: "0..*"
@@ -742,7 +744,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Shipment
       vg:range_class: Facility
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "1..1"
       vg:cardinality_range: "0..*"
@@ -757,7 +759,7 @@ classes:
       vg:range_key: id
       vg:domain_class: Shipment
       vg:range_class: Facility
-      vg:traversal_complexity: GREEN
+      vg:operation_types: '["direct_join"]'
       vg:functional: true
       vg:cardinality_domain: "0..1"
       vg:cardinality_range: "0..*"

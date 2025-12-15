@@ -5,7 +5,8 @@ Schema-parameterized: knows nothing about suppliers/parts, only tables/columns.
 This handler implements the core traversal algorithm with safety limits.
 """
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from psycopg2.extensions import connection as PgConnection
 
@@ -40,12 +41,16 @@ def traverse(
     prefilter_sql: str | None = None,
     include_start: bool = True,
     id_column: str = "id",
-    # NEW: Configurable limits
+    # Configurable limits
     max_nodes: int | None = None,
     skip_estimation: bool = False,
     estimation_config: EstimationConfig | None = None,
     # Soft-delete filtering
     soft_delete_column: str | None = None,
+    # Temporal filtering
+    valid_at: datetime | None = None,
+    temporal_start_col: str | None = None,
+    temporal_end_col: str | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
@@ -76,6 +81,12 @@ def traverse(
         estimation_config: Fine-tune estimation parameters
         soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
                            If provided, excludes nodes where this column IS NOT NULL.
+        valid_at: Point in time for temporal filtering. Only edges valid at this
+                  time will be traversed.
+        temporal_start_col: Column containing edge start/effective date.
+                           Required if valid_at is provided.
+        temporal_end_col: Column containing edge end/expiry date.
+                         Required if valid_at is provided.
 
     Returns:
         dict with:
@@ -168,6 +179,9 @@ def traverse(
             nodes_table=nodes_table,
             node_id_column=id_column,
             soft_delete_column=soft_delete_column,
+            valid_at=valid_at,
+            temporal_start_col=temporal_start_col,
+            temporal_end_col=temporal_end_col,
         )
 
         # Apply prefilter if specified
@@ -371,197 +385,266 @@ def traverse_collecting(
     }
 
 
-def _aggregate_bom_quantities_cte(
+def path_aggregate(
     conn: PgConnection,
-    start_part_id: int,
-    max_depth: int,
-) -> dict[int, tuple[int, int]]:
-    """
-    Use recursive CTE to find ALL paths and aggregate quantities.
-
-    This is the correct algorithm for BOM explosion - it finds every path
-    from the start part to each descendant and sums the quantities across
-    all paths. This handles the "diamond problem" where a component appears
-    via multiple assembly paths.
-
-    Args:
-        conn: Database connection
-        start_part_id: Root part ID
-        max_depth: Maximum recursion depth
-
-    Returns:
-        Dict mapping part_id -> (total_quantity, min_depth)
-        where total_quantity is the SUM across all paths to that part
-    """
-    query = """
-    WITH RECURSIVE bom_paths AS (
-        -- Anchor: direct children of start part
-        SELECT
-            child_part_id as part_id,
-            quantity as path_qty,
-            1 as depth,
-            ARRAY[%s, child_part_id] as path
-        FROM bill_of_materials
-        WHERE parent_part_id = %s
-
-        UNION ALL
-
-        -- Recursive: multiply quantities along each path
-        SELECT
-            bom.child_part_id,
-            bp.path_qty * bom.quantity,
-            bp.depth + 1,
-            bp.path || bom.child_part_id
-        FROM bom_paths bp
-        JOIN bill_of_materials bom ON bom.parent_part_id = bp.part_id
-        WHERE bp.depth < %s
-          AND NOT bom.child_part_id = ANY(bp.path)  -- cycle prevention
-    )
-    SELECT part_id, SUM(path_qty) as total_qty, MIN(depth) as min_depth
-    FROM bom_paths
-    GROUP BY part_id
-    """
-
-    result: dict[int, tuple[int, int]] = {}
-    with conn.cursor() as cur:
-        cur.execute(query, (start_part_id, start_part_id, max_depth))
-        for row in cur.fetchall():
-            part_id, total_qty, min_depth = row
-            result[part_id] = (int(total_qty), int(min_depth))
-
-    return result
-
-
-def bom_explode(
-    conn: PgConnection,
-    start_part_id: int,
+    nodes_table: str,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    start_id: int,
+    value_col: str,
+    operation: Literal["sum", "max", "min", "multiply", "count"] = "sum",
+    direction: str = "outbound",
     max_depth: int = 20,
-    include_quantities: bool = True,
-    # NEW: Configurable limits
+    id_column: str = "id",
+    # Configurable limits
     max_nodes: int | None = None,
     skip_estimation: bool = False,
     estimation_config: EstimationConfig | None = None,
     # Soft-delete filtering
     soft_delete_column: str | None = None,
+    # Temporal filtering
+    valid_at: datetime | None = None,
+    temporal_start_col: str | None = None,
+    temporal_end_col: str | None = None,
 ) -> dict[str, Any]:
     """
-    Explode a Bill of Materials starting from a top-level part.
+    Aggregate values along all paths from a start node.
 
-    This function aggregates quantities across ALL paths to each component,
-    correctly handling the "diamond problem" where a part appears via multiple
-    assembly paths. Uses a recursive CTE for accurate quantity aggregation.
+    This is a generalized aggregation handler that computes values along
+    graph paths using various operations. It replaces the domain-specific
+    bom_explode() with a generic, reusable function.
 
     Args:
         conn: Database connection
-        start_part_id: Top-level part ID
-        max_depth: Maximum BOM depth to traverse (default 20)
-        include_quantities: Whether to aggregate quantities (default True)
-        max_nodes: Override default MAX_NODES limit (None = use default 10,000)
-        skip_estimation: Bypass size check entirely (caller takes responsibility)
+        nodes_table: Table containing nodes
+        edges_table: Table containing edges (must have value_col)
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        start_id: Starting node ID
+        value_col: Column in edges_table to aggregate
+        operation: Aggregation operation:
+            - "sum": Total of values along each path, then sum across paths
+            - "max": Maximum value encountered on any path
+            - "min": Minimum value encountered on any path
+            - "multiply": Product along each path, then sum across paths (BOM-style)
+            - "count": Shortest path length to each node
+        direction: "outbound" (follow edges away) or "inbound" (follow edges toward)
+        max_depth: Maximum traversal depth
+        id_column: Name of ID column in nodes_table
+        max_nodes: Override default MAX_NODES limit
+        skip_estimation: Bypass size check
         estimation_config: Fine-tune estimation parameters
-        soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
-                           If provided, excludes parts where this column IS NOT NULL.
+        soft_delete_column: Column to check for soft-delete
+        valid_at: Point in time for temporal filtering
+        temporal_start_col: Column containing edge start/effective date
+        temporal_end_col: Column containing edge end/expiry date
 
     Returns:
-        BomExplodeResult dict with:
-            - components: list of component dicts with id, name, unit_cost,
-                         depth, quantity, and extended_cost
-            - total_parts: count of unique parts in the BOM
-            - max_depth: deepest level reached
-            - nodes_visited: total nodes processed
+        PathAggregateResult dict with:
+            - nodes: Node data with aggregated values
+            - aggregated_values: Map of node_id to aggregated value
+            - operation: The operation performed
+            - value_column: Column that was aggregated
+            - max_depth: Deepest level reached
+            - nodes_visited: Total unique nodes
 
     Example:
-        >>> result = bom_explode(conn, part_id)
-        >>> total_cost = sum(c['extended_cost'] for c in result['components'])
+        >>> # Total lead time from raw materials
+        >>> result = path_aggregate(
+        ...     conn,
+        ...     nodes_table="parts",
+        ...     edges_table="bill_of_materials",
+        ...     edge_from_col="parent_part_id",
+        ...     edge_to_col="child_part_id",
+        ...     start_id=product_id,
+        ...     value_col="lead_time_days",
+        ...     operation="sum"
+        ... )
 
-        >>> # Override limit for large BOMs
-        >>> result = bom_explode(conn, part_id, max_nodes=50_000)
-
-        >>> # Skip estimation when you know BOM is bounded
-        >>> result = bom_explode(conn, part_id, skip_estimation=True)
+        >>> # BOM explosion (multiply quantities)
+        >>> result = path_aggregate(
+        ...     conn,
+        ...     nodes_table="parts",
+        ...     edges_table="bill_of_materials",
+        ...     edge_from_col="parent_part_id",
+        ...     edge_to_col="child_part_id",
+        ...     start_id=product_id,
+        ...     value_col="quantity",
+        ...     operation="multiply"
+        ... )
     """
-    # Use traverse to get structure and run size estimation
+    # First run traverse to get structure and handle estimation
     traverse_result = traverse(
         conn,
-        nodes_table="parts",
-        edges_table="bill_of_materials",
-        edge_from_col="parent_part_id",
-        edge_to_col="child_part_id",
-        start_id=start_part_id,
-        direction="outbound",
+        nodes_table=nodes_table,
+        edges_table=edges_table,
+        edge_from_col=edge_from_col,
+        edge_to_col=edge_to_col,
+        start_id=start_id,
+        direction=direction,
         max_depth=max_depth,
         include_start=True,
+        id_column=id_column,
         max_nodes=max_nodes,
         skip_estimation=skip_estimation,
         estimation_config=estimation_config,
         soft_delete_column=soft_delete_column,
+        valid_at=valid_at,
+        temporal_start_col=temporal_start_col,
+        temporal_end_col=temporal_end_col,
     )
 
-    # Build node lookup for fast access
-    nodes_by_id = {node["id"]: node for node in traverse_result["nodes"]}
+    # Build the recursive CTE for path aggregation
+    aggregated_values = _aggregate_paths_cte(
+        conn=conn,
+        edges_table=edges_table,
+        edge_from_col=edge_from_col,
+        edge_to_col=edge_to_col,
+        start_id=start_id,
+        value_col=value_col,
+        operation=operation,
+        max_depth=max_depth,
+        valid_at=valid_at,
+        temporal_start_col=temporal_start_col,
+        temporal_end_col=temporal_end_col,
+    )
 
-    if not include_quantities:
-        # Return basic structure without quantity aggregation
-        components = []
-        for node in traverse_result["nodes"]:
-            if node["id"] == start_part_id:
-                continue  # Skip root part
-            path = traverse_result["paths"].get(node["id"], [])
-            components.append({
-                "id": node["id"],
-                "name": node.get("name"),
-                "part_number": node.get("part_number"),
-                "unit_cost": node.get("unit_cost"),
-                "depth": len(path) - 1 if path else 0,
-                "quantity": None,
-                "extended_cost": None,
-            })
+    # Build result with node data
+    nodes_by_id = {node[id_column]: node for node in traverse_result["nodes"]}
 
-        return {
-            "components": components,
-            "total_parts": len(components),
-            "max_depth": traverse_result["depth_reached"],
-            "nodes_visited": traverse_result["nodes_visited"],
-        }
-
-    # Use recursive CTE for correct quantity aggregation across ALL paths
-    qty_depth_map = _aggregate_bom_quantities_cte(conn, start_part_id, max_depth)
-
-    # Build components list with quantities
-    components = []
-    max_depth_seen = 0
-
+    # Add aggregated values to node data
+    nodes_with_values = []
     for node in traverse_result["nodes"]:
-        node_id = node["id"]
-        if node_id == start_part_id:
-            continue  # Skip root part
-
-        qty_info = qty_depth_map.get(node_id)
-        if qty_info:
-            total_qty, depth = qty_info
-            max_depth_seen = max(max_depth_seen, depth)
-        else:
-            # Node was visited but not in CTE result (shouldn't happen normally)
-            total_qty = 1
-            path = traverse_result["paths"].get(node_id, [])
-            depth = len(path) - 1 if path else 0
-
-        unit_cost = node.get("unit_cost") or 0
-        extended_cost = float(unit_cost) * total_qty if unit_cost else 0.0
-
-        components.append({
-            "id": node_id,
-            "name": node.get("name"),
-            "part_number": node.get("part_number"),
-            "unit_cost": unit_cost,
-            "depth": depth,
-            "quantity": total_qty,
-            "extended_cost": extended_cost,
-        })
+        node_id = node[id_column]
+        if node_id == start_id:
+            continue  # Skip start node
+        node_copy = dict(node)
+        node_copy["aggregated_value"] = aggregated_values.get(node_id, 0)
+        nodes_with_values.append(node_copy)
 
     return {
-        "components": components,
-        "total_parts": len(components),
-        "max_depth": max_depth_seen,
+        "nodes": nodes_with_values,
+        "aggregated_values": aggregated_values,
+        "operation": operation,
+        "value_column": value_col,
+        "max_depth": traverse_result["depth_reached"],
         "nodes_visited": traverse_result["nodes_visited"],
     }
+
+
+def _aggregate_paths_cte(
+    conn: PgConnection,
+    edges_table: str,
+    edge_from_col: str,
+    edge_to_col: str,
+    start_id: int,
+    value_col: str,
+    operation: str,
+    max_depth: int,
+    valid_at: datetime | None = None,
+    temporal_start_col: str | None = None,
+    temporal_end_col: str | None = None,
+) -> dict[int, float]:
+    """
+    Use recursive CTE to aggregate values along all paths.
+
+    Args:
+        conn: Database connection
+        edges_table: Table containing edges
+        edge_from_col: Column for edge source
+        edge_to_col: Column for edge target
+        start_id: Root node ID
+        value_col: Column to aggregate
+        operation: Aggregation operation (sum/max/min/multiply/count)
+        max_depth: Maximum recursion depth
+        valid_at: Point in time for temporal filtering
+        temporal_start_col: Edge start date column
+        temporal_end_col: Edge end date column
+
+    Returns:
+        Dict mapping node_id -> aggregated value
+    """
+    # Build temporal filter if needed
+    temporal_filter = ""
+    temporal_params: list = []
+    if valid_at is not None and temporal_start_col and temporal_end_col:
+        temporal_filter = f"""
+            AND ({temporal_start_col} IS NULL OR {temporal_start_col} <= %s)
+            AND ({temporal_end_col} IS NULL OR {temporal_end_col} >= %s)
+        """
+        temporal_params = [valid_at, valid_at]
+
+    # Build the path aggregation expression based on operation
+    if operation == "sum":
+        path_agg = f"path_value + e.{value_col}"
+        final_agg = "SUM(path_value)"
+    elif operation == "max":
+        path_agg = f"GREATEST(path_value, e.{value_col})"
+        final_agg = "MAX(path_value)"
+    elif operation == "min":
+        path_agg = f"LEAST(path_value, e.{value_col})"
+        final_agg = "MIN(path_value)"
+    elif operation == "multiply":
+        path_agg = f"path_value * e.{value_col}"
+        final_agg = "SUM(path_value)"  # Sum of products across paths
+    elif operation == "count":
+        path_agg = "path_value + 1"
+        final_agg = "MIN(path_value)"  # Shortest path length
+    else:
+        raise ValueError(f"Unknown operation: {operation}")
+
+    # Initial value for anchor
+    if operation == "multiply":
+        initial_value = f"e.{value_col}::numeric"
+    elif operation == "count":
+        initial_value = "1::numeric"
+    else:
+        initial_value = f"e.{value_col}::numeric"
+
+    query = f"""
+    WITH RECURSIVE paths AS (
+        -- Anchor: direct children of start node
+        SELECT
+            e.{edge_to_col} as node_id,
+            {initial_value} as path_value,
+            1 as depth,
+            ARRAY[%s, e.{edge_to_col}] as path
+        FROM {edges_table} e
+        WHERE e.{edge_from_col} = %s
+        {temporal_filter}
+
+        UNION ALL
+
+        -- Recursive: aggregate along each path
+        SELECT
+            e.{edge_to_col},
+            ({path_agg})::numeric,
+            p.depth + 1,
+            p.path || e.{edge_to_col}
+        FROM paths p
+        JOIN {edges_table} e ON e.{edge_from_col} = p.node_id
+        WHERE p.depth < %s
+          AND NOT e.{edge_to_col} = ANY(p.path)  -- cycle prevention
+          {temporal_filter.replace('%s', '%s') if temporal_filter else ''}
+    )
+    -- Final aggregation across all paths to each node
+    SELECT node_id, {final_agg} as aggregated_value
+    FROM paths
+    GROUP BY node_id
+    """
+
+    # Build params list
+    base_params = [start_id, start_id] + temporal_params + [max_depth]
+    if temporal_filter:
+        # Add temporal params again for recursive part
+        base_params += temporal_params
+
+    result: dict[int, float] = {}
+    with conn.cursor() as cur:
+        cur.execute(query, base_params)
+        for row in cur.fetchall():
+            node_id, agg_value = row
+            result[int(node_id)] = float(agg_value) if agg_value is not None else 0.0
+
+    return result

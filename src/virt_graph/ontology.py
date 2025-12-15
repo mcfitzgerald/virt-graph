@@ -60,7 +60,7 @@ class OntologyAccessor:
 
         # Access roles (RBox - relationships)
         domain_key, range_key = ontology.get_role_keys("SuppliesTo")
-        complexity = ontology.get_role_complexity("SuppliesTo")
+        op_types = ontology.get_operation_types("SuppliesTo")
     """
 
     VG_ENTITY = "vg:SQLMappedClass"
@@ -70,7 +70,21 @@ class OntologyAccessor:
     _metamodel_loaded: bool = False
     _entity_required: set[str] = set()
     _relationship_required: set[str] = set()
-    _valid_complexities: set[str] = set()
+    _valid_operation_categories: set[str] = set()
+    _valid_operation_types: set[str] = set()
+
+    # Mapping from OperationType to OperationCategory
+    _operation_type_to_category: dict[str, str] = {
+        "direct_join": "direct",
+        "recursive_traversal": "traversal",
+        "temporal_traversal": "temporal",
+        "path_aggregation": "aggregation",
+        "hierarchical_aggregation": "aggregation",
+        "shortest_path": "algorithm",
+        "centrality": "algorithm",
+        "connected_components": "algorithm",
+        "resilience_analysis": "algorithm",
+    }
 
     def __init__(self, ontology_path: Optional[Path] = None, validate: bool = True):
         """
@@ -113,7 +127,7 @@ class OntologyAccessor:
         This makes virt_graph.yaml the single source of truth for:
         - Required fields for SQLMappedClass (entity classes)
         - Required fields for SQLMappedRelationship (relationship classes)
-        - Valid values for TraversalComplexity enum
+        - Valid values for OperationType and OperationCategory enums
 
         Rules are cached at class level and loaded once per process.
         """
@@ -139,9 +153,13 @@ class OntologyAccessor:
             if sv.induced_slot(slot, "SQLMappedRelationship").required
         }
 
-        # Extract valid enum values for TraversalComplexity
-        complexity_enum = sv.get_enum("TraversalComplexity")
-        cls._valid_complexities = set(complexity_enum.permissible_values.keys())
+        # Extract valid enum values for OperationCategory
+        category_enum = sv.get_enum("OperationCategory")
+        cls._valid_operation_categories = set(category_enum.permissible_values.keys())
+
+        # Extract valid enum values for OperationType
+        type_enum = sv.get_enum("OperationType")
+        cls._valid_operation_types = set(type_enum.permissible_values.keys())
 
         cls._metamodel_loaded = True
 
@@ -257,17 +275,45 @@ class OntologyAccessor:
                     )
                 )
 
-            # Validate traversal_complexity value
-            complexity = self._get_annotation(cls, "traversal_complexity")
-            if complexity and complexity not in self._valid_complexities:
-                errors.append(
-                    ValidationError(
-                        element_type="relationship",
-                        element_name=name,
-                        field="traversal_complexity",
-                        message=f"invalid value '{complexity}', must be one of {self._valid_complexities}",
-                    )
-                )
+            # Validate operation_types values
+            op_types = self._get_annotation(cls, "operation_types")
+            if op_types:
+                parsed_types = self._parse_json_or_value(op_types, [])
+                if isinstance(parsed_types, list):
+                    for op_type in parsed_types:
+                        if op_type not in self._valid_operation_types:
+                            errors.append(
+                                ValidationError(
+                                    element_type="relationship",
+                                    element_name=name,
+                                    field="operation_types",
+                                    message=f"invalid operation type '{op_type}', must be one of {self._valid_operation_types}",
+                                )
+                            )
+
+            # Validate temporal_bounds structure if present
+            temporal_bounds = self._get_annotation(cls, "temporal_bounds")
+            if temporal_bounds:
+                parsed_bounds = self._parse_json_or_value(temporal_bounds, {})
+                if isinstance(parsed_bounds, dict):
+                    if "start_col" not in parsed_bounds:
+                        errors.append(
+                            ValidationError(
+                                element_type="relationship",
+                                element_name=name,
+                                field="temporal_bounds",
+                                message="missing required field 'start_col'",
+                            )
+                        )
+                    if "end_col" not in parsed_bounds:
+                        errors.append(
+                            ValidationError(
+                                element_type="relationship",
+                                element_name=name,
+                                field="temporal_bounds",
+                                message="missing required field 'end_col'",
+                            )
+                        )
 
             # Validate domain_class references a known entity
             domain_class = self._get_annotation(cls, "domain_class")
@@ -403,10 +449,41 @@ class OntologyAccessor:
         resolved = self._resolve_role_name(name)
         return self._get_annotation(self._rbox[resolved], "range_class")
 
-    def get_role_complexity(self, name: str) -> str:
-        """Get traversal complexity (GREEN/YELLOW/RED) for a role."""
+    def get_operation_types(self, name: str) -> list[str]:
+        """Get operation types supported on this role.
+
+        Returns list of operation type strings like:
+        ["recursive_traversal", "temporal_traversal", "path_aggregation"]
+
+        These map directly to handler functions for query execution.
+        """
         resolved = self._resolve_role_name(name)
-        return self._get_annotation(self._rbox[resolved], "traversal_complexity")
+        value = self._get_annotation(self._rbox[resolved], "operation_types", [])
+        return self._parse_json_or_value(value, [])
+
+    def get_operation_category(self, op_type: str) -> str:
+        """Get category for an operation type.
+
+        Args:
+            op_type: Operation type string (e.g., "recursive_traversal")
+
+        Returns:
+            Category string (e.g., "traversal", "algorithm", "direct")
+        """
+        return self._operation_type_to_category.get(op_type, "direct")
+
+    def get_temporal_bounds(self, name: str) -> Optional[dict]:
+        """Get temporal validity configuration for a role.
+
+        Returns dict with 'start_col' and 'end_col' keys specifying
+        which columns contain the validity period for edges.
+        Returns None if the role does not have temporal bounds.
+        """
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "temporal_bounds", None)
+        if value is None:
+            return None
+        return self._parse_json_or_value(value, None)
 
     def get_role_properties(self, name: str) -> dict:
         """

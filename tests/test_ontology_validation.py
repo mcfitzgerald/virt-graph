@@ -101,16 +101,11 @@ class TestVGAnnotations:
 
     def test_all_relationships_have_required_annotations(self, ontology):
         """All relationship classes must have required vg: annotations."""
-        required_fields = [
-            "edge_table", "domain_key", "range_key",
-            "domain_class", "range_class", "traversal_complexity"
-        ]
-
         for role_name in ontology.roles:
             role_sql = ontology.get_role_sql(role_name)
             domain = ontology.get_role_domain(role_name)
             range_cls = ontology.get_role_range(role_name)
-            complexity = ontology.get_role_complexity(role_name)
+            operation_types = ontology.get_operation_types(role_name)
 
             assert role_sql["table"] is not None, \
                 f"Role {role_name} missing edge_table"
@@ -122,8 +117,8 @@ class TestVGAnnotations:
                 f"Role {role_name} missing domain_class"
             assert range_cls is not None, \
                 f"Role {role_name} missing range_class"
-            assert complexity in {"GREEN", "YELLOW", "RED"}, \
-                f"Role {role_name} has invalid complexity: {complexity}"
+            assert len(operation_types) > 0, \
+                f"Role {role_name} has no operation_types"
 
     def test_domain_range_classes_exist(self, ontology):
         """Relationship domain/range must reference valid entity classes."""
@@ -214,12 +209,12 @@ class TestRelationshipMappings:
             assert "domain_key" in role_sql, f"Role {rel_name} missing domain_key"
             assert "range_key" in role_sql, f"Role {rel_name} missing range_key"
 
-    def test_all_relationships_have_traversal_complexity(self, ontology):
-        """Every relationship should have traversal_complexity."""
+    def test_all_relationships_have_operation_types(self, ontology):
+        """Every relationship should have operation_types."""
         for rel_name in ontology.roles:
-            complexity = ontology.get_role_complexity(rel_name)
-            assert complexity in ["GREEN", "YELLOW", "RED"], \
-                f"Role {rel_name} has invalid complexity: {complexity}"
+            op_types = ontology.get_operation_types(rel_name)
+            assert len(op_types) > 0, \
+                f"Role {rel_name} has no operation_types"
 
     def test_all_relationships_have_properties(self, ontology):
         """Every relationship should have properties with cardinality info."""
@@ -479,19 +474,18 @@ class TestOntologySummary:
         # Check relationship count
         assert len(ontology.roles) >= 10, "Expected at least 10 relationships"
 
-        # Check traversal complexity coverage
-        complexities = {
-            ontology.get_role_complexity(role_name)
-            for role_name in ontology.roles
-        }
-        assert "GREEN" in complexities, "Missing GREEN complexity relationships"
-        assert "YELLOW" in complexities, "Missing YELLOW complexity relationships"
-        assert "RED" in complexities, "Missing RED complexity relationships"
+        # Check operation_types coverage
+        all_op_types = set()
+        for role_name in ontology.roles:
+            all_op_types.update(ontology.get_operation_types(role_name))
+
+        assert "direct_join" in all_op_types, "Missing direct_join operations"
+        assert "recursive_traversal" in all_op_types, "Missing recursive_traversal operations"
 
         print("\n" + "="*60)
         print("ONTOLOGY VALIDATION SUMMARY")
         print("="*60)
         print(f"Classes defined: {len(ontology.classes)}")
         print(f"Relationships defined: {len(ontology.roles)}")
-        print(f"Traversal complexities: {sorted(complexities)}")
+        print(f"Operation types: {sorted(all_op_types)}")
         print("="*60)

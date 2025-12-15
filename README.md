@@ -277,8 +277,8 @@ result = centrality(
 ### Workflow (with Claude Code)
 
 1. **Read the ontology** (`ontology/supply_chain.yaml`) to understand available entities and relationships
-2. **Dispatch** the question: determine if a handler is needed based on complexity (GREEN/YELLOW/RED)
-3. **Generate query on-the-fly**: Direct SQL for GREEN, handler call for YELLOW/RED
+2. **Dispatch** the question: determine if a handler is needed based on operation types
+3. **Generate query on-the-fly**: Direct SQL for simple joins, handler call for traversals/algorithms
 4. **Execute and return results**
 
 All queries are generated on-the-fly by the agentic system—no hardcoded templates.
@@ -304,7 +304,7 @@ poetry run mkdocs serve
 
 Documentation covers:
 - **[Architecture](docs/concepts/architecture.md)** - System design and dispatch pattern
-- **[Complexity Levels](docs/concepts/complexity-levels.md)** - GREEN/YELLOW/RED explained
+- **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
 - **[Handlers](docs/handlers/overview.md)** - All available graph operations
 - **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
 - **[Supply Chain Tutorial](docs/examples/supply-chain.md)** - Complete worked example
@@ -313,7 +313,7 @@ Documentation covers:
 
 *Validation methodology (benchmark results to be updated):*
 
-- 60 benchmark questions across 5 complexity levels (GREEN/YELLOW/RED/MIXED/GOLD)
+- 60 benchmark questions across different operation categories
 - GOLD questions test cross-domain polymorphism (BOM + Supplier + Logistics traversals)
 - Same ontology defines BOTH VG/SQL handlers AND Neo4j schema
 - Both systems queried with on-the-fly generated queries

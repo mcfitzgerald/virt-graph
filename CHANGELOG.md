@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.6] - 2025-12-15
+
+### Breaking Changes
+
+- **Removed `traversal_complexity` system** - The GREEN/YELLOW/RED classification has been completely removed
+  - Deleted `TraversalComplexity` enum from `virt_graph.yaml` metamodel
+  - Deleted `traversal_complexity` slot from `SQLMappedRelationship`
+  - Removed all `vg:traversal_complexity` annotations from `supply_chain.yaml`
+  - Removed `get_role_complexity()` method from `OntologyAccessor`
+  - `operation_types` is now the sole classification system
+
+- **Removed `bom_explode()` function** - Use `path_aggregate(operation='multiply')` instead
+  - Removed `BomExplodeResult` TypedDict
+  - Tests updated to use generic `path_aggregate()` handler
+
+### Changed
+
+- `show_ontology.py` now displays `operation_types` instead of complexity colors
+- Documentation updated throughout to reference operation types
+- Test fixtures in `test_pathfinding.py` now use dynamic data fetching instead of hardcoded facility names
+
+### Fixed
+
+- Type mismatch in `_aggregate_paths_cte()` for count operation (integer vs numeric)
+
+---
+
 ## [0.9.5] - 2025-12-14
 
 ### Added

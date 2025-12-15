@@ -57,7 +57,7 @@ def validate_vg_annotations(ontology_path: Path) -> bool:
 
     Validates:
     - Required VG annotations are present
-    - traversal_complexity values are GREEN/YELLOW/RED
+    - operation_types values are valid
     - domain_class/range_class reference valid entity classes
     """
     print(f"\n{'='*60}")
