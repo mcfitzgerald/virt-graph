@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.7] - 2025-12-15
+
+### Breaking Changes
+
+- **`OntologyAccessor` now requires explicit path** - No default ontology path; users must provide `Path` argument
+  - `OntologyAccessor()` now raises `ValueError` if path not provided
+  - All code using `OntologyAccessor` must now pass explicit path
+
+### Changed
+
+- **Reorganized project structure** - Separated supply chain example from core framework
+  - Moved `ontology/virt_graph.yaml` → `virt_graph.yaml` (project root)
+  - Created `supply_chain_example/` directory containing:
+    - `ontology/supply_chain.yaml` - Example domain ontology
+    - `postgres/` - Database schema, seed data, docker-compose
+    - `neo4j/` - Neo4j setup and migration script
+    - `scripts/generate_data.py` - Data generation
+    - `tests/` - All 8 integration test files
+    - `docs/supply-chain.md` - Tutorial documentation
+    - `questions.md` - 60 benchmark questions
+    - `README.md` - Example-specific documentation
+  - Removed empty `ontology/` directory
+  - Updated all scripts with new default paths
+  - Updated Makefile with `supply_chain_example/` paths
+  - Updated pyproject.toml testpaths
+
+### Updated
+
+- **Documentation** - All references to file paths updated:
+  - CLAUDE.md - Updated key files and code examples
+  - docs/index.md - Updated project structure
+  - docs/concepts/ontology.md - Updated metamodel path
+  - docs/concepts/architecture.md - Updated metamodel reference
+  - docs/ontology/validation.md - Updated example paths
+  - docs/ontology/vg-extensions.md - Updated metamodel reference
+  - prompts/ontology_discovery.md - Updated metamodel path
+
+---
+
 ## [0.9.6] - 2025-12-15
 
 ### Breaking Changes

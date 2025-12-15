@@ -76,7 +76,7 @@ Fix: Use lowercase: `string`, `integer`, `decimal`, etc.
 
 ## Layer 2: VG Annotations
 
-The `OntologyAccessor` validates VG-specific requirements by reading rules from the metamodel (`ontology/virt_graph.yaml`).
+The `OntologyAccessor` validates VG-specific requirements by reading rules from the metamodel (`virt_graph.yaml` at project root).
 
 ### What It Checks
 
@@ -165,12 +165,12 @@ class ValidationError:
 The `scripts/validate_ontology.py` script provides detailed output:
 
 ```bash
-$ poetry run python scripts/validate_ontology.py ontology/supply_chain.yaml
+$ poetry run python scripts/validate_ontology.py supply_chain_example/ontology/supply_chain.yaml
 
-Validating ontology: ontology/supply_chain.yaml
+Validating ontology: supply_chain_example/ontology/supply_chain.yaml
 
 Layer 1: LinkML Structure
-  Running: linkml-lint --validate-only ontology/supply_chain.yaml
+  Running: linkml-lint --validate-only supply_chain_example/ontology/supply_chain.yaml
   ✓ LinkML structure valid
 
 Layer 2: VG Annotations
@@ -191,7 +191,7 @@ Layer 2: VG Annotations
 
 ## Single Source of Truth
 
-Validation rules are not hardcoded in Python. They come from `ontology/virt_graph.yaml`:
+Validation rules are not hardcoded in Python. They come from `virt_graph.yaml` (at project root):
 
 ```yaml
 # From virt_graph.yaml

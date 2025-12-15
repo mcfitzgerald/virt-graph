@@ -31,7 +31,7 @@ neo4j = [
 packages = [{include = "virt_graph", from = "src"}]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["supply_chain_example/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 

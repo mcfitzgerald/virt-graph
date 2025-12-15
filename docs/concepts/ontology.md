@@ -41,15 +41,15 @@ VG/SQL ontologies are valid [LinkML schemas](https://linkml.io/linkml/schemas/) 
 
 ## Metamodel Reference
 
-The VG metamodel is defined in `ontology/virt_graph.yaml` and serves as the **single source of truth** for:
+The VG metamodel is defined in `virt_graph.yaml` (at project root) and serves as the **single source of truth** for:
 
 - **Extension classes**: `vg:SQLMappedClass`, `vg:SQLMappedRelationship`
 - **Validation rules**: Required fields are derived from the metamodel automatically
 - **Enums**: `vg:OperationType` (direct_join, recursive_traversal, etc.)
 - **Supporting types**: `vg:WeightColumn`, `vg:DatabaseConnection`
 
-The `OntologyAccessor` reads `virt_graph.yaml` via LinkML's SchemaView to dynamically extract validation rules. This means:
-- Adding a required field to `SQLMappedClass` in `virt_graph.yaml` automatically updates validation
+The `OntologyAccessor` reads `virt_graph.yaml` (from project root) via LinkML's SchemaView to dynamically extract validation rules. This means:
+- Adding a required field to `SQLMappedClass` in the metamodel automatically updates validation
 - No hardcoded duplication between YAML and Python code
 
 ### Basic Structure

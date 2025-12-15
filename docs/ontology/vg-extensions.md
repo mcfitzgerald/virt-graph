@@ -321,7 +321,7 @@ ConnectsTo:
 
 ## Metamodel Reference
 
-All VG extensions are defined in `ontology/virt_graph.yaml`, which serves as the **single source of truth**. The `OntologyAccessor` reads this file to dynamically validate domain ontologies.
+All VG extensions are defined in `virt_graph.yaml` (at project root), which serves as the **single source of truth**. The `OntologyAccessor` reads this file to dynamically validate domain ontologies.
 
 To see the complete metamodel:
 

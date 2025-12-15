@@ -195,7 +195,7 @@ This prevents traversing through logically deleted nodes.
 
 ## Single Source of Truth
 
-The VG metamodel (`ontology/virt_graph.yaml`) defines:
+The VG metamodel (`virt_graph.yaml` at project root) defines:
 
 - Required annotations for entity/relationship classes
 - Valid values for `operation_types`

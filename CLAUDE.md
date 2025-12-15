@@ -24,8 +24,8 @@ make neo4j-down           # Stop Neo4j
 
 # Testing
 make test                 # Run all tests
-poetry run pytest tests/test_handler_safety.py -v           # Run specific test file
-poetry run pytest tests/test_bom_explode.py::test_name -v   # Run single BOM/path_aggregate test
+poetry run pytest supply_chain_example/tests/test_handler_safety.py -v           # Run specific test file
+poetry run pytest supply_chain_example/tests/test_bom_explode.py::test_name -v   # Run single BOM/path_aggregate test
 
 # Ontology
 make validate-ontology    # Full two-layer validation
@@ -39,7 +39,11 @@ make serve-docs           # Serve MkDocs locally (http://localhost:8000)
 
 ### Core Components
 
-**Ontology** (`ontology/supply_chain.yaml`):
+**Metamodel** (`virt_graph.yaml` at project root):
+- VG metamodel defining SQLMappedClass and SQLMappedRelationship
+- Single source of truth for VG annotations and validation rules
+
+**Example Ontology** (`supply_chain_example/ontology/supply_chain.yaml`):
 - LinkML format with VG extensions (`vg:` annotations)
 - Entity classes (TBox) instantiate `vg:SQLMappedClass`
 - Relationship classes (RBox) instantiate `vg:SQLMappedRelationship`
@@ -108,8 +112,10 @@ result = traverse(
 
 ```python
 from virt_graph.ontology import OntologyAccessor
+from pathlib import Path
 
-ontology = OntologyAccessor()  # Uses default ontology/supply_chain.yaml
+# Path to ontology is required
+ontology = OntologyAccessor(Path("supply_chain_example/ontology/supply_chain.yaml"))
 table = ontology.get_class_table("Supplier")
 op_types = ontology.get_operation_types("SuppliesTo")
 domain_key, range_key = ontology.get_role_keys("SuppliesTo")
@@ -134,6 +140,6 @@ conn = psycopg2.connect(
 
 ## Key Files
 
-- `ontology/supply_chain.yaml` - Domain ontology with VG annotations
-- `ontology/virt_graph.yaml` - VG metamodel (single source of truth for extensions and template)
+- `virt_graph.yaml` - VG metamodel (single source of truth for extensions and validation)
+- `supply_chain_example/ontology/supply_chain.yaml` - Example domain ontology with VG annotations
 - `prompts/ontology_discovery.md` - 4-round protocol for creating ontologies from new databases

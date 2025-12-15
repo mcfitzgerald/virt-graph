@@ -98,14 +98,14 @@ def validate_ontology(ontology_path: Path) -> bool:
 
 
 def main():
-    ontology_dir = Path(__file__).parent.parent / "ontology"
+    example_ontology_dir = Path(__file__).parent.parent / "supply_chain_example" / "ontology"
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "--all":
-            # Validate all ontology files in ontology/ directory
-            ontology_files = list(ontology_dir.glob("*.yaml"))
+            # Validate all ontology files in supply_chain_example/ontology/ directory
+            ontology_files = list(example_ontology_dir.glob("*.yaml"))
             if not ontology_files:
-                print(f"No ontology files found in {ontology_dir}")
+                print(f"No ontology files found in {example_ontology_dir}")
                 sys.exit(1)
 
             print(f"Found {len(ontology_files)} ontology file(s) to validate:")
@@ -127,7 +127,7 @@ def main():
         print("  poetry run python scripts/validate_ontology.py --all")
         print()
         print("Examples:")
-        print("  poetry run python scripts/validate_ontology.py ontology/supply_chain.yaml")
+        print("  poetry run python scripts/validate_ontology.py supply_chain_example/ontology/supply_chain.yaml")
         print("  poetry run python scripts/validate_ontology.py --all")
         sys.exit(1)
 

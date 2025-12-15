@@ -146,19 +146,20 @@ The ontology + handlers are the contribution; the agentic system is the enabler.
 
 ```
 virt-graph/
+├── virt_graph.yaml            # VG metamodel (single source of truth)
 ├── src/virt_graph/
-│   ├── handlers/          # Graph operation handlers
-│   │   ├── traversal.py   # traverse(), path_aggregate()
-│   │   ├── pathfinding.py # shortest_path(), all_shortest_paths()
-│   │   └── network.py     # centrality(), neighbors(), etc.
-│   ├── ontology.py        # OntologyAccessor class
-│   └── estimator/         # Pre-flight size estimation
-├── ontology/
-│   ├── virt_graph.yaml    # VG metamodel (single source of truth)
-│   └── *.yaml             # Domain ontologies
-├── scripts/
-│   └── validate_ontology.py  # Two-layer validation
-└── tests/                 # Integration tests
+│   ├── handlers/              # Graph operation handlers
+│   │   ├── traversal.py       # traverse(), path_aggregate()
+│   │   ├── pathfinding.py     # shortest_path(), all_shortest_paths()
+│   │   └── network.py         # centrality(), neighbors(), etc.
+│   ├── ontology.py            # OntologyAccessor class
+│   └── estimator/             # Pre-flight size estimation
+├── supply_chain_example/      # Example domain with tests
+│   ├── ontology/              # Supply chain ontology
+│   ├── postgres/              # Database schema and seeds
+│   └── tests/                 # Integration tests
+└── scripts/
+    └── validate_ontology.py   # Two-layer validation
 ```
 
 ## Next Steps

@@ -134,7 +134,7 @@ def main():
     parser.add_argument(
         "ontology_path",
         nargs="?",
-        help="Path to ontology YAML (default: ontology/supply_chain.yaml)"
+        help="Path to ontology YAML (default: supply_chain_example/ontology/supply_chain.yaml)"
     )
     parser.add_argument(
         "--tbox-only",
@@ -158,7 +158,7 @@ def main():
     if args.ontology_path:
         ontology_path = Path(args.ontology_path)
     else:
-        ontology_path = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
+        ontology_path = Path(__file__).parent.parent / "supply_chain_example" / "ontology" / "supply_chain.yaml"
 
     if not ontology_path.exists():
         print(f"Error: {ontology_path} not found", file=sys.stderr)

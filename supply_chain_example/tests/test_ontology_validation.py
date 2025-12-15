@@ -2,7 +2,7 @@
 Ontology Validation Tests
 
 Validates the ontology against the database schema and data.
-Run with: poetry run pytest tests/test_ontology_validation.py -v
+Run with: poetry run pytest supply_chain_example/tests/test_ontology_validation.py -v
 
 Includes:
 - LinkML structure validation (Layer 1)
@@ -19,8 +19,12 @@ import pytest
 from pathlib import Path
 
 # Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from virt_graph.ontology import OntologyAccessor, OntologyValidationError
+
+# Path to supply chain ontology (relative to test file location)
+ONTOLOGY_PATH = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
+METAMODEL_PATH = Path(__file__).parent.parent.parent / "virt_graph.yaml"
 
 
 # Database connection
@@ -41,7 +45,7 @@ def db_connection():
 @pytest.fixture(scope="module")
 def ontology():
     """Load the discovered ontology using OntologyAccessor."""
-    return OntologyAccessor()
+    return OntologyAccessor(ONTOLOGY_PATH)
 
 
 # =============================================================================
@@ -54,10 +58,8 @@ class TestLinkMLStructure:
 
     def test_supply_chain_ontology_valid(self):
         """Supply chain ontology must pass LinkML lint validation."""
-        ontology_path = Path(__file__).parent.parent / "ontology" / "supply_chain.yaml"
-
         result = subprocess.run(
-            ["poetry", "run", "linkml-lint", "--validate-only", str(ontology_path)],
+            ["poetry", "run", "linkml-lint", "--validate-only", str(ONTOLOGY_PATH)],
             capture_output=True,
             text=True
         )
@@ -67,10 +69,8 @@ class TestLinkMLStructure:
 
     def test_virt_graph_metamodel_valid(self):
         """VG metamodel extension must pass LinkML lint validation."""
-        metamodel_path = Path(__file__).parent.parent / "ontology" / "virt_graph.yaml"
-
         result = subprocess.run(
-            ["poetry", "run", "linkml-lint", "--validate-only", str(metamodel_path)],
+            ["poetry", "run", "linkml-lint", "--validate-only", str(METAMODEL_PATH)],
             capture_output=True,
             text=True
         )
@@ -85,7 +85,7 @@ class TestVGAnnotations:
     def test_ontology_loads_with_validation(self):
         """Ontology should load successfully with validation enabled."""
         # This should not raise OntologyValidationError
-        ontology = OntologyAccessor(validate=True)
+        ontology = OntologyAccessor(ONTOLOGY_PATH, validate=True)
         assert ontology is not None
 
     def test_all_entity_classes_have_required_annotations(self, ontology):
@@ -134,7 +134,7 @@ class TestVGAnnotations:
     def test_validation_errors_empty(self, ontology):
         """Explicit validation should return no errors."""
         # Load without validation, then validate manually
-        ontology_unchecked = OntologyAccessor(validate=False)
+        ontology_unchecked = OntologyAccessor(ONTOLOGY_PATH, validate=False)
         errors = ontology_unchecked.validate()
 
         assert len(errors) == 0, \

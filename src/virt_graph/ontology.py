@@ -4,7 +4,7 @@ Ontology accessor for LinkML format with Virtual Graph extensions.
 Provides a stable API abstracting over the LinkML structure,
 presenting logical TBox (classes) and RBox (roles) views.
 
-Validation rules are derived from the VG metamodel (ontology/virt_graph.yaml)
+Validation rules are derived from the VG metamodel (virt_graph.yaml)
 using LinkML's SchemaView, making the metamodel the single source of truth.
 """
 
@@ -51,8 +51,7 @@ class OntologyAccessor:
     Validates VG-specific annotations on construction.
 
     Usage:
-        ontology = OntologyAccessor()  # Uses default path
-        ontology = OntologyAccessor(Path("custom/ontology.yaml"))
+        ontology = OntologyAccessor(Path("path/to/ontology.yaml"))
 
         # Access classes (TBox)
         table = ontology.get_class_table("Supplier")
@@ -86,25 +85,23 @@ class OntologyAccessor:
         "resilience_analysis": "algorithm",
     }
 
-    def __init__(self, ontology_path: Optional[Path] = None, validate: bool = True):
+    def __init__(self, ontology_path: Path, validate: bool = True):
         """
         Load and optionally validate a LinkML ontology with VG extensions.
 
         Args:
-            ontology_path: Path to ontology YAML file. If None, uses default
-                           location at ontology/supply_chain.yaml
+            ontology_path: Path to ontology YAML file (required)
             validate: If True, validate VG annotations on load (default: True)
 
         Raises:
+            ValueError: If ontology_path is not provided
             OntologyValidationError: If validation is enabled and fails
         """
+        if ontology_path is None:
+            raise ValueError("ontology_path is required")
+
         # Load metamodel rules from virt_graph.yaml (once per process)
         self._load_metamodel_rules()
-
-        if ontology_path is None:
-            ontology_path = (
-                Path(__file__).parent.parent.parent / "ontology" / "supply_chain.yaml"
-            )
         with open(ontology_path) as f:
             self._data = yaml.safe_load(f)
 
@@ -134,9 +131,7 @@ class OntologyAccessor:
         if cls._metamodel_loaded:
             return
 
-        metamodel_path = (
-            Path(__file__).parent.parent.parent / "ontology" / "virt_graph.yaml"
-        )
+        metamodel_path = Path(__file__).parent.parent.parent / "virt_graph.yaml"
         sv = SchemaView(str(metamodel_path))
 
         # Extract required fields from SQLMappedClass
@@ -613,6 +608,6 @@ class OntologyAccessor:
 
 
 # Convenience function for one-off access
-def load_ontology(path: Optional[Path] = None, validate: bool = True) -> OntologyAccessor:
+def load_ontology(path: Path, validate: bool = True) -> OntologyAccessor:
     """Load and return an OntologyAccessor instance."""
     return OntologyAccessor(path, validate=validate)
