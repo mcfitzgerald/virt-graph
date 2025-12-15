@@ -1,8 +1,7 @@
-# Benchmark Questions
+# Benchmark Questions for Supply Chain Examples
 
 60 business questions for demand-driven pattern discovery.
 
-## Q01-Q10
 1. Find the supplier with code "ACME-001"
 2. List all tier 1 suppliers
 3. What parts can supplier "GlobalTech Industries" supply?
@@ -13,8 +12,6 @@
 8. List all pending orders for customer "Acme Industries"
 9. Total revenue by customer for last quarter
 10. Which parts are below their reorder point?
-
-## Q11-Q18
 11. Find all tier 2 suppliers of "Acme Corp"
 12. Find all tier 2 AND tier 3 suppliers upstream from "Acme Corp"
 13. Who are the downstream customers (buyers) of "Pacific Components"?
@@ -23,8 +20,6 @@
 16. Which tier 1 suppliers have the deepest supply chains?
 17. Find all suppliers that are exactly 2 hops from "GlobalTech Industries"
 18. Which suppliers appear in multiple supply chains (shared suppliers)?
-
-## Q19-Q28
 19. Full BOM explosion for product "Turbo Encabulator" (all levels)
 20. Full BOM explosion with quantities for "Flux Capacitor"
 21. Where is part "CHIP-001" used? (where-used analysis)
@@ -35,8 +30,6 @@
 26. Which parts are used in BOTH "Turbo Encabulator" AND "Flux Capacitor"?
 27. Find the critical path (longest chain) in "Turbo Encabulator" BOM
 28. If part "RESISTOR-100" fails, trace impact through all BOM levels
-
-## Q29-Q35
 29. Find the shortest route (by distance) from "Chicago Warehouse" to "LA Distribution Center"
 30. What is the cheapest route from "New York Factory" to "Seattle Warehouse"?
 31. Find the fastest route from "Chicago Warehouse" to "Miami Hub"
@@ -44,15 +37,11 @@
 33. Find top 3 alternative routes from New York to LA by cost
 34. What is the minimum number of hops from Chicago to any West Coast facility?
 35. Find a route from Chicago to Miami that avoids "Denver Hub"
-
-## Q36-Q40
 36. Which facility is most central in the transport network?
 37. Which facility has the most direct connections?
 38. Rank facilities by their importance to network flow
 39. Are there any isolated facilities (no routes in or out)?
 40. If "Denver Hub" goes offline, which facility pairs lose connectivity?
-
-## Q41-Q50
 41. Do we have sufficient inventory to build 100 units of "Turbo Encabulator"?
 42. Which components of "Flux Capacitor" are currently out of stock?
 43. Find all certified suppliers in "Acme Corp's" tier 2+ supply network
@@ -63,8 +52,6 @@
 48. Which suppliers could fulfill order "ORD-2024-001" within 5 days?
 49. Rank facilities by criticality: connections × inventory value
 50. If "Denver Hub" fails, what's the cost increase to ship pending orders?
-
-## Q51-Q60
 51. Calculate the total transport distance to assemble one "Turbo Encabulator" (sum of distances from each leaf component's primary supplier to "Chicago Warehouse")
 52. Which single transport_route carries the highest volume of distinct component types required for "Flux Capacitor"?
 53. Find the shortest path from "Chicago Warehouse" to "Miami Hub" that only passes through facilities with at least 50 units of "CHIP-001" in stock
