@@ -1,6 +1,6 @@
 # Question Inventory for Demand-Driven Pattern Discovery
 
-**Purpose**: 50 realistic business questions that drive pattern discovery and serve as the benchmark.
+**Purpose**: 60 realistic business questions that drive pattern discovery and serve as the benchmark.
 
 **Ontology Reference**: `ontology/supply_chain.yaml` (v1.0)
 - 9 Entity Classes (TBox): Supplier, Part, Product, Facility, Customer, Order, Shipment, Inventory, SupplierCertification
@@ -14,10 +14,11 @@
 
 | Complexity | Count | % | Rationale |
 |------------|-------|---|-----------|
-| GREEN | 10 | 20% | Representative samples - if these work, hundreds more will |
-| YELLOW | 18 | 36% | Deep coverage of recursive traversal (supplier network + BOM) |
-| RED | 12 | 24% | Pathfinding variants + centrality/connectivity algorithms |
-| MIXED | 10 | 20% | Cross-domain patterns combining GREEN + YELLOW/RED |
+| GREEN | 10 | 17% | Representative samples - if these work, hundreds more will |
+| YELLOW | 18 | 30% | Deep coverage of recursive traversal (supplier network + BOM) |
+| RED | 12 | 20% | Pathfinding variants + centrality/connectivity algorithms |
+| MIXED | 10 | 17% | Cross-domain patterns combining GREEN + YELLOW/RED |
+| GOLD | 10 | 17% | Multi-graph polymorphism (BOM + Supplier + Logistics) |
 
 ---
 
@@ -123,27 +124,78 @@
 
 ---
 
+## GOLD - Cross-Domain Polymorphism (Q51-Q60)
+
+*These questions test the "Virtual Graph" advantage: traversals that jump between the three graph structures (BOM, Supplier Network, Logistics). Standard SQL struggles; this is where VG/SQL shines.*
+
+### Grand Unified Chain (Q51-Q52)
+
+*BOM + Supplier + Logistics traversals in a single query.*
+
+| ID | Question | Graphs Traversed | Why It's Hard |
+|----|----------|------------------|---------------|
+| Q51 | Calculate the total transport distance to assemble one "Turbo Encabulator" (sum of distances from each leaf component's primary supplier to "Chicago Warehouse") | BOM → Supplier → Logistics | BOM explosion → Part_Suppliers → Suppliers → Distance lookup |
+| Q52 | Which single transport_route carries the highest volume of distinct component types required for "Flux Capacitor"? | BOM → Inventory → Logistics | BOM explosion → Inventory location → Route mapping |
+
+### Constrained Pathfinding (Q53-Q54)
+
+*Graph algorithms with dynamic state filters.*
+
+| ID | Question | Constraint Type | Why It's Hard |
+|----|----------|-----------------|---------------|
+| Q53 | Find the shortest path from "Chicago Warehouse" to "Miami Hub" that only passes through facilities with at least 50 units of "CHIP-001" in stock | Inventory-filtered nodes | Node filtering during traversal based on dynamic state |
+| Q54 | Find a route for order "ORD-2024-001" where total transit time < 48 hours but cost is minimized | Multi-objective | Time constraint + cost minimization on weighted edges |
+
+### Hidden Dependencies (Q55-Q56)
+
+*Network topology analysis across domains.*
+
+| ID | Question | Analysis Type | Why It's Hard |
+|----|----------|---------------|---------------|
+| Q55 | Find any Tier 3 supplier that is the sole source for a part used in more than 3 different Tier 1 products | Risk concentration | Supply chain traversal + product/part cardinality check |
+| Q56 | Are there any loops in the supply chain? (Supplier A sells to B, B sells to A) | Cycle detection | Trivial in graph algos, expensive in recursive CTEs |
+
+### Plan vs. Actual (Q57)
+
+*Graph definition vs. transactional history.*
+
+| ID | Question | Comparison Type | Why It's Hard |
+|----|----------|-----------------|---------------|
+| Q57 | Compare the theoretical transit_time_hours in transport_routes vs actual average time for shipments between "Chicago Warehouse" and "Miami Hub" | Route definition vs shipment history | Links graph structure to transaction logs |
+
+### Impact Analysis - Blast Radius (Q58-Q60)
+
+*End-to-end lineage and disconnection analysis.*
+
+| ID | Question | Scope | Why It's Hard |
+|----|----------|-------|---------------|
+| Q58 | If "Denver Hub" is destroyed, calculate the total value of orders that cannot be fulfilled because required stock is trapped there | Facility → Inventory → Orders | Orders → Order_Items → Products → Product_Components → Parts → Inventory at Denver |
+| Q59 | A batch of "RESISTOR-100" from "GlobalTech Industries" is defective. Find all customers who received a shipment containing a product using this part | Full lineage trace | Supplier → Part → Product → Order → Shipment → Customer |
+| Q60 | Find all parts in bill_of_materials that are children but have no product_components entry linking them to a top-level product (dead stock) | Orphan detection | Disconnected subgraph in BOM → Product relationship |
+
+---
+
 ## Ontology Coverage Matrix
 
 ### Relationships by Question Count
 
 | Relationship | Complexity | Questions | Count |
 |--------------|------------|-----------|-------|
-| **SuppliesTo** | YELLOW | Q11-Q18, Q43-Q45 | 11 |
-| **HasComponent** | YELLOW | Q19-Q20, Q23-Q28, Q41-Q42, Q46, Q48 | 12 |
+| **SuppliesTo** | YELLOW | Q11-Q18, Q43-Q45, Q55-Q56 | 13 |
+| **HasComponent** | YELLOW | Q19-Q20, Q23-Q28, Q41-Q42, Q46, Q48, Q51-Q52, Q60 | 15 |
 | **ComponentOf** | YELLOW | Q21-Q22, Q26, Q28 | 4 |
-| **ConnectsTo** | RED | Q29-Q40, Q47, Q49-Q50 | 15 |
-| CanSupply | GREEN | Q03, Q44-Q46, Q48 | 5 |
-| ContainsComponent | GREEN | Q06, Q41, Q45 | 3 |
+| **ConnectsTo** | RED | Q29-Q40, Q47, Q49-Q54, Q57 | 21 |
+| CanSupply | GREEN | Q03, Q44-Q46, Q48, Q55, Q59 | 7 |
+| ContainsComponent | GREEN | Q06, Q41, Q45, Q55, Q58-Q60 | 7 |
 | InventoryOf | GREEN | Q07, Q10, Q41-Q42 | 4 |
-| PrimarySupplier | GREEN | Q04 | 1 |
+| PrimarySupplier | GREEN | Q04, Q51 | 2 |
 | HasCertification | GREEN | Q05, Q43 | 2 |
 | PlacedBy | GREEN | Q08 | 1 |
-| InventoryAt | GREEN | Q07, Q49 | 2 |
-| ShipsFrom | GREEN | Q47 | 1 |
-| OrderContains | GREEN | Q48 | 1 |
+| InventoryAt | GREEN | Q07, Q49, Q52-Q53, Q58 | 5 |
+| ShipsFrom | GREEN | Q47, Q57, Q59 | 3 |
+| OrderContains | GREEN | Q48, Q58-Q59 | 3 |
 
-**Key Insight**: The 3 YELLOW + 1 RED relationships drive 80% of the questions. GREEN relationships are supporting joins.
+**Key Insight**: The 3 YELLOW + 1 RED relationships drive 80% of the questions. GOLD questions layer multiple relationships (avg 3+ per question).
 
 ---
 
@@ -151,13 +203,16 @@
 
 | Handler | Questions | Count |
 |---------|-----------|-------|
-| `traverse()` | Q11-Q18, Q19-Q28 | 18 |
-| `traverse_collecting()` | Q25, Q43 | 2 |
-| `bom_explode()` | Q19-Q20, Q23 | 3 |
-| `shortest_path()` | Q29-Q31, Q35, Q47 | 5 |
+| `traverse()` | Q11-Q18, Q19-Q28, Q55-Q56, Q59 | 21 |
+| `traverse_collecting()` | Q25, Q43, Q52, Q58 | 4 |
+| `bom_explode()` | Q19-Q20, Q23, Q51-Q52, Q60 | 6 |
+| `shortest_path()` | Q29-Q31, Q35, Q47, Q51, Q53-Q54, Q57 | 9 |
 | `all_shortest_paths()` | Q32-Q33 | 2 |
 | `centrality()` | Q36-Q38, Q49 | 4 |
 | `connected_components()` | Q39-Q40 | 2 |
+| `cycle_detection()` | Q56 | 1 |
+
+*Note: GOLD questions (Q51-Q60) typically require **composite handler chains** - multiple handlers executed in sequence.*
 
 ---
 
@@ -203,7 +258,7 @@ Verify all named test entities exist in database with expected relationships.
 ### Phase 2: Ground Truth Generation
 For each question, write SQL (with recursive CTEs for YELLOW/RED) producing correct answers.
 ```
-benchmark/ground_truth/query_01.json ... query_50.json
+benchmark/ground_truth/query_01.json ... query_60.json
 ```
 
 ### Phase 3: Pattern Discovery
@@ -217,7 +272,7 @@ For each question:
 ```bash
 make benchmark
 ```
-- Run all 50 questions through Virtual Graph
+- Run all 60 questions through Virtual Graph
 - Compare results to ground truth
 - Measure accuracy and latency
 

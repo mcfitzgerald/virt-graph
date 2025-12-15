@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.5] - 2025-12-14
+
+### Added
+
+- **GOLD benchmark questions (Q51-Q60)** - 10 new "cross-domain polymorphism" questions that test traversals across multiple graph structures (BOM + Supplier + Logistics)
+  - Grand Unified Chain (Q51-Q52): BOM → Supplier → Logistics in single query
+  - Constrained Pathfinding (Q53-Q54): Graph algorithms with dynamic state filters
+  - Hidden Dependencies (Q55-Q56): Network topology analysis, cycle detection
+  - Plan vs. Actual (Q57): Graph definition vs. transactional history
+  - Impact Analysis (Q58-Q60): End-to-end lineage and blast radius queries
+
+- **`cycle_detection()` handler** noted in handler coverage for supply chain loop detection
+
+### Changed
+
+- Benchmark expanded from 50 to 60 questions
+- Distribution: GREEN 17%, YELLOW 30%, RED 20%, MIXED 17%, GOLD 17%
+- Updated ontology coverage matrix with GOLD question relationships
+- Updated handler coverage counts
+
+---
+
 ## [0.9.4] - 2025-12-14
 
 ### Added
