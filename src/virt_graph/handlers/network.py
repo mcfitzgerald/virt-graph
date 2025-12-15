@@ -4,6 +4,7 @@ NetworkX-based network analysis handlers.
 Provides centrality calculations, connected components, and other
 graph-level analytics. These operations typically require loading
 larger portions of the graph.
+Supports composite primary/foreign keys - NetworkX handles tuple nodes natively.
 """
 
 from decimal import Decimal
@@ -15,6 +16,7 @@ from psycopg2.extensions import connection as PgConnection
 from .base import (
     MAX_NODES,
     MAX_RESULTS,
+    NodeId,
     QUERY_TIMEOUT_SEC,
     SubgraphTooLarge,
     fetch_nodes,
@@ -25,13 +27,14 @@ def centrality(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
     centrality_type: Literal["degree", "betweenness", "closeness", "pagerank"] = "degree",
     top_n: int = 10,
     weight_col: str | None = None,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Calculate centrality for nodes in the graph.
@@ -79,7 +82,8 @@ def centrality(
     # Load full graph
     G = _load_full_graph(
         conn, edges_table, edge_from_col, edge_to_col, weight_col,
-        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column,
+        sql_filter=sql_filter
     )
 
     node_count = G.number_of_nodes()
@@ -146,11 +150,12 @@ def connected_components(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
     min_size: int = 1,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Find connected components in the graph.
@@ -180,7 +185,8 @@ def connected_components(
     """
     G = _load_full_graph(
         conn, edges_table, edge_from_col, edge_to_col,
-        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column,
+        sql_filter=sql_filter
     )
 
     if G.number_of_nodes() > MAX_NODES:
@@ -231,12 +237,13 @@ def connected_components(
 def graph_density(
     conn: PgConnection,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
     weight_col: str | None = None,
     nodes_table: str | None = None,
-    node_id_column: str = "id",
+    node_id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Calculate graph density and basic statistics.
@@ -258,7 +265,8 @@ def graph_density(
     """
     G = _load_full_graph(
         conn, edges_table, edge_from_col, edge_to_col, weight_col,
-        nodes_table=nodes_table, node_id_column=node_id_column, soft_delete_column=soft_delete_column
+        nodes_table=nodes_table, node_id_column=node_id_column, soft_delete_column=soft_delete_column,
+        sql_filter=sql_filter
     )
 
     if G.number_of_nodes() > MAX_NODES:
@@ -294,12 +302,13 @@ def neighbors(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
-    node_id: int,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
+    node_id: NodeId,
     direction: Literal["outbound", "inbound", "both"] = "both",
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Get direct neighbors of a node.
@@ -389,11 +398,12 @@ def resilience_analysis(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
-    node_to_remove: int,
-    id_column: str = "id",
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
+    node_to_remove: NodeId,
+    id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Analyze network resilience by simulating node removal.
@@ -440,7 +450,8 @@ def resilience_analysis(
     # Load full graph
     G = _load_full_graph(
         conn, edges_table, edge_from_col, edge_to_col,
-        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column
+        nodes_table=nodes_table, node_id_column=id_column, soft_delete_column=soft_delete_column,
+        sql_filter=sql_filter
     )
 
     if G.number_of_nodes() > MAX_NODES:
@@ -527,65 +538,94 @@ def resilience_analysis(
 def _load_full_graph(
     conn: PgConnection,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
     weight_col: str | None = None,
     nodes_table: str | None = None,
-    node_id_column: str = "id",
+    node_id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    sql_filter: str | None = None,
 ) -> nx.DiGraph:
     """
     Load entire graph from edge table.
 
     Creates a directed graph (DiGraph) by default since most relationships
-    in our ontology are directional.
+    in our ontology are directional. NetworkX handles tuple nodes natively
+    for composite key support.
 
     Args:
         conn: Database connection
         edges_table: Table containing edges
-        edge_from_col: Column for edge source
-        edge_to_col: Column for edge target
+        edge_from_col: Column(s) for edge source
+        edge_to_col: Column(s) for edge target
         weight_col: Optional column for edge weights
         nodes_table: Table containing nodes (required for soft-delete filtering)
-        node_id_column: ID column in nodes_table
+        node_id_column: ID column(s) in nodes_table
         soft_delete_column: Column to check for soft-delete filtering
+        sql_filter: SQL WHERE clause for edge filtering
     """
     G = nx.DiGraph()
 
+    # Normalize columns to lists
+    from_cols = [edge_from_col] if isinstance(edge_from_col, str) else list(edge_from_col)
+    to_cols = [edge_to_col] if isinstance(edge_to_col, str) else list(edge_to_col)
+    id_cols = [node_id_column] if isinstance(node_id_column, str) else list(node_id_column)
+
+    is_composite = len(from_cols) > 1 or len(to_cols) > 1
+
+    # Build column select expressions
+    from_cols_select = ", ".join(f"e.{c}" for c in from_cols)
+    to_cols_select = ", ".join(f"e.{c}" for c in to_cols)
     weight_select = f", e.{weight_col}" if weight_col else ""
 
     # Build soft-delete join clause if needed
     soft_delete_join = ""
     if soft_delete_column and nodes_table:
+        from_join_conds = " AND ".join(
+            f"e.{fc} = n_from.{ic}" for fc, ic in zip(from_cols, id_cols)
+        )
+        to_join_conds = " AND ".join(
+            f"e.{tc} = n_to.{ic}" for tc, ic in zip(to_cols, id_cols)
+        )
         soft_delete_join = f"""
-            JOIN {nodes_table} n_from ON e.{edge_from_col} = n_from.{node_id_column}
+            JOIN {nodes_table} n_from ON {from_join_conds}
                 AND n_from.{soft_delete_column} IS NULL
-            JOIN {nodes_table} n_to ON e.{edge_to_col} = n_to.{node_id_column}
+            JOIN {nodes_table} n_to ON {to_join_conds}
                 AND n_to.{soft_delete_column} IS NULL
         """
+
+    # Build sql_filter clause
+    sql_filter_clause = ""
+    if sql_filter:
+        sql_filter_clause = f"WHERE ({sql_filter})" if not soft_delete_join else f"AND ({sql_filter})"
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
 
-        if soft_delete_column and nodes_table:
-            cur.execute(f"""
-                SELECT e.{edge_from_col}, e.{edge_to_col}{weight_select}
-                FROM {edges_table} e
-                {soft_delete_join}
-            """)
-        else:
-            weight_select_simple = f", {weight_col}" if weight_col else ""
-            cur.execute(f"""
-                SELECT {edge_from_col}, {edge_to_col}{weight_select_simple}
-                FROM {edges_table}
-            """)
+        query = f"""
+            SELECT {from_cols_select}, {to_cols_select}{weight_select}
+            FROM {edges_table} e
+            {soft_delete_join}
+            {sql_filter_clause}
+        """
+        cur.execute(query)
         rows = cur.fetchall()
 
+    # Convert results to proper format
+    n_from = len(from_cols)
+    n_to = len(to_cols)
+
     for row in rows:
-        from_id, to_id = row[0], row[1]
+        if is_composite:
+            from_id = tuple(row[:n_from]) if n_from > 1 else row[0]
+            to_id = tuple(row[n_from:n_from + n_to]) if n_to > 1 else row[n_from]
+        else:
+            from_id = row[0]
+            to_id = row[1]
+
         if weight_col:
             # Convert Decimal to float for weights
-            weight = float(row[2]) if isinstance(row[2], Decimal) else row[2]
+            weight = float(row[-1]) if isinstance(row[-1], Decimal) else row[-1]
             G.add_edge(from_id, to_id, weight=weight)
         else:
             G.add_edge(from_id, to_id)

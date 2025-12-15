@@ -219,6 +219,28 @@ class OntologyAccessor:
                 return value
         return value
 
+    def _normalize_to_list(self, value) -> list:
+        """
+        Normalize a value to a list.
+
+        Handles string (single value), JSON array string, or list.
+        Returns empty list for None.
+
+        Args:
+            value: String, JSON array string, list, or None
+
+        Returns:
+            List of values
+        """
+        if value is None:
+            return []
+        parsed = self._parse_json_or_value(value)
+        if isinstance(parsed, str):
+            return [parsed]
+        if isinstance(parsed, list):
+            return parsed
+        return [parsed]
+
     # =========================================================================
     # VALIDATION
     # =========================================================================
@@ -310,29 +332,84 @@ class OntologyAccessor:
                             )
                         )
 
-            # Validate domain_class references a known entity
-            domain_class = self._get_annotation(cls, "domain_class")
-            if domain_class and domain_class not in self._tbox:
-                errors.append(
-                    ValidationError(
-                        element_type="relationship",
-                        element_name=name,
-                        field="domain_class",
-                        message=f"references unknown class '{domain_class}'",
+            # Validate domain_class references known entities (supports lists for polymorphism)
+            domain_class_value = self._get_annotation(cls, "domain_class")
+            domain_classes = self._normalize_to_list(domain_class_value)
+            for dc in domain_classes:
+                if dc and dc not in self._tbox:
+                    errors.append(
+                        ValidationError(
+                            element_type="relationship",
+                            element_name=name,
+                            field="domain_class",
+                            message=f"references unknown class '{dc}'",
+                        )
                     )
-                )
 
-            # Validate range_class references a known entity
-            range_class = self._get_annotation(cls, "range_class")
-            if range_class and range_class not in self._tbox:
-                errors.append(
-                    ValidationError(
-                        element_type="relationship",
-                        element_name=name,
-                        field="range_class",
-                        message=f"references unknown class '{range_class}'",
+            # Validate range_class references known entities (supports lists for polymorphism)
+            range_class_value = self._get_annotation(cls, "range_class")
+            range_classes = self._normalize_to_list(range_class_value)
+            for rc in range_classes:
+                if rc and rc not in self._tbox:
+                    errors.append(
+                        ValidationError(
+                            element_type="relationship",
+                            element_name=name,
+                            field="range_class",
+                            message=f"references unknown class '{rc}'",
+                        )
                     )
-                )
+
+            # Validate type_discriminator if present
+            type_disc = self._get_annotation(cls, "type_discriminator")
+            if type_disc:
+                parsed_disc = self._parse_json_or_value(type_disc, {})
+                if isinstance(parsed_disc, dict):
+                    # Validate required 'column' field
+                    if "column" not in parsed_disc:
+                        errors.append(
+                            ValidationError(
+                                element_type="relationship",
+                                element_name=name,
+                                field="type_discriminator",
+                                message="missing required field 'column'",
+                            )
+                        )
+                    # Validate mapping keys match range_class values
+                    mapping = parsed_disc.get("mapping")
+                    if mapping:
+                        if isinstance(mapping, str):
+                            mapping = self._parse_json_or_value(mapping, {})
+                        if isinstance(mapping, dict):
+                            mapping_classes = set(mapping.values())
+                            unknown_classes = mapping_classes - set(range_classes)
+                            if unknown_classes:
+                                errors.append(
+                                    ValidationError(
+                                        element_type="relationship",
+                                        element_name=name,
+                                        field="type_discriminator",
+                                        message=f"mapping references classes not in range_class: {unknown_classes}",
+                                    )
+                                )
+
+            # Basic SQL injection check for sql_filter
+            sql_filter = self._get_annotation(cls, "sql_filter")
+            if sql_filter:
+                # Check for dangerous patterns (basic check, not exhaustive)
+                dangerous_patterns = ["--", ";", "/*", "*/", "xp_", "exec ", "execute "]
+                filter_lower = sql_filter.lower()
+                for pattern in dangerous_patterns:
+                    if pattern in filter_lower:
+                        errors.append(
+                            ValidationError(
+                                element_type="relationship",
+                                element_name=name,
+                                field="sql_filter",
+                                message=f"contains potentially dangerous pattern '{pattern}'",
+                            )
+                        )
+                        break
 
         return errors
 
@@ -353,9 +430,27 @@ class OntologyAccessor:
         """Get the SQL table name for a class."""
         return self._get_annotation(self._tbox[name], "table")
 
-    def get_class_pk(self, name: str) -> str:
-        """Get the primary key column for a class."""
-        return self._get_annotation(self._tbox[name], "primary_key")
+    def get_class_pk(self, name: str) -> list[str]:
+        """
+        Get the primary key column(s) for a class.
+
+        Returns a list for consistency - single-column keys return a
+        single-element list.
+
+        Args:
+            name: Class name
+
+        Returns:
+            List of primary key column names
+
+        Example:
+            >>> ontology.get_class_pk("Supplier")
+            ['id']
+            >>> ontology.get_class_pk("OrderLineItem")
+            ['order_id', 'line_number']
+        """
+        value = self._get_annotation(self._tbox[name], "primary_key")
+        return self._normalize_to_list(value)
 
     def get_class_identifier(self, name: str) -> list[str]:
         """Get natural key columns for a class (may be JSON string or list)."""
@@ -420,29 +515,105 @@ class OntologyAccessor:
         resolved = self._resolve_role_name(name)
         return self._get_annotation(self._rbox[resolved], "edge_table")
 
-    def get_role_keys(self, name: str) -> tuple[str, str]:
+    def get_role_keys(self, name: str) -> tuple[list[str], list[str]]:
         """
         Get FK columns for a role.
 
+        Returns lists for composite key support. Single-column keys
+        return single-element lists.
+
+        Args:
+            name: Role name
+
         Returns:
-            Tuple of (domain_key, range_key)
+            Tuple of (domain_keys, range_keys) as lists
+
+        Example:
+            >>> ontology.get_role_keys("SuppliesTo")
+            (['seller_id'], ['buyer_id'])
+            >>> ontology.get_role_keys("OrderLineHasProduct")
+            (['order_id', 'line_number'], ['product_id'])
         """
         resolved = self._resolve_role_name(name)
         cls = self._rbox[resolved]
         return (
-            self._get_annotation(cls, "domain_key"),
-            self._get_annotation(cls, "range_key"),
+            self._normalize_to_list(self._get_annotation(cls, "domain_key")),
+            self._normalize_to_list(self._get_annotation(cls, "range_key")),
         )
 
     def get_role_domain(self, name: str) -> str:
-        """Get domain class name for a role."""
-        resolved = self._resolve_role_name(name)
-        return self._get_annotation(self._rbox[resolved], "domain_class")
+        """
+        Get primary domain class name for a role.
+
+        For polymorphic relationships, returns the first domain class.
+        Use get_role_domain_classes() for all classes.
+
+        Args:
+            name: Role name
+
+        Returns:
+            Primary domain class name
+        """
+        classes = self.get_role_domain_classes(name)
+        return classes[0] if classes else None
 
     def get_role_range(self, name: str) -> str:
-        """Get range class name for a role."""
+        """
+        Get primary range class name for a role.
+
+        For polymorphic relationships, returns the first range class.
+        Use get_role_range_classes() for all classes.
+
+        Args:
+            name: Role name
+
+        Returns:
+            Primary range class name
+        """
+        classes = self.get_role_range_classes(name)
+        return classes[0] if classes else None
+
+    def get_role_domain_classes(self, name: str) -> list[str]:
+        """
+        Get all domain class names for a role.
+
+        Returns a list for polymorphic relationships that can have
+        multiple domain types.
+
+        Args:
+            name: Role name
+
+        Returns:
+            List of domain class names
+
+        Example:
+            >>> ontology.get_role_domain_classes("SuppliesTo")
+            ['Supplier']
+        """
         resolved = self._resolve_role_name(name)
-        return self._get_annotation(self._rbox[resolved], "range_class")
+        value = self._get_annotation(self._rbox[resolved], "domain_class")
+        return self._normalize_to_list(value)
+
+    def get_role_range_classes(self, name: str) -> list[str]:
+        """
+        Get all range class names for a role.
+
+        Returns a list for polymorphic relationships that can target
+        multiple entity types.
+
+        Args:
+            name: Role name
+
+        Returns:
+            List of range class names
+
+        Example:
+            >>> ontology.get_role_range_classes("OwnedBy")
+            ['User', 'Organization']
+        """
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "range_class")
+        return self._normalize_to_list(value)
 
     def get_operation_types(self, name: str) -> list[str]:
         """Get operation types supported on this role.
@@ -533,6 +704,146 @@ class OntologyAccessor:
         """Get estimated edge count for a role."""
         resolved = self._resolve_role_name(name)
         return self._get_annotation(self._rbox[resolved], "row_count")
+
+    def get_role_context(self, name: str) -> Optional[dict]:
+        """
+        Get structured context for AI-assisted query generation for a role.
+
+        Returns the ContextBlock with business_logic, llm_prompt_hint,
+        traversal_semantics, and examples.
+
+        Args:
+            name: Role name
+
+        Returns:
+            Context dict or None if not set
+
+        Example:
+            >>> ctx = ontology.get_role_context("SuppliesTo")
+            >>> ctx['business_logic']
+            'Suppliers change tiers based on performance'
+            >>> ctx['traversal_semantics']['inbound']
+            'upstream suppliers'
+        """
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "context")
+        return self._parse_json_or_value(value, None)
+
+    def get_class_context(self, name: str) -> Optional[dict]:
+        """
+        Get structured context for AI-assisted query generation for a class.
+
+        Returns the ContextBlock with business_logic, llm_prompt_hint, and examples.
+
+        Args:
+            name: Class name
+
+        Returns:
+            Context dict or None if not set
+        """
+        value = self._get_annotation(self._tbox[name], "context")
+        return self._parse_json_or_value(value, None)
+
+    def get_role_filter(self, name: str) -> Optional[str]:
+        """
+        Get SQL filter clause for a role.
+
+        Returns the sql_filter annotation which can be used to filter
+        edges during traversal (e.g., 'is_active = true').
+
+        Args:
+            name: Role name
+
+        Returns:
+            SQL WHERE clause fragment or None if not set
+
+        Example:
+            >>> ontology.get_role_filter("ConnectsTo")
+            "is_active = true AND status != 'suspended'"
+        """
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "sql_filter")
+
+    def get_role_edge_attributes(self, name: str) -> list[dict]:
+        """
+        Get edge attribute definitions for Property Graph style edge properties.
+
+        Returns list of EdgeAttribute dicts with name, type, and description.
+        These are non-weight columns that should be retrieved as edge properties.
+
+        Args:
+            name: Role name
+
+        Returns:
+            List of edge attribute dicts
+
+        Example:
+            >>> ontology.get_role_edge_attributes("TransportRoute")
+            [{'name': 'carrier', 'type': 'string'}, {'name': 'scheduled_date', 'type': 'date'}]
+        """
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "edge_attributes", [])
+        return self._parse_json_or_value(value, [])
+
+    def get_role_type_discriminator(self, name: str) -> Optional[dict]:
+        """
+        Get type discriminator configuration for polymorphic relationships.
+
+        Returns dict with 'column' (discriminator column name) and 'mapping'
+        (dict mapping column values to class names).
+
+        Args:
+            name: Role name
+
+        Returns:
+            Type discriminator config dict or None if not set
+
+        Example:
+            >>> disc = ontology.get_role_type_discriminator("OwnedBy")
+            >>> disc['column']
+            'owner_type'
+            >>> disc['mapping']
+            {'user': 'User', 'org': 'Organization'}
+        """
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "type_discriminator")
+        result = self._parse_json_or_value(value, None)
+        if result and isinstance(result.get("mapping"), str):
+            # Parse nested JSON mapping if it's a string
+            result["mapping"] = self._parse_json_or_value(result["mapping"], {})
+        return result
+
+    def is_role_polymorphic(self, name: str) -> bool:
+        """
+        Check if a role is polymorphic (has multiple range classes).
+
+        Args:
+            name: Role name
+
+        Returns:
+            True if role has multiple range classes or a type discriminator
+        """
+        range_classes = self.get_role_range_classes(name)
+        discriminator = self.get_role_type_discriminator(name)
+        return len(range_classes) > 1 or discriminator is not None
+
+    def has_composite_key(self, name: str, is_class: bool = True) -> bool:
+        """
+        Check if an entity or role uses composite keys.
+
+        Args:
+            name: Class or role name
+            is_class: True for TBox class, False for RBox role
+
+        Returns:
+            True if entity uses composite primary key or role uses composite FK
+        """
+        if is_class:
+            pk = self.get_class_pk(name)
+            return len(pk) > 1
+        else:
+            domain_keys, range_keys = self.get_role_keys(name)
+            return len(domain_keys) > 1 or len(range_keys) > 1
 
     # =========================================================================
     # Utility Methods

@@ -101,12 +101,13 @@ Entity classes represent database tables. They must instantiate `vg:SQLMappedCla
 
 **Required annotations** (defined in `virt_graph.yaml` SQLMappedClass):
 - `vg:table` - SQL table name
-- `vg:primary_key` - Primary key column
+- `vg:primary_key` - Primary key column(s) - supports composite keys via JSON array
 
 **Optional annotations** (also from SQLMappedClass):
 - `vg:identifier` - Natural key column(s) as JSON array
 - `vg:soft_delete_column` - Soft delete timestamp column
 - `vg:row_count` - Estimated row count for query planning
+- `vg:context` - Structured context for AI query generation (ContextBlock)
 
 **Example:**
 ```yaml
@@ -137,10 +138,10 @@ Relationship classes represent foreign key relationships. They must instantiate 
 
 **Required annotations** (defined in `virt_graph.yaml` SQLMappedRelationship):
 - `vg:edge_table` - Junction/edge table name
-- `vg:domain_key` - FK column pointing to domain class
-- `vg:range_key` - FK column pointing to range class
-- `vg:domain_class` - Name of the domain class
-- `vg:range_class` - Name of the range class
+- `vg:domain_key` - FK column(s) pointing to domain class - list for composite keys
+- `vg:range_key` - FK column(s) pointing to range class - list for composite keys
+- `vg:domain_class` - Name(s) of the domain class(es) - list for polymorphism
+- `vg:range_class` - Name(s) of the range class(es) - list for polymorphism
 - `vg:operation_types` - List of supported operations (from OperationType enum)
 
 **Optional annotations** (also from SQLMappedRelationship):
@@ -160,6 +161,10 @@ Relationship classes represent foreign key relationships. They must instantiate 
 - `vg:is_weighted` - Has numeric edge weights
 - `vg:inverse_of` - Name of inverse relationship
 - `vg:weight_columns` - JSON array of weight column definitions
+- `vg:sql_filter` - SQL WHERE clause to filter edges during traversal
+- `vg:edge_attributes` - Property Graph style edge properties (non-weight columns)
+- `vg:context` - Structured AI context (ContextBlock) for query generation
+- `vg:type_discriminator` - Polymorphic target type resolution configuration
 
 *Cardinality:*
 - `vg:cardinality_domain` - e.g., "0..*", "1..1"

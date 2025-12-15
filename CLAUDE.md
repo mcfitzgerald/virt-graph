@@ -5,141 +5,119 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL data WITHOUT migration. It combines:
-1. A LinkML ontology mapping graph concepts to relational structures
-2. Python handlers for recursive traversal and graph algorithms
-3. Claude Code as the orchestrator for on-the-fly query generation
+1. An **ontology** in LinkML format mapping graph concepts to relational structures
+2. **Python handlers** for recursive traversal and graph algorithms
+3. **Claude Code** for orchestration and on-the-fly query generation
 
 ## Common Commands
 
 ```bash
 # Setup
-make install              # Install dependencies via Poetry
+make install          # Install Python dependencies via Poetry
 
-# Database
-make db-up                # Start PostgreSQL
-make db-down              # Stop PostgreSQL
-make db-reset             # Wipe and recreate (re-runs schema and seed)
-make neo4j-up             # Start Neo4j (for benchmarking)
-make neo4j-down           # Stop Neo4j
+# Databases (Docker required)
+make db-up            # Start PostgreSQL
+make db-down          # Stop PostgreSQL
+make db-reset         # Reset PostgreSQL (wipe and recreate)
+make neo4j-up         # Start Neo4j (for benchmarking)
+make neo4j-down       # Stop Neo4j
+make neo4j-cycle      # Full reset (fixes PID issues)
 
 # Testing
-make test                 # Run all tests
-poetry run pytest supply_chain_example/tests/test_handler_safety.py -v           # Run specific test file
-poetry run pytest supply_chain_example/tests/test_bom_explode.py::test_name -v   # Run single BOM/path_aggregate test
+make test             # Run all tests
+make test-handlers    # Run handler safety tests only
+make test-ontology    # Run ontology validation tests only
+poetry run pytest supply_chain_example/tests/test_traversal.py -v  # Single test file
+poetry run pytest supply_chain_example/tests/test_traversal.py::test_name -v  # Single test
 
-# Ontology
-make validate-ontology    # Full two-layer validation
-make validate-linkml      # LinkML structure only
-make validate-vg          # VG annotation validation only
-make show-ontology        # Show TBox/RBox definitions
+# Ontology validation
+make validate-ontology  # Full two-layer validation (LinkML + VG)
+make validate-linkml    # LinkML structure only
+make validate-vg        # VG annotations only
+make show-ontology      # Show TBox/RBox definitions
 
 # Documentation
-make serve-docs           # Serve MkDocs locally (http://localhost:8000)
+make serve-docs       # Serve docs at localhost:8000
 ```
+
+## Architecture
 
 ### Core Components
 
-**Metamodel** (`virt_graph.yaml` at project root):
-- VG metamodel defining SQLMappedClass and SQLMappedRelationship
-- Single source of truth for VG annotations and validation rules
-
-**Example Ontology** (`supply_chain_example/ontology/supply_chain.yaml`):
-- LinkML format with VG extensions (`vg:` annotations)
-- Entity classes (TBox) instantiate `vg:SQLMappedClass`
-- Relationship classes (RBox) instantiate `vg:SQLMappedRelationship`
-- Access via `OntologyAccessor` in `src/virt_graph/ontology.py`
-
-**Handlers** (`src/virt_graph/handlers/`):
-- `traversal.py`: `traverse()`, `path_aggregate()`, `traverse_collecting()`
-- `pathfinding.py`: `shortest_path()`, `all_shortest_paths()`
-- `network.py`: `centrality()`, `connected_components()`, `neighbors()`, `resilience_analysis()`
-- `base.py`: Safety limits, edge fetching utilities, result TypedDicts
-
-**Estimator** (`src/virt_graph/estimator/`):
-- Statistical sampling for query planning
-- Provides bounds estimation before executing expensive traversals
-
-### Safety Limits
-
-Default limits in `handlers/base.py` (can be overridden per-call via `max_nodes` parameter):
-- `MAX_DEPTH=50` - Absolute traversal depth limit
-- `MAX_NODES=10,000` - Max nodes per traversal
-- `MAX_RESULTS=100,000` - Max rows returned (covers demo DB's largest table ~60K)
-- `QUERY_TIMEOUT_SEC=30` - Per-query timeout
-
-All handlers use **frontier-batched BFS** (never one query per node). Soft-delete filtering supported via `soft_delete_column` parameter. Temporal filtering supported via `valid_at`, `temporal_start_col`, and `temporal_end_col` parameters.
-
-### Operation Types
-
-Relationships are classified by `vg:operation_types` which map to specific handlers:
-
-| Operation Type | Handler | Use Case |
-|----------------|---------|----------|
-| `direct_join` | SQL | Simple FK lookups |
-| `recursive_traversal` | `traverse()` | Multi-hop paths |
-| `temporal_traversal` | `traverse(valid_at=...)` | Time-bounded paths |
-| `path_aggregation` | `path_aggregate()` | SUM/MAX/MIN along paths |
-| `hierarchical_aggregation` | `path_aggregate(op='multiply')` | BOM quantity propagation |
-| `shortest_path` | `shortest_path()` | Optimal routes |
-| `centrality` | `centrality()` | Node importance |
-| `connected_components` | `connected_components()` | Cluster detection |
-| `resilience_analysis` | `resilience_analysis()` | Impact of node removal |
-
-Access operation types via ontology:
-```python
-op_types = ontology.get_operation_types("SuppliesTo")  # ["recursive_traversal", "temporal_traversal"]
-temporal = ontology.get_temporal_bounds("SuppliesTo")  # {"start_col": "contract_start_date", ...}
+```
+src/virt_graph/
+├── ontology.py           # OntologyAccessor - reads LinkML ontology with VG extensions
+├── handlers/             # Graph operation handlers
+│   ├── base.py           # Safety limits, edge fetching, result TypedDicts
+│   ├── traversal.py      # traverse(), path_aggregate(), traverse_collecting()
+│   ├── pathfinding.py    # shortest_path(), all_shortest_paths()
+│   └── network.py        # centrality(), connected_components(), resilience_analysis()
+└── estimator/            # Runtime estimation and guards
+    ├── sampler.py        # Graph sampling for property detection
+    ├── models.py         # Estimation models with damping
+    ├── bounds.py         # DDL-derived table statistics
+    └── guards.py         # Runtime safety guards
 ```
 
-### Handler Pattern
+### Key Concepts
 
-All handlers are schema-parameterized - they accept table/column names as arguments:
+**Two-layer validation**: Ontologies are validated first by LinkML (structure) then by VG metamodel (`virt_graph.yaml`) for required annotations.
 
+**Operation types**: Relationships in the ontology declare which operations they support:
+- `direct_join` → Standard SQL
+- `recursive_traversal` → `traverse()` handler
+- `path_aggregation`, `hierarchical_aggregation` → `path_aggregate()` handler
+- `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` → Network handlers
+
+**Handler pattern**: All handlers are schema-parameterized—they take table/column names as arguments, not hardcoded SQL. Example:
 ```python
-result = traverse(
-    conn,
-    nodes_table="suppliers",
-    edges_table="supplier_relationships",
-    edge_from_col="seller_id",
-    edge_to_col="buyer_id",
-    start_id=some_id,
-    direction="inbound",
-    max_depth=10,
-)
+traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
+         edge_from_col="seller_id", edge_to_col="buyer_id", start_id=123)
 ```
 
-### Ontology Access
+### Supply Chain Example
 
+`supply_chain_example/` contains a complete working example:
+- `ontology/supply_chain.yaml` - Domain ontology (9 entities, 15 relationships)
+- `postgres/` - Docker setup and schema/seed SQL
+- `neo4j/` - Docker setup for benchmark comparison
+- `tests/` - Comprehensive handler tests
+- `questions.md` - 60 benchmark questions
+
+### Database Access
+
+Use `psycopg2` for PostgreSQL (psql CLI may not be available):
+```python
+import psycopg2
+conn = psycopg2.connect(host='localhost', database='supply_chain',
+                        user='virt_graph', password='dev_password')
+```
+
+## Metamodel
+
+`virt_graph.yaml` is the single source of truth for VG extensions. It defines:
+- `SQLMappedClass` - For entity classes (TBox): requires `vg:table`, `vg:primary_key` (supports composite keys)
+- `SQLMappedRelationship` - For relationships (RBox): requires `vg:table`, `vg:domain_key`, `vg:range_key`, `vg:operation_types`
+- `OperationType` enum - Maps to handler functions
+- `OperationCategory` enum - Groups operation types by handler family
+- `ContextBlock` - Structured AI context for query generation (business_logic, llm_prompt_hint, traversal_semantics)
+- `TypeDiscriminator` - Polymorphic relationship target resolution
+- `EdgeAttribute` - Property Graph style edge properties
+
+**Key features**:
+- Composite keys: Use JSON arrays for `vg:primary_key`, `vg:domain_key`, `vg:range_key`
+- Polymorphism: Use `vg:range_class` as array + `vg:type_discriminator` for multiple target types
+- Edge filtering: Use `vg:sql_filter` for conditional edge traversal
+- AI context: Use `vg:context` (ContextBlock) to provide domain hints for Claude
+
+See `docs/ontology/vg-extensions.md` for detailed documentation.
+
+## Working with Ontologies
+
+The `OntologyAccessor` class provides the API for reading ontologies:
 ```python
 from virt_graph.ontology import OntologyAccessor
-from pathlib import Path
-
-# Path to ontology is required
 ontology = OntologyAccessor(Path("supply_chain_example/ontology/supply_chain.yaml"))
 table = ontology.get_class_table("Supplier")
 op_types = ontology.get_operation_types("SuppliesTo")
-domain_key, range_key = ontology.get_role_keys("SuppliesTo")
 ```
-
-## Database Access
-
-**Use psycopg2 for PostgreSQL access** (not `psql` CLI - may not be installed):
-
-```python
-import psycopg2
-conn = psycopg2.connect(
-    host='localhost', port=5432, database='supply_chain',
-    user='virt_graph', password='dev_password'
-)
-```
-
-| Database   | Host      | Port | User        | Password     | Database      |
-|------------|-----------|------|-------------|--------------|---------------|
-| PostgreSQL | localhost | 5432 | virt_graph  | dev_password | supply_chain  |
-| Neo4j      | localhost | 7687 | neo4j       | dev_password | neo4j         |
-
-## Key Files
-
-- `virt_graph.yaml` - VG metamodel (single source of truth for extensions and validation)
-- `supply_chain_example/ontology/supply_chain.yaml` - Example domain ontology with VG annotations
-- `prompts/ontology_discovery.md` - 4-round protocol for creating ontologies from new databases

@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.8] - 2025-12-15
+
+### Breaking Changes
+
+- **`get_class_pk()` now returns `list[str]`** instead of `str` to support composite primary keys
+- **`get_role_keys()` now returns `tuple[list[str], list[str]]`** instead of `tuple[str, str]` to support composite foreign keys
+- **Metamodel version bumped to 2.0** in `virt_graph.yaml`
+
+### Added
+
+- **Composite Key Support** - Multi-column primary and foreign keys via JSON arrays
+  - `vg:primary_key: '["order_id", "line_number"]'` for composite PKs
+  - `vg:domain_key` and `vg:range_key` now accept JSON arrays
+  - Handlers use tuple-based `NodeId` type: `NodeId = Union[int, tuple[Any, ...]]`
+
+- **ContextBlock** - Structured AI hints for query generation
+  - `vg:context` annotation on classes and relationships
+  - Fields: `business_logic`, `llm_prompt_hint`, `traversal_semantics`, `examples`
+  - New `get_role_context()` and `get_class_context()` methods
+
+- **sql_filter** - SQL WHERE clause filtering for edge tables
+  - `vg:sql_filter: "is_active = true AND status != 'suspended'"`
+  - Injected into edge queries during traversal
+  - Basic SQL injection pattern detection
+  - New `get_role_filter()` method
+
+- **edge_attributes** - Property Graph style edge properties
+  - `vg:edge_attributes` for non-weight columns returned with edge data
+  - New `get_role_edge_attributes()` method
+
+- **Polymorphism Support** - Multi-class domain/range
+  - `vg:domain_class` and `vg:range_class` accept JSON arrays
+  - `vg:type_discriminator` for polymorphic target resolution
+  - New methods: `get_role_domain_classes()`, `get_role_range_classes()`, `is_role_polymorphic()`, `get_role_type_discriminator()`
+
+- **New metamodel classes** in `virt_graph.yaml`:
+  - `ContextBlock` - AI context structure
+  - `TraversalSemantics` - Inbound/outbound meaning
+  - `EdgeAttribute` - Edge property definition
+  - `TypeDiscriminator` - Polymorphic resolution config
+
+### Changed
+
+- All handlers (`traverse`, `shortest_path`, `centrality`, etc.) now accept:
+  - `edge_from_col` and `edge_to_col` as `str | list[str]`
+  - `sql_filter` parameter for edge filtering
+- `fetch_edges_for_frontier()` and `fetch_nodes()` updated for composite keys
+- Documentation updated with new feature examples
+
+---
+
 ## [0.9.7] - 2025-12-15
 
 ### Breaking Changes

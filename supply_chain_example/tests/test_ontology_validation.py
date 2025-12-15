@@ -230,7 +230,7 @@ class TestRelationshipMappings:
         with db_connection.cursor() as cur:
             for rel_name in ontology.roles:
                 table = ontology.get_role_table(rel_name)
-                domain_key, range_key = ontology.get_role_keys(rel_name)
+                domain_keys, range_keys = ontology.get_role_keys(rel_name)
 
                 cur.execute("""
                     SELECT column_name
@@ -240,10 +240,13 @@ class TestRelationshipMappings:
                 """, (table,))
                 columns = {row[0] for row in cur.fetchall()}
 
-                assert domain_key in columns, \
-                    f"Role {rel_name}: column {domain_key} not in {table}"
-                assert range_key in columns, \
-                    f"Role {rel_name}: column {range_key} not in {table}"
+                # Support composite keys (list of columns)
+                for key in domain_keys:
+                    assert key in columns, \
+                        f"Role {rel_name}: column {key} not in {table}"
+                for key in range_keys:
+                    assert key in columns, \
+                        f"Role {rel_name}: column {key} not in {table}"
 
 
 class TestSelfReferentialEdges:
@@ -329,7 +332,9 @@ class TestOntologyQueries:
     def test_green_query_parts_from_supplier(self, db_connection, ontology):
         """GREEN query: Find parts from a specific supplier."""
         parts_table = ontology.get_class_table("Part")
-        domain_key, _ = ontology.get_role_keys("PrimarySupplier")
+        domain_keys, _ = ontology.get_role_keys("PrimarySupplier")
+        # Use first column for simple query (composite keys would have multiple)
+        domain_key = domain_keys[0]
 
         with db_connection.cursor() as cur:
             # Find parts where primary_supplier_id = 1 (Acme Corp)
@@ -344,7 +349,10 @@ class TestOntologyQueries:
     def test_yellow_query_bom_traversal(self, db_connection, ontology):
         """YELLOW query: BOM traversal uses correct columns."""
         table = ontology.get_role_table("component_of")
-        child_col, parent_col = ontology.get_role_keys("component_of")
+        child_cols, parent_cols = ontology.get_role_keys("component_of")
+        # Use first column for simple query
+        child_col = child_cols[0]
+        parent_col = parent_cols[0]
 
         with db_connection.cursor() as cur:
             # Verify we can query the BOM structure

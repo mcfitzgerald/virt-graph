@@ -6,6 +6,7 @@ This module provides the foundation for all graph operation handlers:
 - Frontier batching utilities for efficient traversal
 - Node estimation for proactive size checks
 - TypedDict definitions for handler return types
+- Support for composite primary/foreign keys
 
 Note: estimate_reachable_nodes is deprecated. Use the estimator module instead.
 """
@@ -13,10 +14,13 @@ Note: estimate_reachable_nodes is deprecated. Use the estimator module instead.
 import warnings
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, TypedDict
+from typing import Any, TypedDict, Union
 
 import psycopg2
 from psycopg2.extensions import connection as PgConnection
+
+# Type alias for node IDs - can be single value or tuple for composite keys
+NodeId = Union[int, tuple[Any, ...]]
 
 
 # === TYPED RESULT DICTIONARIES ===
@@ -252,33 +256,36 @@ def estimate_reachable_nodes(
 def fetch_edges_for_frontier(
     conn: PgConnection,
     edges_table: str,
-    frontier_ids: list[int],
-    edge_from_col: str,
-    edge_to_col: str,
+    frontier_ids: list[NodeId],
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
     direction: str = "outbound",
     nodes_table: str | None = None,
-    node_id_column: str = "id",
+    node_id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
     # Temporal filtering
     valid_at: datetime | None = None,
     temporal_start_col: str | None = None,
     temporal_end_col: str | None = None,
-) -> list[tuple[int, int]]:
+    # Edge filtering
+    sql_filter: str | None = None,
+) -> list[tuple[NodeId, NodeId]]:
     """
     Fetch all edges for a frontier in a SINGLE query.
 
     This is the mandatory batching pattern - never one query per node.
     Uses PostgreSQL's ANY operator for efficient IN clause with arrays.
+    Supports composite keys by accepting lists of column names.
 
     Args:
         conn: Database connection
         edges_table: Table containing edges
-        frontier_ids: List of node IDs in current frontier
-        edge_from_col: Column for edge source
-        edge_to_col: Column for edge target
+        frontier_ids: List of node IDs in current frontier (can be tuples for composite keys)
+        edge_from_col: Column(s) for edge source - string or list for composite keys
+        edge_to_col: Column(s) for edge target - string or list for composite keys
         direction: "outbound", "inbound", or "both"
         nodes_table: Table containing nodes (required for soft-delete filtering)
-        node_id_column: ID column in nodes_table (default "id")
+        node_id_column: ID column(s) in nodes_table - string or list for composite keys
         soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
                            If provided, filters out edges to/from soft-deleted nodes.
         valid_at: Point in time for temporal filtering. Only edges valid at this
@@ -287,23 +294,41 @@ def fetch_edges_for_frontier(
                            Required if valid_at is provided.
         temporal_end_col: Column containing edge end/expiry date.
                          Required if valid_at is provided.
+        sql_filter: SQL WHERE clause to filter edges (e.g., "is_active = true").
+                   Injected into the query for edge-level filtering.
 
     Returns:
-        List of (from_id, to_id) tuples
+        List of (from_id, to_id) tuples. For composite keys, each ID is a tuple.
     """
     if not frontier_ids:
         return []
 
-    results: list[tuple[int, int]] = []
+    # Normalize columns to lists for composite key support
+    from_cols = [edge_from_col] if isinstance(edge_from_col, str) else list(edge_from_col)
+    to_cols = [edge_to_col] if isinstance(edge_to_col, str) else list(edge_to_col)
+    id_cols = [node_id_column] if isinstance(node_id_column, str) else list(node_id_column)
+
+    # Check if using composite keys
+    is_composite = len(from_cols) > 1 or len(to_cols) > 1
+
+    # Build column select expressions
+    from_cols_select = ", ".join(f"e.{c}" for c in from_cols)
+    to_cols_select = ", ".join(f"e.{c}" for c in to_cols)
 
     # Build soft-delete join clause if needed
-    # We need to ensure both endpoints of edges are not soft-deleted
     soft_delete_join = ""
     if soft_delete_column and nodes_table:
+        # For composite keys, need to match all columns
+        from_join_conds = " AND ".join(
+            f"e.{fc} = n_from.{ic}" for fc, ic in zip(from_cols, id_cols)
+        )
+        to_join_conds = " AND ".join(
+            f"e.{tc} = n_to.{ic}" for tc, ic in zip(to_cols, id_cols)
+        )
         soft_delete_join = f"""
-            JOIN {nodes_table} n_from ON e.{edge_from_col} = n_from.{node_id_column}
+            JOIN {nodes_table} n_from ON {from_join_conds}
                 AND n_from.{soft_delete_column} IS NULL
-            JOIN {nodes_table} n_to ON e.{edge_to_col} = n_to.{node_id_column}
+            JOIN {nodes_table} n_to ON {to_join_conds}
                 AND n_to.{soft_delete_column} IS NULL
         """
 
@@ -317,70 +342,93 @@ def fetch_edges_for_frontier(
         """
         temporal_params = [valid_at, valid_at]
 
+    # Build sql_filter clause if provided
+    sql_filter_clause = ""
+    if sql_filter:
+        sql_filter_clause = f" AND ({sql_filter})"
+
+    # Build frontier matching clause
+    def build_frontier_match(cols: list[str], alias: str = "e") -> tuple[str, list]:
+        """Build WHERE clause for matching frontier IDs."""
+        if len(cols) == 1:
+            # Simple case: single column
+            return f"{alias}.{cols[0]} = ANY(%s)", [frontier_ids]
+        else:
+            # Composite case: use row value comparison
+            # Convert frontier tuples to proper format for PostgreSQL
+            col_tuple = f"({', '.join(f'{alias}.{c}' for c in cols)})"
+            # Build VALUES list for composite key matching
+            if frontier_ids and isinstance(frontier_ids[0], tuple):
+                values_list = ", ".join(
+                    f"({', '.join('%s' for _ in cols)})" for _ in frontier_ids
+                )
+                flat_ids = [v for tup in frontier_ids for v in tup]
+                return f"{col_tuple} IN (VALUES {values_list})", flat_ids
+            else:
+                # Single value frontier_ids, wrap in tuple
+                values_list = ", ".join(
+                    f"({', '.join('%s' for _ in cols)})" for _ in frontier_ids
+                )
+                # Each frontier_id becomes a single-element tuple
+                flat_ids = [fid for fid in frontier_ids]
+                return f"{alias}.{cols[0]} = ANY(%s)", [frontier_ids]
+
     with conn.cursor() as cur:
         # Set statement timeout for safety
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
 
-        if soft_delete_column and nodes_table:
-            # Use aliased table with joins for soft-delete filtering
-            if direction == "outbound":
-                query = f"""
-                    SELECT e.{edge_from_col}, e.{edge_to_col}
-                    FROM {edges_table} e
-                    {soft_delete_join}
-                    WHERE e.{edge_from_col} = ANY(%s)
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids] + temporal_params)
-            elif direction == "inbound":
-                query = f"""
-                    SELECT e.{edge_from_col}, e.{edge_to_col}
-                    FROM {edges_table} e
-                    {soft_delete_join}
-                    WHERE e.{edge_to_col} = ANY(%s)
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids] + temporal_params)
-            else:  # both
-                query = f"""
-                    SELECT e.{edge_from_col}, e.{edge_to_col}
-                    FROM {edges_table} e
-                    {soft_delete_join}
-                    WHERE (e.{edge_from_col} = ANY(%s) OR e.{edge_to_col} = ANY(%s))
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids, frontier_ids] + temporal_params)
-        else:
-            # Logic without soft-delete filtering (may still have temporal filter)
-            # Use aliased table if temporal filter is present
-            table_alias = "e." if temporal_filter else ""
-            table_ref = f"{edges_table} e" if temporal_filter else edges_table
-            if direction == "outbound":
-                query = f"""
-                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
-                    FROM {table_ref}
-                    WHERE {table_alias}{edge_from_col} = ANY(%s)
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids] + temporal_params)
-            elif direction == "inbound":
-                query = f"""
-                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
-                    FROM {table_ref}
-                    WHERE {table_alias}{edge_to_col} = ANY(%s)
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids] + temporal_params)
-            else:  # both
-                query = f"""
-                    SELECT {table_alias}{edge_from_col}, {table_alias}{edge_to_col}
-                    FROM {table_ref}
-                    WHERE ({table_alias}{edge_from_col} = ANY(%s) OR {table_alias}{edge_to_col} = ANY(%s))
-                    {temporal_filter}
-                """
-                cur.execute(query, [frontier_ids, frontier_ids] + temporal_params)
+        # Build and execute query based on direction
+        if direction == "outbound":
+            frontier_clause, frontier_params = build_frontier_match(from_cols)
+            query = f"""
+                SELECT {from_cols_select}, {to_cols_select}
+                FROM {edges_table} e
+                {soft_delete_join}
+                WHERE {frontier_clause}
+                {temporal_filter}
+                {sql_filter_clause}
+            """
+            cur.execute(query, frontier_params + temporal_params)
+        elif direction == "inbound":
+            frontier_clause, frontier_params = build_frontier_match(to_cols)
+            query = f"""
+                SELECT {from_cols_select}, {to_cols_select}
+                FROM {edges_table} e
+                {soft_delete_join}
+                WHERE {frontier_clause}
+                {temporal_filter}
+                {sql_filter_clause}
+            """
+            cur.execute(query, frontier_params + temporal_params)
+        else:  # both
+            from_clause, from_params = build_frontier_match(from_cols)
+            to_clause, to_params = build_frontier_match(to_cols)
+            query = f"""
+                SELECT {from_cols_select}, {to_cols_select}
+                FROM {edges_table} e
+                {soft_delete_join}
+                WHERE ({from_clause} OR {to_clause})
+                {temporal_filter}
+                {sql_filter_clause}
+            """
+            cur.execute(query, from_params + to_params + temporal_params)
 
-        results = cur.fetchall()
+        rows = cur.fetchall()
+
+    # Convert results to proper format
+    results: list[tuple[NodeId, NodeId]] = []
+    n_from = len(from_cols)
+    n_to = len(to_cols)
+
+    for row in rows:
+        if is_composite:
+            # Extract tuples for composite keys
+            from_id = tuple(row[:n_from]) if n_from > 1 else row[0]
+            to_id = tuple(row[n_from:n_from + n_to]) if n_to > 1 else row[n_from]
+        else:
+            from_id = row[0]
+            to_id = row[1]
+        results.append((from_id, to_id))
 
     return results
 
@@ -388,20 +436,22 @@ def fetch_edges_for_frontier(
 def fetch_nodes(
     conn: PgConnection,
     nodes_table: str,
-    node_ids: list[int],
+    node_ids: list[NodeId],
     columns: list[str] | None = None,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch node data for a list of node IDs.
 
+    Supports composite keys by accepting lists of column names and tuple IDs.
+
     Args:
         conn: Database connection
         nodes_table: Table containing nodes
-        node_ids: List of node IDs to fetch
+        node_ids: List of node IDs to fetch (can be tuples for composite keys)
         columns: Columns to return (None = all)
-        id_column: Name of the ID column
+        id_column: Name(s) of the ID column(s) - string or list for composite keys
         soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
                            If provided, only returns nodes where this column IS NULL.
 
@@ -415,19 +465,46 @@ def fetch_nodes(
     if len(node_ids) > MAX_RESULTS:
         node_ids = node_ids[:MAX_RESULTS]
 
+    # Normalize id_column to list
+    id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
+    is_composite = len(id_cols) > 1
+
     col_spec = ", ".join(columns) if columns else "*"
+
+    # Build WHERE clause for composite or simple keys
+    if is_composite:
+        # Composite key: use row value comparison
+        col_tuple = f"({', '.join(id_cols)})"
+        if node_ids and isinstance(node_ids[0], tuple):
+            values_list = ", ".join(
+                f"({', '.join('%s' for _ in id_cols)})" for _ in node_ids
+            )
+            flat_ids = [v for tup in node_ids for v in tup]
+            where_clause = f"{col_tuple} IN (VALUES {values_list})"
+            params = flat_ids
+        else:
+            # Single values, wrap each in tuple
+            values_list = ", ".join(f"(%s)" for _ in node_ids)
+            where_clause = f"{id_cols[0]} IN (VALUES {values_list})"
+            params = node_ids
+    else:
+        where_clause = f"{id_cols[0]} = ANY(%s)"
+        params = [node_ids]
 
     query = f"""
         SELECT {col_spec}
         FROM {nodes_table}
-        WHERE {id_column} = ANY(%s)
+        WHERE {where_clause}
     """
     if soft_delete_column:
         query += f" AND {soft_delete_column} IS NULL"
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")
-        cur.execute(query, (node_ids,))
+        if is_composite:
+            cur.execute(query, params)
+        else:
+            cur.execute(query, tuple(params))
         col_names = [desc[0] for desc in cur.description]
         rows = cur.fetchall()
 
@@ -446,30 +523,44 @@ def fetch_nodes(
 def should_stop(
     conn: PgConnection,
     nodes_table: str,
-    node_id: int,
+    node_id: NodeId,
     stop_condition: str,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
 ) -> bool:
     """
     Check if a node matches the stop condition.
 
+    Supports composite keys by accepting lists of column names and tuple IDs.
+
     Args:
         conn: Database connection
         nodes_table: Table containing nodes
-        node_id: Node ID to check
+        node_id: Node ID to check (can be tuple for composite keys)
         stop_condition: SQL WHERE clause fragment (e.g., "tier = 3")
-        id_column: Name of the ID column
+        id_column: Name(s) of the ID column(s) - string or list for composite keys
 
     Returns:
         True if node matches stop condition
     """
+    # Normalize id_column to list
+    id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
+    is_composite = len(id_cols) > 1
+
+    if is_composite:
+        # Build composite key match
+        conditions = " AND ".join(f"{col} = %s" for col in id_cols)
+        params = node_id if isinstance(node_id, tuple) else (node_id,)
+    else:
+        conditions = f"{id_cols[0]} = %s"
+        params = (node_id,)
+
     query = f"""
         SELECT 1 FROM {nodes_table}
-        WHERE {id_column} = %s AND ({stop_condition})
+        WHERE {conditions} AND ({stop_condition})
     """
 
     with conn.cursor() as cur:
-        cur.execute(query, (node_id,))
+        cur.execute(query, params)
         return cur.fetchone() is not None
 
 

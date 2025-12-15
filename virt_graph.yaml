@@ -8,7 +8,7 @@
 
 id: https://virt-graph.dev/metamodel
 name: virt_graph_metamodel
-version: "1.0"
+version: "2.0"
 description: >-
   Virtual Graph metamodel extension for LinkML.
   Enables graph-like queries over relational data by mapping
@@ -102,8 +102,10 @@ classes:
         description: "SQL table name"
       primary_key:
         range: string
+        multivalued: true
         required: true
-        description: "Primary key column name"
+        minimum_cardinality: 1
+        description: "Primary key column(s). Single value for simple keys, list for composite keys (e.g., '[\"order_id\", \"line_number\"]')"
       identifier:
         range: string
         multivalued: true
@@ -114,6 +116,10 @@ classes:
       row_count:
         range: integer
         description: "Estimated row count for query planning"
+      context:
+        range: ContextBlock
+        inlined: true
+        description: "Structured context for AI-assisted query generation"
 
   # ---------------------------------------------------------------------------
   # SQLMappedRelationship: Extension for relationships (RBox)
@@ -131,20 +137,28 @@ classes:
         description: "Edge/junction table name (or target table for embedded FKs)"
       domain_key:
         range: string
+        multivalued: true
         required: true
-        description: "FK column pointing to domain class"
+        minimum_cardinality: 1
+        description: "FK column(s) pointing to domain class. List for composite keys (e.g., '[\"order_id\", \"line_number\"]')"
       range_key:
         range: string
+        multivalued: true
         required: true
-        description: "FK column pointing to range class (or 'id' for embedded FKs)"
+        minimum_cardinality: 1
+        description: "FK column(s) pointing to range class. List for composite keys"
       domain_class:
         range: string
+        multivalued: true
         required: true
-        description: "Name of the domain class"
+        minimum_cardinality: 1
+        description: "Name(s) of domain class(es). List for polymorphic relationships"
       range_class:
         range: string
+        multivalued: true
         required: true
-        description: "Name of the range class"
+        minimum_cardinality: 1
+        description: "Name(s) of range class(es). List for polymorphic relationships (e.g., '[\"User\", \"Organization\"]')"
 
       # === Operation Types ===
       operation_types:
@@ -227,6 +241,30 @@ classes:
         range: integer
         description: "Estimated edge count for query planning"
 
+      # === AI Context ===
+      context:
+        range: ContextBlock
+        inlined: true
+        description: "Structured context for AI-assisted query generation"
+
+      # === Edge Filtering ===
+      sql_filter:
+        range: string
+        description: "SQL WHERE clause to filter edges (e.g., 'is_active = true AND status != suspended')"
+
+      # === Property Graph Extensions ===
+      edge_attributes:
+        range: EdgeAttribute
+        multivalued: true
+        inlined_as_list: true
+        description: "Non-weight columns to retrieve as edge properties in Property Graph style"
+
+      # === Polymorphism ===
+      type_discriminator:
+        range: TypeDiscriminator
+        inlined: true
+        description: "Configuration for resolving polymorphic target types based on a discriminator column"
+
   # ---------------------------------------------------------------------------
   # WeightColumn: Describes a numeric column usable as edge weight
   # ---------------------------------------------------------------------------
@@ -284,3 +322,73 @@ classes:
       connection_string:
         range: string
         description: "Connection string template (credentials should be externalized)"
+
+  # ---------------------------------------------------------------------------
+  # ContextBlock: Structured context for AI-assisted query generation
+  # ---------------------------------------------------------------------------
+  ContextBlock:
+    class_uri: vg:ContextBlock
+    description: "Structured context for AI-assisted query generation"
+    attributes:
+      business_logic:
+        range: string
+        description: "Human-readable explanation of entity/relationship behavior"
+      llm_prompt_hint:
+        range: string
+        description: "Hints for AI query construction (e.g., 'For strategic suppliers, filter tier=1')"
+      traversal_semantics:
+        range: TraversalSemantics
+        inlined: true
+        description: "Direction-specific traversal meaning"
+      examples:
+        range: string
+        multivalued: true
+        description: "Example natural language queries this applies to"
+
+  # ---------------------------------------------------------------------------
+  # TraversalSemantics: Direction-specific traversal behavior
+  # ---------------------------------------------------------------------------
+  TraversalSemantics:
+    class_uri: vg:TraversalSemantics
+    description: "Direction-specific traversal behavior for relationships"
+    attributes:
+      inbound:
+        range: string
+        description: "Meaning of inbound traversal (e.g., 'upstream suppliers')"
+      outbound:
+        range: string
+        description: "Meaning of outbound traversal (e.g., 'downstream buyers')"
+
+  # ---------------------------------------------------------------------------
+  # EdgeAttribute: Non-weight column to retrieve as edge property
+  # ---------------------------------------------------------------------------
+  EdgeAttribute:
+    class_uri: vg:EdgeAttribute
+    description: "Non-weight column to retrieve as edge property in Property Graph style"
+    attributes:
+      name:
+        range: string
+        required: true
+        description: "Column name in edge table"
+      type:
+        range: string
+        required: true
+        description: "Data type (e.g., 'string', 'date', 'boolean')"
+      description:
+        range: string
+        description: "Human-readable description of this edge property"
+
+  # ---------------------------------------------------------------------------
+  # TypeDiscriminator: Polymorphic target type resolution
+  # ---------------------------------------------------------------------------
+  TypeDiscriminator:
+    class_uri: vg:TypeDiscriminator
+    description: "Configuration for resolving polymorphic relationship targets"
+    attributes:
+      column:
+        range: string
+        required: true
+        description: "Column containing type indicator value"
+      mapping:
+        range: string
+        description: "JSON mapping of column values to class names (e.g., '{\"user\": \"User\", \"org\": \"Organization\"}')"

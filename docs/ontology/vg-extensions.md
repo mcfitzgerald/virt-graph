@@ -31,7 +31,7 @@ classes:
 | Annotation | Type | Description |
 |------------|------|-------------|
 | `vg:table` | string | SQL table name |
-| `vg:primary_key` | string | Primary key column |
+| `vg:primary_key` | string or JSON array | Primary key column(s) - supports composite keys |
 
 ```yaml
 Supplier:
@@ -49,6 +49,7 @@ Supplier:
 | `vg:identifier` | JSON array | Natural key column(s) |
 | `vg:soft_delete_column` | string | Soft delete timestamp column |
 | `vg:row_count` | integer | Estimated row count |
+| `vg:context` | JSON object | Structured context for AI query generation |
 
 ```yaml
 Supplier:
@@ -61,6 +62,21 @@ Supplier:
     vg:soft_delete_column: deleted_at
     vg:row_count: 500
 ```
+
+### Composite Primary Keys
+
+For tables with composite primary keys, use a JSON array:
+
+```yaml
+OrderLineItem:
+  instantiates:
+    - vg:SQLMappedClass
+  annotations:
+    vg:table: order_line_items
+    vg:primary_key: '["order_id", "line_number"]'
+```
+
+Handlers automatically handle tuple-based node IDs for composite keys.
 
 #### vg:identifier
 
@@ -91,10 +107,10 @@ Handlers filter out soft-deleted rows during traversal.
 | Annotation | Type | Description |
 |------------|------|-------------|
 | `vg:edge_table` | string | Junction/edge table name |
-| `vg:domain_key` | string | FK column pointing to domain (source) |
-| `vg:range_key` | string | FK column pointing to range (target) |
-| `vg:domain_class` | string | Name of domain entity class |
-| `vg:range_class` | string | Name of range entity class |
+| `vg:domain_key` | string or JSON array | FK column(s) pointing to domain - supports composite keys |
+| `vg:range_key` | string or JSON array | FK column(s) pointing to range - supports composite keys |
+| `vg:domain_class` | string or JSON array | Name(s) of domain entity class(es) - list for polymorphism |
+| `vg:range_class` | string or JSON array | Name(s) of range entity class(es) - list for polymorphism |
 | `vg:operation_types` | JSON array | List of supported operation types |
 
 ```yaml
@@ -108,6 +124,23 @@ SuppliesTo:
     vg:domain_class: Supplier
     vg:range_class: Supplier
     vg:operation_types: "[recursive_traversal, temporal_traversal]"
+```
+
+### Composite Foreign Keys
+
+For relationships with composite keys, use JSON arrays:
+
+```yaml
+OrderLineHasProduct:
+  instantiates:
+    - vg:SQLMappedRelationship
+  annotations:
+    vg:edge_table: order_line_items
+    vg:domain_key: '["order_id", "line_number"]'
+    vg:range_key: product_id
+    vg:domain_class: OrderLineItem
+    vg:range_class: Product
+    vg:operation_types: "[direct_join]"
 ```
 
 ### Operation Types
@@ -175,6 +208,85 @@ vg:weight_columns: '[
 ```
 
 Each weight column can be used with `shortest_path(weight_col="distance_km")`.
+
+#### vg:sql_filter
+
+Filter edges during traversal with a SQL WHERE clause:
+
+```yaml
+ConnectsTo:
+  annotations:
+    vg:sql_filter: "is_active = true AND status != 'suspended'"
+```
+
+The filter is injected into edge queries, allowing you to exclude inactive or invalid edges without modifying the data. Combines with temporal filtering if both are specified.
+
+**Safety**: Basic SQL injection patterns are detected during validation.
+
+#### vg:edge_attributes
+
+Define non-weight columns to retrieve as edge properties (Property Graph style):
+
+```yaml
+TransportRoute:
+  annotations:
+    vg:edge_attributes: '[
+      {"name": "carrier", "type": "string", "description": "Shipping carrier name"},
+      {"name": "scheduled_date", "type": "date", "description": "Scheduled departure"}
+    ]'
+```
+
+Unlike `vg:weight_columns`, edge attributes are informational and returned with edge data but not used for path calculations.
+
+#### vg:type_discriminator
+
+Configure polymorphic relationship target resolution:
+
+```yaml
+OwnedBy:
+  annotations:
+    vg:range_class: '["User", "Organization"]'
+    vg:type_discriminator: |
+      {
+        "column": "owner_type",
+        "mapping": {"user": "User", "org": "Organization"}
+      }
+```
+
+When the relationship targets multiple entity types, the discriminator column determines which type each edge points to. The mapping translates database values to class names.
+
+**Note**: For the "Exclusive Arc" pattern (separate nullable FK columns like `user_id` and `org_id`), map as two separate relationships instead.
+
+#### vg:context (ContextBlock)
+
+Provide structured context for AI-assisted query generation:
+
+```yaml
+SuppliesTo:
+  annotations:
+    vg:context: |
+      {
+        "business_logic": "Suppliers change tiers based on performance",
+        "llm_prompt_hint": "For 'strategic suppliers', filter tier=1",
+        "traversal_semantics": {
+          "inbound": "upstream suppliers (who sells to this supplier)",
+          "outbound": "downstream buyers (who this supplier sells to)"
+        },
+        "examples": [
+          "Find all upstream suppliers",
+          "Who are the tier 1 suppliers?"
+        ]
+      }
+```
+
+| Field | Purpose |
+|-------|---------|
+| `business_logic` | Human-readable explanation of behavior |
+| `llm_prompt_hint` | Hints for AI query construction |
+| `traversal_semantics` | What inbound/outbound mean in business terms |
+| `examples` | Example natural language queries |
+
+This context helps Claude generate appropriate queries and understand domain semantics.
 
 #### vg:inverse_of
 
@@ -317,6 +429,69 @@ ConnectsTo:
       range: decimal
     transit_hours:
       range: integer
+```
+
+### Polymorphic Relationship
+
+Relationship that can target multiple entity types:
+
+```yaml
+# Polymorphic ID pattern: owner_id + owner_type
+OwnedBy:
+  instantiates:
+    - vg:SQLMappedRelationship
+  annotations:
+    vg:edge_table: assets
+    vg:domain_key: id
+    vg:range_key: owner_id
+    vg:domain_class: Asset
+    vg:range_class: '["User", "Organization"]'
+    vg:operation_types: "[direct_join]"
+    vg:type_discriminator: |
+      {"column": "owner_type", "mapping": {"user": "User", "org": "Organization"}}
+```
+
+### Composite Key Relationship
+
+Relationship with composite foreign keys:
+
+```yaml
+OrderLineHasProduct:
+  instantiates:
+    - vg:SQLMappedRelationship
+  annotations:
+    vg:edge_table: order_line_items
+    vg:domain_key: '["order_id", "line_number"]'
+    vg:range_key: product_id
+    vg:domain_class: OrderLineItem
+    vg:range_class: Product
+    vg:operation_types: "[direct_join]"
+```
+
+### Relationship with AI Context
+
+Relationship with rich context for query generation:
+
+```yaml
+SuppliesTo:
+  instantiates:
+    - vg:SQLMappedRelationship
+  annotations:
+    vg:edge_table: supplier_relationships
+    vg:domain_key: seller_id
+    vg:range_key: buyer_id
+    vg:domain_class: Supplier
+    vg:range_class: Supplier
+    vg:operation_types: "[recursive_traversal]"
+    vg:context: |
+      {
+        "business_logic": "Suppliers change tiers based on performance metrics",
+        "llm_prompt_hint": "For 'strategic suppliers', filter tier=1",
+        "traversal_semantics": {
+          "inbound": "upstream suppliers",
+          "outbound": "downstream buyers"
+        }
+      }
 ```
 
 ## Metamodel Reference

@@ -3,6 +3,7 @@ Generic graph traversal using frontier-batched BFS.
 
 Schema-parameterized: knows nothing about suppliers/parts, only tables/columns.
 This handler implements the core traversal algorithm with safety limits.
+Supports composite primary/foreign keys for complex entity identification.
 """
 
 from datetime import datetime
@@ -19,6 +20,7 @@ from ..estimator import (
 from .base import (
     MAX_DEPTH,
     MAX_NODES,
+    NodeId,
     SubgraphTooLarge,
     check_limits,
     fetch_edges_for_frontier,
@@ -31,16 +33,16 @@ def traverse(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
-    start_id: int,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
+    start_id: NodeId,
     direction: str = "outbound",
     max_depth: int = 10,
     stop_condition: str | None = None,
     collect_columns: list[str] | None = None,
     prefilter_sql: str | None = None,
     include_start: bool = True,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     # Configurable limits
     max_nodes: int | None = None,
     skip_estimation: bool = False,
@@ -51,20 +53,23 @@ def traverse(
     valid_at: datetime | None = None,
     temporal_start_col: str | None = None,
     temporal_end_col: str | None = None,
+    # Edge filtering
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
 
     This is the core traversal handler that operates on any graph structure
     stored in relational tables. It's completely schema-parameterized.
+    Supports composite keys for complex entity identification.
 
     Args:
         conn: Database connection
         nodes_table: Table containing nodes (e.g., "suppliers")
         edges_table: Table containing edges (e.g., "supplier_relationships")
-        edge_from_col: Column for edge source (e.g., "seller_id")
-        edge_to_col: Column for edge target (e.g., "buyer_id")
-        start_id: Starting node ID
+        edge_from_col: Column(s) for edge source - string or list for composite keys
+        edge_to_col: Column(s) for edge target - string or list for composite keys
+        start_id: Starting node ID (can be tuple for composite keys)
         direction: "outbound" (follow edges away), "inbound" (follow edges toward),
                    or "both" (follow both directions)
         max_depth: Maximum traversal depth (clamped to MAX_DEPTH)
@@ -75,7 +80,7 @@ def traverse(
         prefilter_sql: SQL WHERE clause to filter edges before traversal.
                        Example: "is_active = true"
         include_start: Whether to include the start node in results
-        id_column: Name of the ID column in nodes_table
+        id_column: Name(s) of the ID column(s) - string or list for composite keys
         max_nodes: Override default MAX_NODES limit (None = use default 10,000)
         skip_estimation: Bypass size check entirely (caller takes responsibility)
         estimation_config: Fine-tune estimation parameters
@@ -87,11 +92,13 @@ def traverse(
                            Required if valid_at is provided.
         temporal_end_col: Column containing edge end/expiry date.
                          Required if valid_at is provided.
+        sql_filter: SQL WHERE clause to filter edges (e.g., "is_active = true").
+                   Applied during edge fetching. Combines with temporal filtering.
 
     Returns:
         dict with:
             - nodes: list of reached node dicts
-            - paths: dict mapping node_id → path from start
+            - paths: dict mapping node_id → path from start (node IDs may be tuples)
             - edges: list of traversed edge tuples (from_id, to_id)
             - depth_reached: actual max depth encountered
             - nodes_visited: total nodes visited
@@ -114,23 +121,41 @@ def traverse(
         ... )
         >>> print(f"Found {len(result['nodes'])} tier 3 suppliers")
 
-        >>> # Override limit for known-bounded graph
-        >>> result = traverse(..., max_nodes=50_000)
+        >>> # Composite key example
+        >>> result = traverse(
+        ...     conn,
+        ...     nodes_table="order_line_items",
+        ...     edges_table="line_item_components",
+        ...     edge_from_col=["order_id", "line_number"],
+        ...     edge_to_col=["component_order_id", "component_line"],
+        ...     start_id=(100, 1),  # tuple for composite key
+        ...     id_column=["order_id", "line_number"],
+        ... )
 
-        >>> # Skip estimation for trusted caller
-        >>> result = traverse(..., skip_estimation=True)
+        >>> # With sql_filter for active edges only
+        >>> result = traverse(..., sql_filter="is_active = true")
     """
     # Clamp to safety limit
     max_depth = min(max_depth, MAX_DEPTH)
     effective_max_nodes = max_nodes if max_nodes is not None else MAX_NODES
 
+    # Normalize columns for composite key support
+    from_cols = [edge_from_col] if isinstance(edge_from_col, str) else list(edge_from_col)
+    to_cols = [edge_to_col] if isinstance(edge_to_col, str) else list(edge_to_col)
+    id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
+
+    # For estimation, use first column (simplified for backwards compatibility)
+    first_from_col = from_cols[0]
+    first_to_col = to_cols[0]
+    first_start_id = start_id[0] if isinstance(start_id, tuple) else start_id
+
     # Estimate size before traversing (unless skipped)
     if not skip_estimation:
         sampler = GraphSampler(
-            conn, edges_table, edge_from_col, edge_to_col, direction
+            conn, edges_table, first_from_col, first_to_col, direction
         )
-        sample = sampler.sample(start_id)
-        table_bound = get_table_bound(conn, edges_table, edge_from_col, edge_to_col)
+        sample = sampler.sample(first_start_id)
+        table_bound = get_table_bound(conn, edges_table, first_from_col, first_to_col)
 
         estimated = estimate(sample, max_depth, table_bound, estimation_config)
 
@@ -140,18 +165,19 @@ def traverse(
                 "Consider: max_nodes=N to increase limit, or skip_estimation=True to bypass."
             )
 
-    # Initialize traversal state
-    frontier: set[int] = {start_id}
-    visited: set[int] = {start_id}
-    paths: dict[int, list[int]] = {start_id: [start_id]}
-    edges_traversed: list[tuple[int, int]] = []
-    terminated_at: set[int] = set()
+    # Initialize traversal state - supports both simple and composite keys
+    # Node IDs are hashable (int or tuple)
+    frontier: set[NodeId] = {start_id}
+    visited: set[NodeId] = {start_id}
+    paths: dict[NodeId, list[NodeId]] = {start_id: [start_id]}
+    edges_traversed: list[tuple[NodeId, NodeId]] = []
+    terminated_at: set[NodeId] = set()
     depth_reached = 0
 
     # Track if start node matches stop condition
     start_is_terminal = False
     if stop_condition:
-        start_is_terminal = should_stop(conn, nodes_table, start_id, stop_condition, id_column)
+        start_is_terminal = should_stop(conn, nodes_table, start_id, stop_condition, id_cols)
         if start_is_terminal:
             terminated_at.add(start_id)
 
@@ -173,15 +199,16 @@ def traverse(
             conn,
             edges_table,
             list(expandable_frontier),
-            edge_from_col,
-            edge_to_col,
+            from_cols if len(from_cols) > 1 else from_cols[0],
+            to_cols if len(to_cols) > 1 else to_cols[0],
             direction,
             nodes_table=nodes_table,
-            node_id_column=id_column,
+            node_id_column=id_cols if len(id_cols) > 1 else id_cols[0],
             soft_delete_column=soft_delete_column,
             valid_at=valid_at,
             temporal_start_col=temporal_start_col,
             temporal_end_col=temporal_end_col,
+            sql_filter=sql_filter,
         )
 
         # Apply prefilter if specified
@@ -218,7 +245,7 @@ def traverse(
 
                 # Check stop condition
                 if stop_condition and should_stop(
-                    conn, nodes_table, target, stop_condition, id_column
+                    conn, nodes_table, target, stop_condition, id_cols
                 ):
                     terminated_at.add(target)
 
@@ -231,7 +258,9 @@ def traverse(
         nodes_to_fetch = [n for n in nodes_to_fetch if n != start_id]
 
     nodes = fetch_nodes(
-        conn, nodes_table, nodes_to_fetch, collect_columns, id_column, soft_delete_column
+        conn, nodes_table, nodes_to_fetch, collect_columns,
+        id_cols if len(id_cols) > 1 else id_cols[0],
+        soft_delete_column
     )
 
     return {
@@ -293,14 +322,15 @@ def traverse_collecting(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
-    start_id: int,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
+    start_id: NodeId,
     target_condition: str,
     direction: str = "outbound",
     max_depth: int = 10,
     collect_columns: list[str] | None = None,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Traverse graph and collect all nodes matching a target condition.
@@ -351,10 +381,20 @@ def traverse_collecting(
         collect_columns=collect_columns,
         include_start=False,
         id_column=id_column,
+        sql_filter=sql_filter,
     )
 
-    # Filter to matching nodes
-    node_ids = [n[id_column] for n in result["nodes"]]
+    # Normalize id_column to list
+    id_cols = [id_column] if isinstance(id_column, str) else list(id_column)
+    is_composite = len(id_cols) > 1
+
+    # Extract node IDs from results
+    def get_node_id(node: dict) -> NodeId:
+        if is_composite:
+            return tuple(node[col] for col in id_cols)
+        return node[id_cols[0]]
+
+    node_ids = [get_node_id(n) for n in result["nodes"]]
     if not node_ids:
         return {
             "matching_nodes": [],
@@ -363,17 +403,34 @@ def traverse_collecting(
         }
 
     # Query for matching nodes
-    query = f"""
-        SELECT {id_column}
-        FROM {nodes_table}
-        WHERE {id_column} = ANY(%s) AND ({target_condition})
-    """
+    if is_composite:
+        col_tuple = f"({', '.join(id_cols)})"
+        values_list = ", ".join(
+            f"({', '.join('%s' for _ in id_cols)})" for _ in node_ids
+        )
+        flat_ids = [v for tup in node_ids for v in tup]
+        query = f"""
+            SELECT {', '.join(id_cols)}
+            FROM {nodes_table}
+            WHERE {col_tuple} IN (VALUES {values_list}) AND ({target_condition})
+        """
+        params = flat_ids
+    else:
+        query = f"""
+            SELECT {id_cols[0]}
+            FROM {nodes_table}
+            WHERE {id_cols[0]} = ANY(%s) AND ({target_condition})
+        """
+        params = (node_ids,)
 
     with conn.cursor() as cur:
-        cur.execute(query, (node_ids,))
-        matching_ids = {row[0] for row in cur.fetchall()}
+        cur.execute(query, params)
+        if is_composite:
+            matching_ids = {tuple(row) for row in cur.fetchall()}
+        else:
+            matching_ids = {row[0] for row in cur.fetchall()}
 
-    matching_nodes = [n for n in result["nodes"] if n[id_column] in matching_ids]
+    matching_nodes = [n for n in result["nodes"] if get_node_id(n) in matching_ids]
 
     return {
         "matching_nodes": matching_nodes,
@@ -389,14 +446,14 @@ def path_aggregate(
     conn: PgConnection,
     nodes_table: str,
     edges_table: str,
-    edge_from_col: str,
-    edge_to_col: str,
-    start_id: int,
+    edge_from_col: str | list[str],
+    edge_to_col: str | list[str],
+    start_id: NodeId,
     value_col: str,
     operation: Literal["sum", "max", "min", "multiply", "count"] = "sum",
     direction: str = "outbound",
     max_depth: int = 20,
-    id_column: str = "id",
+    id_column: str | list[str] = "id",
     # Configurable limits
     max_nodes: int | None = None,
     skip_estimation: bool = False,
@@ -407,6 +464,8 @@ def path_aggregate(
     valid_at: datetime | None = None,
     temporal_start_col: str | None = None,
     temporal_end_col: str | None = None,
+    # Edge filtering
+    sql_filter: str | None = None,
 ) -> dict[str, Any]:
     """
     Aggregate values along all paths from a start node.
@@ -493,6 +552,7 @@ def path_aggregate(
         valid_at=valid_at,
         temporal_start_col=temporal_start_col,
         temporal_end_col=temporal_end_col,
+        sql_filter=sql_filter,
     )
 
     # Build the recursive CTE for path aggregation
