@@ -1,6 +1,6 @@
 # Benchmark Questions for Supply Chain Examples
 
-60 business questions for demand-driven pattern discovery.
+68 business questions for demand-driven pattern discovery.
 
 1. Find the supplier with code "ACME-001"
 2. List all tier 1 suppliers
@@ -62,3 +62,12 @@
 58. If "Denver Hub" is destroyed, calculate the total value of orders that cannot be fulfilled because required stock is trapped there
 59. A batch of "RESISTOR-100" from "GlobalTech Industries" is defective. Find all customers who received a shipment containing a product using this part
 60. Find all parts in bill_of_materials that are children but have no product_components entry linking them to a top-level product (dead stock)
+
+61. What was the BOM for "Turbo Encabulator" as of 6 months ago?
+62. Which BOM entries are expiring within the next 30 days?
+63. Find all tier-2 suppliers reachable from "Acme Corp" via only active relationships
+64. Show all supplier contracts expiring in the next quarter
+65. Find the shortest route from "Chicago Warehouse" to "LA Distribution Center" using only active routes
+66. Which transport routes currently have status 'seasonal' or 'suspended'?
+67. Compare average actual transit time for order fulfillment shipments vs inter-facility transfers
+68. List all order line items with discount greater than 10% and quantity over 50

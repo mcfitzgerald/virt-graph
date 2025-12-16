@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.11] - 2025-12-16
+
+### Added
+
+- **Q61-68 benchmark questions** - 8 new questions testing metamodel v2.0/v2.1 features:
+  - Temporal bounds (point-in-time BOM queries)
+  - Dual-model nodes (BOMEntry, SupplierContract, Route, OrderLineItem)
+  - sql_filter (active relationships, routes, shipment types)
+  - edge_attributes
+
+- **`annotated_questions.md`** - Comprehensive technical annotations for all 68 questions:
+  - Pattern type, ontology elements, VG features, handler mappings
+  - Summary statistics by pattern, feature, and handler
+  - Dual-model table reference
+
+- **Phase B implementation plan** (`warm-swimming-crystal.md`) - Ontology re-discovery plan using:
+  - `virt_graph.yaml` as metamodel template
+  - Split relationships with `sql_filter` for shipment polymorphism
+  - Dual modeling strategy (same table as node + edge)
+
+### Changed
+
+- Archived old `supply_chain.yaml` to `ARCHIVE/` pending Phase B re-write
+- Cleaned question hints from Q61-68 (moved to annotated file)
+
+---
+
 ## [0.9.10] - 2025-12-15
 
 ### Breaking Changes
