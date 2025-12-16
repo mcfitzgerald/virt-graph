@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Coding and Engineering Standards
+
+Employ a judicious but robust testing strategy, and prefer integration tests versus unit tests unless unit test is critical
+
+Always use context7 when I need code generation, setup or configuration steps (unless already documented in codebase), or
+library/API documentation. This means you should automatically use the Context7 MCP
+tools to resolve library id and get library docs without me having to explicitly ask.
+
+Don't reinvent the wheel, search web for robust libraries and always opt for simple. Don't over-engineer!
+
+Update `CHANGELOG.md`, `README.md`, `docs/`, `TODO.md` and `pyproject.toml` when committing with git, use semantic versioning
+
+Unless noted otherwise, do not plan for backwards compatibility
+
 ## Project Overview
 
 VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL data WITHOUT migration. It combines:
