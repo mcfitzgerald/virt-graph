@@ -377,21 +377,18 @@ class OntologyAccessor:
                         )
                     # Validate mapping keys match range_class values
                     mapping = parsed_disc.get("mapping")
-                    if mapping:
-                        if isinstance(mapping, str):
-                            mapping = self._parse_json_or_value(mapping, {})
-                        if isinstance(mapping, dict):
-                            mapping_classes = set(mapping.values())
-                            unknown_classes = mapping_classes - set(range_classes)
-                            if unknown_classes:
-                                errors.append(
-                                    ValidationError(
-                                        element_type="relationship",
-                                        element_name=name,
-                                        field="type_discriminator",
-                                        message=f"mapping references classes not in range_class: {unknown_classes}",
-                                    )
+                    if mapping and isinstance(mapping, dict):
+                        mapping_classes = set(mapping.values())
+                        unknown_classes = mapping_classes - set(range_classes)
+                        if unknown_classes:
+                            errors.append(
+                                ValidationError(
+                                    element_type="relationship",
+                                    element_name=name,
+                                    field="type_discriminator",
+                                    message=f"mapping references classes not in range_class: {unknown_classes}",
                                 )
+                            )
 
             # Basic SQL injection check for sql_filter
             sql_filter = self._get_annotation(cls, "sql_filter")
@@ -807,11 +804,7 @@ class OntologyAccessor:
         """
         resolved = self._resolve_role_name(name)
         value = self._get_annotation(self._rbox[resolved], "type_discriminator")
-        result = self._parse_json_or_value(value, None)
-        if result and isinstance(result.get("mapping"), str):
-            # Parse nested JSON mapping if it's a string
-            result["mapping"] = self._parse_json_or_value(result["mapping"], {})
-        return result
+        return self._parse_json_or_value(value, None)
 
     def is_role_polymorphic(self, name: str) -> bool:
         """

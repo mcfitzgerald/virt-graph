@@ -246,11 +246,11 @@ Configure polymorphic relationship target resolution:
 OwnedBy:
   annotations:
     vg:range_class: '["User", "Organization"]'
-    vg:type_discriminator: |
-      {
-        "column": "owner_type",
-        "mapping": {"user": "User", "org": "Organization"}
-      }
+    vg:type_discriminator:
+      column: owner_type
+      mapping:
+        user: User
+        org: Organization
 ```
 
 When the relationship targets multiple entity types, the discriminator column determines which type each edge points to. The mapping translates database values to class names.
@@ -266,7 +266,9 @@ SuppliesTo:
   annotations:
     vg:context: |
       {
+        "definition": "A commercial relationship where one supplier sells to another",
         "business_logic": "Suppliers change tiers based on performance",
+        "data_quality_notes": "Historical records before 2020 may be incomplete",
         "llm_prompt_hint": "For 'strategic suppliers', filter tier=1",
         "traversal_semantics": {
           "inbound": "upstream suppliers (who sells to this supplier)",
@@ -281,7 +283,9 @@ SuppliesTo:
 
 | Field | Purpose |
 |-------|---------|
+| `definition` | Formal business definition or glossary term |
 | `business_logic` | Human-readable explanation of behavior |
+| `data_quality_notes` | Known data issues, reliability warnings, or scope limitations |
 | `llm_prompt_hint` | Hints for AI query construction |
 | `traversal_semantics` | What inbound/outbound mean in business terms |
 | `examples` | Example natural language queries |
@@ -447,8 +451,11 @@ OwnedBy:
     vg:domain_class: Asset
     vg:range_class: '["User", "Organization"]'
     vg:operation_types: "[direct_join]"
-    vg:type_discriminator: |
-      {"column": "owner_type", "mapping": {"user": "User", "org": "Organization"}}
+    vg:type_discriminator:
+      column: owner_type
+      mapping:
+        user: User
+        org: Organization
 ```
 
 ### Composite Key Relationship

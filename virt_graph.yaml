@@ -8,7 +8,7 @@
 
 id: https://virt-graph.dev/metamodel
 name: virt_graph_metamodel
-version: "2.0"
+version: "2.1"
 description: >-
   Virtual Graph metamodel extension for LinkML.
   Enables graph-like queries over relational data by mapping
@@ -330,9 +330,15 @@ classes:
     class_uri: vg:ContextBlock
     description: "Structured context for AI-assisted query generation"
     attributes:
+      definition:
+        range: string
+        description: "Formal business definition or glossary term (What is this?)"
       business_logic:
         range: string
         description: "Human-readable explanation of entity/relationship behavior"
+      data_quality_notes:
+        range: string
+        description: "Known data issues, reliability warnings, or scope limitations"
       llm_prompt_hint:
         range: string
         description: "Hints for AI query construction (e.g., 'For strategic suppliers, filter tier=1')"
@@ -379,6 +385,22 @@ classes:
         description: "Human-readable description of this edge property"
 
   # ---------------------------------------------------------------------------
+  # DiscriminatorEntry: Maps discriminator value to target class
+  # ---------------------------------------------------------------------------
+  DiscriminatorEntry:
+    class_uri: vg:DiscriminatorEntry
+    description: "Maps a discriminator column value to a target class"
+    attributes:
+      discriminator_value:
+        range: string
+        identifier: true
+        description: "Value in discriminator column (e.g., 'user', 'org')"
+      target_class:
+        range: string
+        required: true
+        description: "Target entity class name (e.g., 'User', 'Organization')"
+
+  # ---------------------------------------------------------------------------
   # TypeDiscriminator: Polymorphic target type resolution
   # ---------------------------------------------------------------------------
   TypeDiscriminator:
@@ -390,5 +412,8 @@ classes:
         required: true
         description: "Column containing type indicator value"
       mapping:
-        range: string
-        description: "JSON mapping of column values to class names (e.g., '{\"user\": \"User\", \"org\": \"Organization\"}')"
+        range: DiscriminatorEntry
+        multivalued: true
+        inlined: true
+        inlined_as_list: false
+        description: "Maps discriminator values to target class names"

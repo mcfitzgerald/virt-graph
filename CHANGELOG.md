@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.10] - 2025-12-15
+
+### Breaking Changes
+
+- **Metamodel version bumped to 2.1** in `virt_graph.yaml`
+- **`vg:type_discriminator` now uses native YAML format** instead of JSON strings
+  - Old: `vg:type_discriminator: '{"column": "owner_type", "mapping": {"user": "User"}}'`
+  - New: `vg:type_discriminator: {column: owner_type, mapping: {user: User}}`
+
+### Added
+
+- **ContextBlock enhancements** - Two new fields for richer AI context:
+  - `definition`: Formal business definition or glossary term
+  - `data_quality_notes`: Known data issues, reliability warnings, or scope limitations
+
+- **DiscriminatorEntry class** - New metamodel class for structured type discriminator mappings
+  - Replaces JSON string format with native YAML
+  - Fields: `discriminator_value`, `target_class`
+
+### Changed
+
+- `TypeDiscriminator.mapping` now uses `DiscriminatorEntry` instead of JSON string
+- Updated `OntologyAccessor` validation and accessor methods for new format
+- Updated documentation with new ContextBlock fields and TypeDiscriminator syntax
+
+---
+
 ## [0.9.9-data] - 2025-12-15
 
 ### Breaking Changes

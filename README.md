@@ -175,17 +175,17 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Example | `supply_chain_example/` | Complete supply chain use case with tests |
 
-### Metamodel Features (v2.0)
+### Metamodel Features (v2.1)
 
 The metamodel supports advanced patterns:
 
 | Feature | Annotation | Description |
 |---------|------------|-------------|
 | Composite Keys | `vg:primary_key: '["col1", "col2"]'` | Multi-column primary/foreign keys |
-| AI Context | `vg:context` | Structured hints for query generation |
+| AI Context | `vg:context` | Structured hints with definition, business_logic, data_quality_notes |
 | Edge Filtering | `vg:sql_filter` | SQL WHERE clause for edge tables |
 | Edge Properties | `vg:edge_attributes` | Property Graph style edge data |
-| Polymorphism | `vg:type_discriminator` | Multi-class domain/range support |
+| Polymorphism | `vg:type_discriminator` | Native YAML format for multi-class domain/range |
 
 ### Operation Types
 
