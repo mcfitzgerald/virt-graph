@@ -67,6 +67,11 @@ CREATE TABLE parts (
     primary_supplier_id INTEGER REFERENCES suppliers(id),
     is_critical BOOLEAN DEFAULT false,
     min_stock_level INTEGER DEFAULT 0,
+    -- UoM conversion factors for BOM rollups
+    base_uom VARCHAR(10) DEFAULT 'each',  -- Base unit of measure for this part
+    unit_weight_kg DECIMAL(12, 6),        -- Weight per 'each' in kg
+    unit_length_m DECIMAL(12, 6),         -- Length per 'each' in meters
+    unit_volume_l DECIMAL(12, 6),         -- Volume per 'each' in liters
     deleted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -364,3 +369,34 @@ CREATE INDEX idx_audit_time ON audit_log(changed_at);
 -- 14. shipments
 -- 15. supplier_certifications
 -- + audit_log (utility table)
+
+-- ============================================================================
+-- VIEWS: Normalized data for graph operations
+-- ============================================================================
+
+-- BOM with UoM conversion factors for weight rollups
+-- Joins parts to get conversion factors, normalizes all quantities to kg
+CREATE VIEW bom_with_conversions AS
+SELECT
+    b.id,
+    b.parent_part_id,
+    b.child_part_id,
+    b.quantity,
+    b.unit,
+    -- Normalized weight contribution (always in kg)
+    CASE b.unit
+        WHEN 'each' THEN b.quantity * COALESCE(p.unit_weight_kg, 0)
+        WHEN 'kg' THEN b.quantity::decimal
+        WHEN 'm' THEN b.quantity * COALESCE(p.unit_weight_kg, 0)
+        WHEN 'L' THEN b.quantity * COALESCE(p.unit_weight_kg, 0)
+    END as weight_kg,
+    -- Normalized cost contribution (always in USD)
+    b.quantity * COALESCE(p.unit_cost, 0) as cost_usd,
+    b.is_optional,
+    b.assembly_sequence,
+    b.effective_from,
+    b.effective_to,
+    b.created_at,
+    b.updated_at
+FROM bill_of_materials b
+JOIN parts p ON b.child_part_id = p.id;

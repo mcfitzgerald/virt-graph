@@ -65,7 +65,7 @@ All entities get:
 | Relationship | New Features |
 |--------------|--------------|
 | **SuppliesTo** | `sql_filter: "relationship_status = 'active'"`, `traversal_semantics` |
-| **ComponentOf** | `temporal_bounds: {start: effective_from, end: effective_to}`, `edge_attributes` for quantity |
+| **ComponentOf** | `temporal_bounds: {start: effective_from, end: effective_to}`, `edge_attributes` for quantity. **Use `bom_with_conversions` view** for normalized weight_kg/cost_usd rollups (see UoM note below) |
 | **HasComponent** | Same as ComponentOf (inverse) |
 | **ConnectsTo** | `sql_filter: "route_status = 'active'"`, `traversal_semantics` |
 | **OrderContains** | `edge_attributes` for quantity, unit_price, discount_percent |
@@ -158,3 +158,20 @@ The metamodel supports mapping one SQL table to both a Node (SQLMappedClass) and
 - Each question targets a specific v2.0 feature
 - Questions should be answerable with existing handler capabilities
 - Include questions that exercise both Node and Edge views of dual-modeled tables
+
+### UoM Handling (Implemented)
+**Status:** DONE - Schema and data updated
+
+The BOM has mixed units (each, kg, m, L) which require conversion factors for weight/cost rollups.
+
+**Schema changes:**
+- `parts` table now has: `base_uom`, `unit_weight_kg`, `unit_length_m`, `unit_volume_l`
+- New view `bom_with_conversions` joins BOM with parts to provide pre-computed `weight_kg` and `cost_usd` columns
+
+**Ontology options for ComponentOf:**
+1. Point at base `bill_of_materials` table (for simple traversal)
+2. Point at `bom_with_conversions` view (for aggregation with normalized units)
+
+The metamodel's `edge_table` accepts any string - views work without metamodel changes. The view includes all required columns (parent_part_id, child_part_id, effective_from, effective_to).
+
+**Documentation:** See `supply_chain_example/data_description.md` § "Unit of Measure (UoM) Handling"

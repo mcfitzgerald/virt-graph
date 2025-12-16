@@ -105,6 +105,16 @@ Components organized in a 5-level bill of materials hierarchy.
 - `FLUX-CAP-001` - Flux Capacitor Module
 - `WIDGET-A` - Standard Widget Type A
 
+**UoM Conversion Factors:**
+
+Each part has conversion factor columns for normalized BOM rollups:
+- `base_uom` - Base unit of measure (each, kg, m, L)
+- `unit_weight_kg` - Weight per unit in kilograms
+- `unit_length_m` - Length per unit in meters (for length-based materials)
+- `unit_volume_l` - Volume per unit in liters (for volume-based materials)
+
+Raw materials may use kg, m, or L as base UoM; assemblies always use "each".
+
 ### Bill of Materials (42,706 records)
 
 Recursive parent-child relationships with effectivity date ranges.
@@ -240,6 +250,46 @@ Use case: Route optimization, shortest path, network resilience
 customers → orders → order_items → products → product_components → parts
 ```
 Use case: Demand tracing, product-to-part mapping
+
+## Unit of Measure (UoM) Handling
+
+### Unified Units by Domain
+
+| Domain | Column | Unit |
+|--------|--------|------|
+| Transport | `distance_km` | kilometers |
+| Transport | `transit_time_hours` | hours |
+| Transport | `cost_usd` | USD |
+| Transport | `capacity_tons` | metric tons |
+| Parts | `weight_kg` | kilograms |
+| Shipments | `weight_kg` | kilograms |
+| Parts | `lead_time_days` | days |
+| All costs | `*_cost`, `*_price`, `*_amount` | USD (implicit) |
+
+### BOM Unit Normalization
+
+The `bill_of_materials.unit` column allows mixed units (each, kg, m, L) for flexibility. To support weight/cost rollups, use the `bom_with_conversions` view which joins parts conversion factors:
+
+```sql
+SELECT parent_part_id, child_part_id, quantity, unit,
+       weight_kg,  -- Normalized weight contribution
+       cost_usd    -- Normalized cost contribution
+FROM bom_with_conversions
+WHERE parent_part_id = 15006;  -- TURBO-ENC-001
+```
+
+**Example output:**
+```
+parent_part_id | child_part_id | quantity | unit | weight_kg | cost_usd
+---------------+---------------+----------+------+-----------+----------
+         15006 |         15001 |        4 | each |   0.22398 |    56.96
+         15006 |         15002 |       10 | each |   2.75705 |   420.60
+         15006 |         15003 |        6 | each |   0.84107 |   137.64
+```
+
+The view calculates:
+- `weight_kg = quantity * part.unit_weight_kg`
+- `cost_usd = quantity * part.unit_cost`
 
 ## Connection Details
 

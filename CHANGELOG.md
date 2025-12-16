@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.12] - 2025-12-16
+
+### Added
+
+- **UoM conversion factors on `parts` table** - New columns for BOM weight/cost rollups:
+  - `base_uom` - Base unit of measure (each, kg, m, L)
+  - `unit_weight_kg` - Weight per unit in kilograms
+  - `unit_length_m` - Length per unit in meters
+  - `unit_volume_l` - Volume per unit in liters
+
+- **`bom_with_conversions` SQL view** - Normalized BOM view for aggregations:
+  - Joins `bill_of_materials` with `parts` conversion factors
+  - Pre-computes `weight_kg` and `cost_usd` columns
+  - Can be used as `edge_table` in ontology (views supported by metamodel)
+
+### Changed
+
+- Updated `generate_data.py` to populate conversion factors for all parts
+- Regenerated seed data (~97 MB) with new columns
+
+### Documentation
+
+- Updated `data_description.md` with UoM handling section
+- Updated Phase B plan (`warm-swimming-crystal.md`) with UoM implementation status
+
+---
+
 ## [0.9.11] - 2025-12-16
 
 ### Added

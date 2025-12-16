@@ -317,6 +317,17 @@ class SupplyChainGenerator:
         # Generate parts
         for part_id in range(1, count + 1):
             category = random.choice(categories)
+            # UoM conversion factors - raw materials may use different base UoMs
+            if category == "Raw Material":
+                base_uom = random.choice(["each", "kg", "m", "L"])
+            else:
+                base_uom = "each"  # Assemblies/components are always counted
+
+            # Generate realistic conversion factors
+            unit_weight_kg = round(random.uniform(0.001, 10.0), 6)
+            unit_length_m = round(random.uniform(0.01, 5.0), 6) if base_uom == "m" else None
+            unit_volume_l = round(random.uniform(0.001, 2.0), 6) if base_uom == "L" else None
+
             self.parts.append({
                 "id": part_id,
                 "part_number": f"PRT-{part_id:06d}",
@@ -330,6 +341,10 @@ class SupplyChainGenerator:
                 ),
                 "is_critical": random.random() > 0.9,
                 "min_stock_level": random.randint(10, 1000),
+                "base_uom": base_uom,
+                "unit_weight_kg": unit_weight_kg,
+                "unit_length_m": unit_length_m,
+                "unit_volume_l": unit_volume_l,
             })
             self.part_ids.append(part_id)
 
@@ -457,6 +472,10 @@ class SupplyChainGenerator:
                 "primary_supplier_id": random.choice(self.supplier_ids_by_tier[2]),
                 "is_critical": True,
                 "min_stock_level": 100,
+                "base_uom": "each",
+                "unit_weight_kg": round(random.uniform(0.001, 0.5), 6),
+                "unit_length_m": None,
+                "unit_volume_l": None,
             })
             self.leaf_part_ids.append(part_id)
 
@@ -478,6 +497,10 @@ class SupplyChainGenerator:
                 "primary_supplier_id": random.choice(self.supplier_ids_by_tier[1]),
                 "is_critical": True,
                 "min_stock_level": 50,
+                "base_uom": "each",
+                "unit_weight_kg": round(random.uniform(1.0, 25.0), 6),
+                "unit_length_m": None,
+                "unit_volume_l": None,
             })
             self.top_part_ids.append(part_id)
 
@@ -1128,10 +1151,12 @@ class SupplyChainGenerator:
         for p in self.parts:
             lines.append(
                 f"INSERT INTO parts (id, part_number, description, category, unit_cost, weight_kg, lead_time_days, "
-                f"primary_supplier_id, is_critical, min_stock_level) "
+                f"primary_supplier_id, is_critical, min_stock_level, base_uom, unit_weight_kg, unit_length_m, unit_volume_l) "
                 f"VALUES ({p['id']}, {sql_str(p['part_number'])}, {sql_str(p['description'])}, {sql_str(p['category'])}, "
                 f"{sql_num(p['unit_cost'])}, {sql_num(p['weight_kg'])}, {sql_num(p['lead_time_days'])}, "
-                f"{sql_num(p.get('primary_supplier_id'))}, {sql_bool(p['is_critical'])}, {sql_num(p['min_stock_level'])});"
+                f"{sql_num(p.get('primary_supplier_id'))}, {sql_bool(p['is_critical'])}, {sql_num(p['min_stock_level'])}, "
+                f"{sql_str(p.get('base_uom', 'each'))}, {sql_num(p.get('unit_weight_kg'))}, "
+                f"{sql_num(p.get('unit_length_m'))}, {sql_num(p.get('unit_volume_l'))});"
             )
         lines.append(f"SELECT setval('parts_id_seq', {max(p['id'] for p in self.parts)});")
         lines.append("")
