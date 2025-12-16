@@ -2,14 +2,22 @@
 """
 Generate synthetic supply chain data for Virtual Graph POC.
 
-Target data volumes:
-- 500 suppliers (tiered: 50 T1, 150 T2, 300 T3)
-- 5,000 parts with BOM hierarchy (avg depth: 5 levels)
-- 50 facilities with transport network
-- 20,000 orders with shipments
-- ~130K total rows
+Target data volumes (~500K rows):
+- 1,000 suppliers (tiered: 100 T1, 300 T2, 600 T3)
+- 15,000 parts with BOM hierarchy (avg depth: 5 levels)
+- 100 facilities with transport network
+- 5,000 customers
+- 80,000 orders with 250,000 order items (composite key)
+- 50,000 shipments (70% order fulfillment, 20% transfer, 10% replenishment)
+- 50,000 BOM entries with effectivity dates
+- 30,000 inventory records
 
 This generates realistic "enterprise messiness":
+- Composite keys (order_items)
+- BOM effectivity dates (80% current, 15% superseded, 5% future)
+- Shipment type polymorphism
+- Supplier relationship status (10% inactive/suspended)
+- Transport route status (5% seasonal/suspended)
 - Some nullable FKs
 - Realistic distributions
 - Named entities for testing
@@ -94,31 +102,34 @@ class SupplyChainGenerator:
     def generate_all(self):
         """Generate all data in dependency order."""
         print("Generating suppliers...")
-        self.generate_suppliers(500)
+        self.generate_suppliers(1000)
 
         print("Generating supplier relationships...")
         self.generate_supplier_relationships()
 
         print("Generating parts with BOM hierarchy...")
-        self.generate_parts_with_bom(5000)
+        self.generate_parts_with_bom(15000)
 
         print("Generating part suppliers...")
         self.generate_part_suppliers()
 
         print("Generating products...")
-        self.generate_products(200)
+        self.generate_products(500)
 
         print("Generating facilities...")
-        self.generate_facilities(50)
+        self.generate_facilities(100)
 
         print("Generating transport routes...")
         self.generate_transport_routes()
 
         print("Generating customers...")
-        self.generate_customers(1000)
+        self.generate_customers(5000)
 
         print("Generating orders...")
-        self.generate_orders(20000)
+        self.generate_orders(80000)
+
+        print("Generating additional shipments (transfers + replenishment)...")
+        self.generate_additional_shipments()
 
         print("Generating inventory...")
         self.generate_inventory()
@@ -188,6 +199,16 @@ class SupplyChainGenerator:
         """Generate tier relationships: T3 → T2 → T1."""
         rel_id = 1
 
+        def get_relationship_status():
+            """~10% inactive/suspended, 90% active."""
+            r = random.random()
+            if r < 0.05:
+                return False, "suspended"
+            elif r < 0.10:
+                return False, "terminated"
+            else:
+                return True, "active"
+
         # First, ensure named supplier chain exists:
         # Eastern Electronics (T3, id=7) → Pacific Components (T2, id=4) → Acme Corp (T1, id=1)
         named_supply_chain = [
@@ -206,6 +227,8 @@ class SupplyChainGenerator:
                 "relationship_type": "supplies",
                 "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
                 "is_primary": is_primary,
+                "is_active": True,
+                "relationship_status": "active",
             })
             rel_id += 1
 
@@ -219,6 +242,7 @@ class SupplyChainGenerator:
             buyers = random.sample(self.supplier_ids_by_tier[2], min(num_buyers, len(self.supplier_ids_by_tier[2])))
             for t2_id in buyers:
                 if (t3_id, t2_id) not in existing_rels:
+                    is_active, status = get_relationship_status()
                     self.supplier_relationships.append({
                         "id": rel_id,
                         "seller_id": t3_id,
@@ -226,6 +250,8 @@ class SupplyChainGenerator:
                         "relationship_type": "supplies",
                         "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
                         "is_primary": random.random() > 0.7,
+                        "is_active": is_active,
+                        "relationship_status": status,
                     })
                     existing_rels.add((t3_id, t2_id))
                     rel_id += 1
@@ -237,6 +263,7 @@ class SupplyChainGenerator:
             buyers = random.sample(self.supplier_ids_by_tier[1], min(num_buyers, len(self.supplier_ids_by_tier[1])))
             for t1_id in buyers:
                 if (t2_id, t1_id) not in existing_rels:
+                    is_active, status = get_relationship_status()
                     self.supplier_relationships.append({
                         "id": rel_id,
                         "seller_id": t2_id,
@@ -244,6 +271,8 @@ class SupplyChainGenerator:
                         "relationship_type": "supplies",
                         "contract_start_date": fake.date_between(start_date="-3y", end_date="-1y"),
                         "is_primary": random.random() > 0.7,
+                        "is_active": is_active,
+                        "relationship_status": status,
                     })
                     existing_rels.add((t2_id, t1_id))
                     rel_id += 1
@@ -258,11 +287,32 @@ class SupplyChainGenerator:
         - Level 3-5 (assemblies): 20% of parts
 
         Average depth target: 5 levels
+
+        BOM effectivity dates:
+        - 80% current (effective_from = past, effective_to = NULL)
+        - 15% superseded (effective_to = past date)
+        - 5% future (effective_from = future date)
         """
         categories = [
             "Raw Material", "Electronic", "Mechanical", "Fastener",
             "Subassembly", "Assembly", "Sensor", "Motor", "Housing", "Cable"
         ]
+
+        def get_effectivity_dates():
+            """Generate effectivity dates with 80/15/5 distribution."""
+            r = random.random()
+            today = date.today()
+            if r < 0.80:
+                # Current: effective from past, no end date
+                return fake.date_between(start_date="-3y", end_date="-1m"), None
+            elif r < 0.95:
+                # Superseded: both dates in the past
+                effective_from = fake.date_between(start_date="-5y", end_date="-2y")
+                effective_to = fake.date_between(start_date="-2y", end_date="-1m")
+                return effective_from, effective_to
+            else:
+                # Future: effective_from is in the future
+                return fake.date_between(start_date="+1m", end_date="+1y"), None
 
         # Generate parts
         for part_id in range(1, count + 1):
@@ -303,6 +353,7 @@ class SupplyChainGenerator:
             num_components = random.randint(2, 8)
             components = random.sample(raw_materials, min(num_components, len(raw_materials)))
             for seq, comp_id in enumerate(components, 1):
+                eff_from, eff_to = get_effectivity_dates()
                 self.bom.append({
                     "id": bom_id,
                     "parent_part_id": sub_id,
@@ -311,6 +362,8 @@ class SupplyChainGenerator:
                     "unit": random.choice(["each", "kg", "m", "L"]),
                     "is_optional": random.random() > 0.9,
                     "assembly_sequence": seq,
+                    "effective_from": eff_from,
+                    "effective_to": eff_to,
                 })
                 bom_id += 1
 
@@ -328,6 +381,7 @@ class SupplyChainGenerator:
             if random.random() > 0.5:
                 components.extend(random.sample(raw_materials, random.randint(1, 3)))
             for seq, comp_id in enumerate(components, 1):
+                eff_from, eff_to = get_effectivity_dates()
                 self.bom.append({
                     "id": bom_id,
                     "parent_part_id": asm_id,
@@ -336,6 +390,8 @@ class SupplyChainGenerator:
                     "unit": "each",
                     "is_optional": random.random() > 0.95,
                     "assembly_sequence": seq,
+                    "effective_from": eff_from,
+                    "effective_to": eff_to,
                 })
                 bom_id += 1
 
@@ -346,6 +402,7 @@ class SupplyChainGenerator:
             if random.random() > 0.5:
                 components.extend(random.sample(subassemblies, random.randint(1, 2)))
             for seq, comp_id in enumerate(components, 1):
+                eff_from, eff_to = get_effectivity_dates()
                 self.bom.append({
                     "id": bom_id,
                     "parent_part_id": asm_id,
@@ -354,6 +411,8 @@ class SupplyChainGenerator:
                     "unit": "each",
                     "is_optional": random.random() > 0.95,
                     "assembly_sequence": seq,
+                    "effective_from": eff_from,
+                    "effective_to": eff_to,
                 })
                 bom_id += 1
 
@@ -364,6 +423,7 @@ class SupplyChainGenerator:
             if random.random() > 0.7:
                 components.extend(random.sample(level_2, random.randint(1, 2)))
             for seq, comp_id in enumerate(components, 1):
+                eff_from, eff_to = get_effectivity_dates()
                 self.bom.append({
                     "id": bom_id,
                     "parent_part_id": asm_id,
@@ -372,6 +432,8 @@ class SupplyChainGenerator:
                     "unit": "each",
                     "is_optional": random.random() > 0.95,
                     "assembly_sequence": seq,
+                    "effective_from": eff_from,
+                    "effective_to": eff_to,
                 })
                 bom_id += 1
 
@@ -433,6 +495,8 @@ class SupplyChainGenerator:
             (cap_id, 6, "each"),       # 6x CAP-001
             (motor_id, 2, "each"),     # 2x MOTOR-001
         ]
+        # Named products always have current effectivity (no end date)
+        current_eff_from = fake.date_between(start_date="-2y", end_date="-6m")
         for seq, (comp_id, qty, unit) in enumerate(turbo_components, 1):
             self.bom.append({
                 "id": bom_id,
@@ -442,6 +506,8 @@ class SupplyChainGenerator:
                 "unit": unit,
                 "is_optional": False,
                 "assembly_sequence": seq,
+                "effective_from": current_eff_from,
+                "effective_to": None,
             })
             bom_id += 1
 
@@ -455,6 +521,8 @@ class SupplyChainGenerator:
                 "unit": "each",
                 "is_optional": False,
                 "assembly_sequence": seq,
+                "effective_from": current_eff_from,
+                "effective_to": None,
             })
             bom_id += 1
 
@@ -469,6 +537,8 @@ class SupplyChainGenerator:
                     "unit": "each",
                     "is_optional": False,
                     "assembly_sequence": seq,
+                    "effective_from": current_eff_from,
+                    "effective_to": None,
                 })
                 bom_id += 1
 
@@ -604,6 +674,18 @@ class SupplyChainGenerator:
         facility_ids = [f["id"] for f in self.facilities]
         modes = ["truck", "rail", "air", "sea"]
 
+        def get_route_status():
+            """~5% seasonal/suspended, 95% active."""
+            r = random.random()
+            if r < 0.02:
+                return False, "suspended"
+            elif r < 0.04:
+                return True, "seasonal"
+            elif r < 0.05:
+                return False, "discontinued"
+            else:
+                return True, "active"
+
         # Named facility IDs (based on named_facilities order):
         # 1=Chicago Warehouse, 2=LA Distribution, 3=NYC Factory, 4=Shanghai Hub,
         # 5=Munich Factory, 6=Denver Hub, 7=Miami Hub, 8=Seattle Warehouse
@@ -644,6 +726,7 @@ class SupplyChainGenerator:
                 "cost_usd": cost,
                 "capacity_tons": round(random.uniform(50, 500), 2),
                 "is_active": True,
+                "route_status": "active",
             })
             existing_routes.add((origin, dest, mode))
             route_id += 1
@@ -662,6 +745,7 @@ class SupplyChainGenerator:
             for origin, dest in [(from_id, to_id), (to_id, from_id)]:
                 mode = random.choice(modes)
                 if (origin, dest, mode) not in existing_routes:
+                    is_active, status = get_route_status()
                     self.transport_routes.append({
                         "id": route_id,
                         "origin_facility_id": origin,
@@ -671,7 +755,8 @@ class SupplyChainGenerator:
                         "transit_time_hours": round(random.uniform(4, 120), 2),
                         "cost_usd": round(random.uniform(100, 10000), 2),
                         "capacity_tons": round(random.uniform(10, 1000), 2),
-                        "is_active": True,
+                        "is_active": is_active,
+                        "route_status": status,
                     })
                     existing_routes.add((origin, dest, mode))
                     route_id += 1
@@ -685,6 +770,7 @@ class SupplyChainGenerator:
 
             if (from_id, to_id, mode) not in existing_routes:
                 existing_routes.add((from_id, to_id, mode))
+                is_active, status = get_route_status()
                 self.transport_routes.append({
                     "id": route_id,
                     "origin_facility_id": from_id,
@@ -694,7 +780,8 @@ class SupplyChainGenerator:
                     "transit_time_hours": round(random.uniform(4, 120), 2),
                     "cost_usd": round(random.uniform(100, 10000), 2),
                     "capacity_tons": round(random.uniform(10, 1000), 2),
-                    "is_active": random.random() > 0.1,
+                    "is_active": is_active,
+                    "route_status": status,
                 })
                 route_id += 1
 
@@ -737,13 +824,12 @@ class SupplyChainGenerator:
             })
 
     def generate_orders(self, count: int):
-        """Generate orders with items and shipments."""
+        """Generate orders with items (composite key) and shipments."""
         statuses = ["pending", "confirmed", "shipped", "delivered", "cancelled"]
         facility_ids = [f["id"] for f in self.facilities]
         product_ids = [p["id"] for p in self.products]
         customer_ids = [c["id"] for c in self.customers]
 
-        order_item_id = 1
         shipment_id = 1
 
         # Named orders for testing (first few orders get specific numbers)
@@ -771,19 +857,19 @@ class SupplyChainGenerator:
                 "shipping_cost": round(random.uniform(50, 200), 2),
             })
 
-            # Add order items
-            for _ in range(random.randint(2, 5)):
+            # Add order items with line_number (SAP-style composite key)
+            num_items = random.randint(2, 5)
+            for line_num in range(1, num_items + 1):
                 self.order_items.append({
-                    "id": order_item_id,
                     "order_id": order_id,
+                    "line_number": line_num,
                     "product_id": random.choice(product_ids[:10]),  # Named products first
                     "quantity": random.randint(1, 5),
                     "unit_price": round(random.uniform(100, 500), 2),
                     "discount_percent": 0,
                 })
-                order_item_id += 1
 
-            # Add shipment for shipped/delivered
+            # Add shipment for shipped/delivered (order_fulfillment type)
             if status in ["shipped", "delivered"]:
                 self.shipments.append({
                     "id": shipment_id,
@@ -792,6 +878,7 @@ class SupplyChainGenerator:
                     "origin_facility_id": 1,  # Chicago Warehouse
                     "destination_facility_id": 2,  # LA Distribution Center
                     "transport_route_id": None,
+                    "shipment_type": "order_fulfillment",
                     "carrier": "Priority Logistics",
                     "tracking_number": fake.bothify("??#########??"),
                     "status": "delivered" if status == "delivered" else "in_transit",
@@ -825,28 +912,27 @@ class SupplyChainGenerator:
                 "shipping_cost": round(random.uniform(10, 200), 2),
             })
 
-            # Generate 1-5 order items
+            # Generate 1-5 order items with line_number (SAP-style composite key)
             num_items = random.randint(1, 5)
             total = Decimal("0")
-            for _ in range(num_items):
+            for line_num in range(1, num_items + 1):
                 quantity = random.randint(1, 10)
                 unit_price = round(random.uniform(10, 500), 2)
                 discount = round(random.uniform(0, 15), 2) if random.random() > 0.7 else 0
 
                 self.order_items.append({
-                    "id": order_item_id,
                     "order_id": order_id,
+                    "line_number": line_num,
                     "product_id": random.choice(product_ids),
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "discount_percent": discount,
                 })
                 total += Decimal(str(quantity * unit_price * (1 - discount / 100)))
-                order_item_id += 1
 
             self.orders[-1]["total_amount"] = round(float(total), 2)
 
-            # Generate shipment for shipped orders
+            # Generate shipment for shipped orders (order_fulfillment type)
             if status in ["shipped", "delivered"]:
                 origin = random.choice(facility_ids)
                 dest = random.choice([f for f in facility_ids if f != origin])
@@ -865,6 +951,7 @@ class SupplyChainGenerator:
                     "origin_facility_id": origin,
                     "destination_facility_id": dest,
                     "transport_route_id": route["id"] if route else None,
+                    "shipment_type": "order_fulfillment",
                     "carrier": fake.company() + " Logistics",
                     "tracking_number": fake.bothify("??#########??"),
                     "status": "delivered" if status == "delivered" else "in_transit",
@@ -874,6 +961,86 @@ class SupplyChainGenerator:
                     "cost_usd": round(random.uniform(20, 500), 2),
                 })
                 shipment_id += 1
+
+    def generate_additional_shipments(self):
+        """
+        Generate additional shipments for transfer and replenishment types.
+
+        Target distribution of all shipments:
+        - 70% order_fulfillment (already generated in generate_orders)
+        - 20% transfer (facility-to-facility, NULL order_id)
+        - 10% replenishment (supplier-to-facility inbound)
+
+        Target: ~50,000 total shipments
+        """
+        # Get current shipment count (order_fulfillment already generated)
+        current_count = len(self.shipments)
+        # Estimate total needed: current is 70%, we need 30% more
+        target_additional = int(current_count * 0.43)  # 30/70 ratio ≈ 0.43
+
+        transfer_count = int(target_additional * 0.67)  # 20% of total → ~67% of additional
+        replenishment_count = target_additional - transfer_count  # 10% of total → ~33% of additional
+
+        facility_ids = [f["id"] for f in self.facilities]
+        shipment_id = max(s["id"] for s in self.shipments) + 1 if self.shipments else 1
+
+        # Generate transfer shipments (facility-to-facility, no order)
+        for _ in range(transfer_count):
+            origin = random.choice(facility_ids)
+            dest = random.choice([f for f in facility_ids if f != origin])
+
+            # Find a route if exists
+            route = next(
+                (r for r in self.transport_routes
+                 if r["origin_facility_id"] == origin and r["destination_facility_id"] == dest),
+                None
+            )
+
+            ship_date = fake.date_time_between(start_date="-2y", end_date="now")
+            is_delivered = random.random() > 0.2
+
+            self.shipments.append({
+                "id": shipment_id,
+                "shipment_number": f"TRF-{shipment_id:08d}",
+                "order_id": None,  # No order for transfers
+                "origin_facility_id": origin,
+                "destination_facility_id": dest,
+                "transport_route_id": route["id"] if route else None,
+                "shipment_type": "transfer",
+                "carrier": random.choice(["Internal Fleet", "Contract Carrier", fake.company() + " Transport"]),
+                "tracking_number": fake.bothify("TRF??#########"),
+                "status": "delivered" if is_delivered else random.choice(["pending", "in_transit"]),
+                "shipped_at": ship_date,
+                "delivered_at": ship_date + timedelta(days=random.randint(1, 14)) if is_delivered else None,
+                "weight_kg": round(random.uniform(10, 500), 2),
+                "cost_usd": round(random.uniform(100, 2000), 2),
+            })
+            shipment_id += 1
+
+        # Generate replenishment shipments (inbound from supplier)
+        for _ in range(replenishment_count):
+            dest = random.choice(facility_ids)
+
+            ship_date = fake.date_time_between(start_date="-2y", end_date="now")
+            is_delivered = random.random() > 0.15
+
+            self.shipments.append({
+                "id": shipment_id,
+                "shipment_number": f"REP-{shipment_id:08d}",
+                "order_id": None,  # No customer order for replenishment
+                "origin_facility_id": random.choice(facility_ids),  # Could be supplier warehouse
+                "destination_facility_id": dest,
+                "transport_route_id": None,
+                "shipment_type": "replenishment",
+                "carrier": random.choice(["Supplier Direct", fake.company() + " Freight", "LTL Consolidated"]),
+                "tracking_number": fake.bothify("REP??#########"),
+                "status": "delivered" if is_delivered else random.choice(["pending", "in_transit"]),
+                "shipped_at": ship_date,
+                "delivered_at": ship_date + timedelta(days=random.randint(3, 21)) if is_delivered else None,
+                "weight_kg": round(random.uniform(50, 2000), 2),
+                "cost_usd": round(random.uniform(200, 5000), 2),
+            })
+            shipment_id += 1
 
     def generate_inventory(self):
         """Generate inventory records for parts at facilities."""
@@ -948,9 +1115,10 @@ class SupplyChainGenerator:
         lines.append("-- Supplier Relationships")
         for sr in self.supplier_relationships:
             lines.append(
-                f"INSERT INTO supplier_relationships (id, seller_id, buyer_id, relationship_type, contract_start_date, is_primary) "
+                f"INSERT INTO supplier_relationships (id, seller_id, buyer_id, relationship_type, contract_start_date, is_primary, is_active, relationship_status) "
                 f"VALUES ({sr['id']}, {sr['seller_id']}, {sr['buyer_id']}, {sql_str(sr['relationship_type'])}, "
-                f"{sql_date(sr.get('contract_start_date'))}, {sql_bool(sr['is_primary'])});"
+                f"{sql_date(sr.get('contract_start_date'))}, {sql_bool(sr['is_primary'])}, "
+                f"{sql_bool(sr.get('is_active', True))}, {sql_str(sr.get('relationship_status', 'active'))});"
             )
         lines.append(f"SELECT setval('supplier_relationships_id_seq', {max(sr['id'] for sr in self.supplier_relationships)});")
         lines.append("")
@@ -972,9 +1140,10 @@ class SupplyChainGenerator:
         lines.append("-- Bill of Materials")
         for b in self.bom:
             lines.append(
-                f"INSERT INTO bill_of_materials (id, parent_part_id, child_part_id, quantity, unit, is_optional, assembly_sequence) "
+                f"INSERT INTO bill_of_materials (id, parent_part_id, child_part_id, quantity, unit, is_optional, assembly_sequence, effective_from, effective_to) "
                 f"VALUES ({b['id']}, {b['parent_part_id']}, {b['child_part_id']}, {b['quantity']}, "
-                f"{sql_str(b['unit'])}, {sql_bool(b['is_optional'])}, {sql_num(b.get('assembly_sequence'))});"
+                f"{sql_str(b['unit'])}, {sql_bool(b['is_optional'])}, {sql_num(b.get('assembly_sequence'))}, "
+                f"{sql_date(b.get('effective_from'))}, {sql_date(b.get('effective_to'))});"
             )
         lines.append(f"SELECT setval('bill_of_materials_id_seq', {max(b['id'] for b in self.bom)});")
         lines.append("")
@@ -1030,10 +1199,10 @@ class SupplyChainGenerator:
         for tr in self.transport_routes:
             lines.append(
                 f"INSERT INTO transport_routes (id, origin_facility_id, destination_facility_id, transport_mode, "
-                f"distance_km, transit_time_hours, cost_usd, capacity_tons, is_active) "
+                f"distance_km, transit_time_hours, cost_usd, capacity_tons, is_active, route_status) "
                 f"VALUES ({tr['id']}, {tr['origin_facility_id']}, {tr['destination_facility_id']}, {sql_str(tr['transport_mode'])}, "
                 f"{sql_num(tr['distance_km'])}, {sql_num(tr['transit_time_hours'])}, {sql_num(tr['cost_usd'])}, "
-                f"{sql_num(tr['capacity_tons'])}, {sql_bool(tr['is_active'])});"
+                f"{sql_num(tr['capacity_tons'])}, {sql_bool(tr['is_active'])}, {sql_str(tr.get('route_status', 'active'))});"
             )
         lines.append(f"SELECT setval('transport_routes_id_seq', {max(tr['id'] for tr in self.transport_routes)});")
         lines.append("")
@@ -1063,25 +1232,26 @@ class SupplyChainGenerator:
         lines.append(f"SELECT setval('orders_id_seq', {max(o['id'] for o in self.orders)});")
         lines.append("")
 
-        # Order Items
-        lines.append("-- Order Items")
+        # Order Items (composite key: order_id, line_number)
+        lines.append("-- Order Items (SAP-style composite key)")
         for oi in self.order_items:
             lines.append(
-                f"INSERT INTO order_items (id, order_id, product_id, quantity, unit_price, discount_percent) "
-                f"VALUES ({oi['id']}, {oi['order_id']}, {oi['product_id']}, {oi['quantity']}, "
+                f"INSERT INTO order_items (order_id, line_number, product_id, quantity, unit_price, discount_percent) "
+                f"VALUES ({oi['order_id']}, {oi['line_number']}, {oi['product_id']}, {oi['quantity']}, "
                 f"{sql_num(oi['unit_price'])}, {sql_num(oi.get('discount_percent', 0))});"
             )
-        lines.append(f"SELECT setval('order_items_id_seq', {max(oi['id'] for oi in self.order_items)});")
+        # No sequence for composite key table
         lines.append("")
 
-        # Shipments
+        # Shipments (with shipment_type)
         lines.append("-- Shipments")
         for sh in self.shipments:
             lines.append(
                 f"INSERT INTO shipments (id, shipment_number, order_id, origin_facility_id, destination_facility_id, "
-                f"transport_route_id, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) "
+                f"transport_route_id, shipment_type, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) "
                 f"VALUES ({sh['id']}, {sql_str(sh['shipment_number'])}, {sql_num(sh.get('order_id'))}, "
                 f"{sh['origin_facility_id']}, {sql_num(sh.get('destination_facility_id'))}, {sql_num(sh.get('transport_route_id'))}, "
+                f"{sql_str(sh.get('shipment_type', 'order_fulfillment'))}, "
                 f"{sql_str(sh.get('carrier'))}, {sql_str(sh.get('tracking_number'))}, {sql_str(sh['status'])}, "
                 f"{sql_timestamp(sh.get('shipped_at'))}, {sql_timestamp(sh.get('delivered_at'))}, "
                 f"{sql_num(sh.get('weight_kg'))}, {sql_num(sh.get('cost_usd'))});"

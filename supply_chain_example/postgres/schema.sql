@@ -39,6 +39,9 @@ CREATE TABLE supplier_relationships (
     contract_start_date DATE,
     contract_end_date DATE,
     is_primary BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    relationship_status VARCHAR(20) DEFAULT 'active'
+        CHECK (relationship_status IN ('active', 'suspended', 'terminated')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT no_self_supply CHECK (seller_id != buyer_id)
@@ -47,6 +50,7 @@ CREATE TABLE supplier_relationships (
 CREATE INDEX idx_supplier_rel_seller ON supplier_relationships(seller_id);
 CREATE INDEX idx_supplier_rel_buyer ON supplier_relationships(buyer_id);
 CREATE UNIQUE INDEX idx_supplier_rel_unique ON supplier_relationships(seller_id, buyer_id);
+CREATE INDEX idx_supplier_rel_active ON supplier_relationships(is_active) WHERE is_active = true;
 
 -- ============================================================================
 -- PARTS DOMAIN
@@ -83,6 +87,8 @@ CREATE TABLE bill_of_materials (
     is_optional BOOLEAN DEFAULT false,
     assembly_sequence INTEGER,
     notes TEXT,
+    effective_from DATE DEFAULT CURRENT_DATE,
+    effective_to DATE,  -- NULL = currently active
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT no_self_reference CHECK (parent_part_id != child_part_id)
@@ -90,7 +96,8 @@ CREATE TABLE bill_of_materials (
 
 CREATE INDEX idx_bom_parent ON bill_of_materials(parent_part_id);
 CREATE INDEX idx_bom_child ON bill_of_materials(child_part_id);
-CREATE UNIQUE INDEX idx_bom_unique ON bill_of_materials(parent_part_id, child_part_id);
+CREATE UNIQUE INDEX idx_bom_unique ON bill_of_materials(parent_part_id, child_part_id, effective_from);
+CREATE INDEX idx_bom_effective ON bill_of_materials(effective_from, effective_to);
 
 -- Alternate suppliers for parts (many-to-many)
 CREATE TABLE part_suppliers (
@@ -181,6 +188,8 @@ CREATE TABLE transport_routes (
     cost_usd DECIMAL(12, 2),
     capacity_tons DECIMAL(10, 2),
     is_active BOOLEAN DEFAULT true,
+    route_status VARCHAR(20) DEFAULT 'active'
+        CHECK (route_status IN ('active', 'seasonal', 'suspended', 'discontinued')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT no_same_facility CHECK (origin_facility_id != destination_facility_id)
@@ -190,6 +199,7 @@ CREATE INDEX idx_transport_origin ON transport_routes(origin_facility_id);
 CREATE INDEX idx_transport_dest ON transport_routes(destination_facility_id);
 CREATE INDEX idx_transport_mode ON transport_routes(transport_mode);
 CREATE UNIQUE INDEX idx_transport_unique ON transport_routes(origin_facility_id, destination_facility_id, transport_mode);
+CREATE INDEX idx_transport_status ON transport_routes(route_status);
 
 -- ============================================================================
 -- INVENTORY DOMAIN
@@ -254,17 +264,19 @@ CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_date ON orders(order_date);
 CREATE INDEX idx_orders_facility ON orders(shipping_facility_id);
 
+-- Order items with SAP-style composite key (order_id, line_number)
+-- Following SAP VBAP pattern: Document Number + Item Number
 CREATE TABLE order_items (
-    id SERIAL PRIMARY KEY,
     order_id INTEGER NOT NULL REFERENCES orders(id),
+    line_number INTEGER NOT NULL,  -- Sequential within order (1, 2, 3...)
     product_id INTEGER NOT NULL REFERENCES products(id),
     quantity INTEGER NOT NULL,
     unit_price DECIMAL(12, 2) NOT NULL,
     discount_percent DECIMAL(5, 2) DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (order_id, line_number)  -- Composite key!
 );
 
-CREATE INDEX idx_order_items_order ON order_items(order_id);
 CREATE INDEX idx_order_items_product ON order_items(product_id);
 
 -- ============================================================================
@@ -278,6 +290,8 @@ CREATE TABLE shipments (
     origin_facility_id INTEGER NOT NULL REFERENCES facilities(id),
     destination_facility_id INTEGER REFERENCES facilities(id),
     transport_route_id INTEGER REFERENCES transport_routes(id),
+    shipment_type VARCHAR(20) DEFAULT 'order_fulfillment'
+        CHECK (shipment_type IN ('order_fulfillment', 'transfer', 'replenishment')),
     carrier VARCHAR(100),
     tracking_number VARCHAR(100),
     status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, in_transit, delivered, failed
@@ -294,6 +308,7 @@ CREATE INDEX idx_shipments_origin ON shipments(origin_facility_id);
 CREATE INDEX idx_shipments_dest ON shipments(destination_facility_id);
 CREATE INDEX idx_shipments_status ON shipments(status);
 CREATE INDEX idx_shipments_route ON shipments(transport_route_id);
+CREATE INDEX idx_shipments_type ON shipments(shipment_type);
 
 -- ============================================================================
 -- AUDIT / QUALITY DOMAIN

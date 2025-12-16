@@ -13,17 +13,21 @@ The supply chain domain models:
 
 ### Data Scale
 
-| Entity | Count |
-|--------|-------|
-| Suppliers | 500 |
-| Parts | 5,003 |
-| Products | 200 |
-| Facilities | 50 |
-| Customers | 1,000 |
-| Orders | 20,000 |
-| Supplier relationships | 817 |
-| Bill of materials | 14,283 |
-| Transport routes | 197 |
+| Entity | Count | Notes |
+|--------|-------|-------|
+| Orders | 80,000 | Customer orders |
+| Order Items | 239,985 | Composite key (order_id, line_number) |
+| Shipments | 45,737 | 70% fulfillment, 20% transfer, 10% replenishment |
+| Bill of Materials | 42,706 | With effectivity dates |
+| Inventory | 30,054 | Part × Facility |
+| Parts | 15,008 | 5-level BOM hierarchy |
+| Customers | 5,000 | Retail, wholesale, enterprise |
+| Suppliers | 1,000 | Tiered (T1/T2/T3) |
+| Supplier Relationships | 1,690 | ~10% inactive/suspended |
+| Transport Routes | 411 | ~5% seasonal/suspended |
+| Facilities | 100 | Warehouses, factories, DCs |
+| Products | 500 | Finished goods |
+| **Total** | **~488K** | |
 
 ## Setup
 

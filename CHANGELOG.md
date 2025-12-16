@@ -2,6 +2,66 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.9-data] - 2025-12-15
+
+### Breaking Changes
+
+- **`order_items` table now uses composite primary key** `(order_id, line_number)` instead of serial `id`
+  - Follows SAP VBAP pattern: Document Number + Item Number
+  - Queries must use `WHERE order_id = X AND line_number = Y` instead of `WHERE id = X`
+
+### Added
+
+- **Shipment Type Polymorphism** - `shipment_type` column with 3 types:
+  - `order_fulfillment` (70%): Customer order shipments with `order_id` FK
+  - `transfer` (20%): Inter-facility transfers, `order_id` is NULL
+  - `replenishment` (10%): Inbound from supplier, `order_id` is NULL
+  - Enables `sql_filter` demonstration for polymorphic relationships
+
+- **BOM Effectivity Dates** - Time-bounded bill of materials:
+  - `effective_from` (DATE): When component became active
+  - `effective_to` (DATE, nullable): When superseded (NULL = current)
+  - Distribution: 80% current, 15% superseded, 5% future
+  - Enables point-in-time BOM queries
+
+- **Supplier Relationship Status** - Track relationship health:
+  - `is_active` (BOOLEAN): Quick filter for active relationships
+  - `relationship_status` (VARCHAR): 'active', 'suspended', 'terminated'
+  - ~10% of relationships are inactive/suspended
+
+- **Transport Route Status** - Track route availability:
+  - `route_status` (VARCHAR): 'active', 'seasonal', 'suspended', 'discontinued'
+  - ~5% of routes are non-active
+
+### Changed
+
+- **Data volume scaled to ~500K rows** (was ~130K):
+  | Entity | Old | New |
+  |--------|-----|-----|
+  | Suppliers | 500 | 1,000 |
+  | Parts | 5,008 | 15,008 |
+  | BOM entries | 14,285 | 42,706 |
+  | Products | 200 | 500 |
+  | Facilities | 50 | 100 |
+  | Customers | 1,000 | 5,000 |
+  | Orders | 20,000 | 80,000 |
+  | Order Items | 60,246 | 239,985 |
+  | Shipments | 7,995 | 45,737 |
+  | Inventory | 10,032 | 30,054 |
+  | **Total** | ~130K | **~488K** |
+
+- `generate_data.py` updated with new data generation logic
+- `schema.sql` updated with new columns and composite key
+
+### Indexes Added
+
+- `idx_supplier_rel_active` - Partial index on active relationships
+- `idx_bom_effective` - Index on effectivity date range
+- `idx_transport_status` - Index on route status
+- `idx_shipments_type` - Index on shipment type
+
+---
+
 ## [0.9.8] - 2025-12-15
 
 ### Breaking Changes

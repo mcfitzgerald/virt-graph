@@ -203,21 +203,28 @@ The ontology classifies relationships by what operations they support:
 
 ### Data Overview
 
-**PostgreSQL** contains 16 relational tables:
+**PostgreSQL** contains 16 relational tables (~488K rows total):
 `audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`
 
-**Neo4j** contains graph nodes:
-| Node Type | Count |
-|-----------|-------|
-| Order | 20,000 |
-| Inventory | 10,032 |
-| Shipment | 7,995 |
-| Part | 5,008 |
-| Customer | 1,000 |
-| Certification | 707 |
-| Supplier | 500 |
-| Product | 200 |
-| Facility | 50 |
+| Entity | Rows | Notes |
+|--------|------|-------|
+| Orders | 80,000 | Customer orders |
+| Order Items | 239,985 | Composite key (order_id, line_number) |
+| Shipments | 45,737 | 70% fulfillment, 20% transfer, 10% replenishment |
+| BOM Entries | 42,706 | With effectivity dates (80% current, 15% superseded, 5% future) |
+| Inventory | 30,054 | Part × Facility |
+| Parts | 15,008 | 5-level BOM hierarchy |
+| Customers | 5,000 | Retail, wholesale, enterprise |
+| Suppliers | 1,000 | Tiered (T1/T2/T3) |
+| Facilities | 100 | Warehouses, factories, distribution centers |
+| Products | 500 | Finished goods |
+
+**Schema Enhancements (v0.9.9)**:
+- `order_items`: SAP-style composite key `(order_id, line_number)`
+- `shipments`: Polymorphic `shipment_type` (order_fulfillment, transfer, replenishment)
+- `bill_of_materials`: Effectivity dates (`effective_from`, `effective_to`)
+- `supplier_relationships`: Status tracking (`is_active`, `relationship_status`)
+- `transport_routes`: Route status (`route_status`)
 
 
 ### Example Queries
