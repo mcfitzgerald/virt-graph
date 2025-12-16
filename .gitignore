@@ -51,4 +51,5 @@ Thumbs.db
 
 # Project specific
 postgres/seed.sql
+supply_chain_example/postgres/seed.sql
 .specstory/
