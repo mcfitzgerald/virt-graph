@@ -48,11 +48,13 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 from faker import Faker
 
 fake = Faker()
 Faker.seed(42)
 random.seed(42)
+np.random.seed(42)
 
 # Output path
 OUTPUT_PATH = Path(__file__).parent.parent / "postgres" / "seed.sql"
@@ -138,6 +140,82 @@ def copy_timestamp(val: datetime | None) -> str:
     return val.isoformat()
 
 
+# =============================================================================
+# Distribution helpers for realistic data patterns
+# =============================================================================
+
+def create_zipf_weights(n: int, s: float = 1.2) -> np.ndarray:
+    """
+    Create Zipf/Pareto weights for n items.
+
+    With s=1.2, top 20% of items get ~80% of weight (Pareto principle).
+    Returns normalized probability weights that sum to 1.
+
+    Args:
+        n: Number of items
+        s: Zipf exponent (higher = more skewed). 1.2 gives ~80/20 distribution.
+    """
+    ranks = np.arange(1, n + 1)
+    weights = 1.0 / np.power(ranks, s)
+    return weights / weights.sum()
+
+
+def zipf_sample(items: list, weights: np.ndarray, size: int = 1) -> list:
+    """
+    Sample from items using pre-computed Zipf weights.
+
+    Args:
+        items: List of items to sample from
+        weights: Pre-computed Zipf weights (from create_zipf_weights)
+        size: Number of samples to draw
+
+    Returns:
+        List of sampled items (with replacement)
+    """
+    indices = np.random.choice(len(items), size=size, p=weights, replace=True)
+    return [items[i] for i in indices]
+
+
+def preferential_attachment_targets(
+    connection_counts: dict[int, int],
+    candidate_ids: list[int],
+    num_connections: int,
+    alpha: float = 1.0,
+) -> list[int]:
+    """
+    Select targets using Barabási-Albert preferential attachment.
+
+    Probability of connecting to node i is proportional to (degree_i + 1)^alpha.
+    The +1 ensures even nodes with 0 connections have some probability.
+
+    Args:
+        connection_counts: Dict mapping node_id -> current connection count
+        candidate_ids: List of possible target node IDs
+        num_connections: How many connections to make
+        alpha: Attachment exponent (1.0 = linear preferential attachment)
+
+    Returns:
+        List of selected target IDs (no duplicates)
+    """
+    if not candidate_ids:
+        return []
+
+    # Calculate attachment probabilities
+    degrees = np.array([connection_counts.get(nid, 0) + 1 for nid in candidate_ids], dtype=float)
+    probs = np.power(degrees, alpha)
+    probs /= probs.sum()
+
+    # Sample without replacement (each connection to unique target)
+    num_to_select = min(num_connections, len(candidate_ids))
+    selected_indices = np.random.choice(
+        len(candidate_ids),
+        size=num_to_select,
+        p=probs,
+        replace=False
+    )
+    return [candidate_ids[i] for i in selected_indices]
+
+
 class SupplyChainGenerator:
     """Generate interconnected supply chain data."""
 
@@ -178,6 +256,12 @@ class SupplyChainGenerator:
         self.factory_ids: list[int] = []  # Facilities that are factories (have work centers)
         self.supplier_hub_facility_ids: dict[str, int] = {}  # country -> hub facility_id
         self.dc_facility_ids: list[int] = []  # Distribution center facility IDs
+
+        # Realistic distribution tracking
+        self.super_hub_supplier_ids: list[int] = []  # Suppliers with 10x median connections
+        self.popular_product_ids: list[int] = []  # Top 20% products by order volume
+        self.product_zipf_weights: np.ndarray | None = None  # Pre-computed Zipf weights for products
+        self.supplier_connection_counts: dict[int, int] = {}  # Track connections for preferential attachment
 
     def generate_all(self):
         """Generate all data in dependency order."""
@@ -306,7 +390,14 @@ class SupplyChainGenerator:
                 supplier_id += 1
 
     def generate_supplier_relationships(self):
-        """Generate tier relationships: T3 → T2 → T1."""
+        """
+        Generate tier relationships: T3 → T2 → T1 using preferential attachment.
+
+        Uses Barabási-Albert model to create scale-free network:
+        - New suppliers connect preferentially to already well-connected suppliers
+        - Creates natural "super hub" suppliers with 10x median connections
+        - More realistic than uniform random connections
+        """
         rel_id = 1
 
         def get_relationship_status():
@@ -318,6 +409,11 @@ class SupplyChainGenerator:
                 return False, "terminated"
             else:
                 return True, "active"
+
+        # Initialize connection counts for all suppliers
+        for tier_ids in self.supplier_ids_by_tier.values():
+            for sid in tier_ids:
+                self.supplier_connection_counts[sid] = 0
 
         # First, ensure named supplier chain exists:
         # Eastern Electronics (T3, id=7) → Pacific Components (T2, id=4) → Acme Corp (T1, id=1)
@@ -340,18 +436,35 @@ class SupplyChainGenerator:
                 "is_active": True,
                 "relationship_status": "active",
             })
+            # Update connection counts (buyer gets the connection - "rich get richer")
+            self.supplier_connection_counts[buyer_id] = self.supplier_connection_counts.get(buyer_id, 0) + 1
             rel_id += 1
 
         # Track existing relationships to avoid duplicates
         existing_rels = {(r["seller_id"], r["buyer_id"]) for r in self.supplier_relationships}
 
-        # T3 suppliers sell to T2 suppliers
-        for t3_id in self.supplier_ids_by_tier[3]:
-            # Each T3 sells to 1-3 T2 suppliers
+        # T3 suppliers sell to T2 suppliers using preferential attachment
+        # Shuffle T3 suppliers to simulate arrival order in BA model
+        t3_shuffled = list(self.supplier_ids_by_tier[3])
+        random.shuffle(t3_shuffled)
+
+        for t3_id in t3_shuffled:
+            # Each T3 sells to 1-3 T2 suppliers, selected by preferential attachment
             num_buyers = random.randint(1, 3)
-            buyers = random.sample(self.supplier_ids_by_tier[2], min(num_buyers, len(self.supplier_ids_by_tier[2])))
-            for t2_id in buyers:
-                if (t3_id, t2_id) not in existing_rels:
+
+            # Get candidates (T2 suppliers not already connected to this T3)
+            candidates = [t2 for t2 in self.supplier_ids_by_tier[2] if (t3_id, t2) not in existing_rels]
+
+            if candidates:
+                # Use preferential attachment to select buyers
+                buyers = preferential_attachment_targets(
+                    self.supplier_connection_counts,
+                    candidates,
+                    num_buyers,
+                    alpha=1.0  # Linear preferential attachment
+                )
+
+                for t2_id in buyers:
                     is_active, status = get_relationship_status()
                     self.supplier_relationships.append({
                         "id": rel_id,
@@ -364,15 +477,30 @@ class SupplyChainGenerator:
                         "relationship_status": status,
                     })
                     existing_rels.add((t3_id, t2_id))
+                    # Update connection count for buyer (preferential attachment)
+                    self.supplier_connection_counts[t2_id] = self.supplier_connection_counts.get(t2_id, 0) + 1
                     rel_id += 1
 
-        # T2 suppliers sell to T1 suppliers
-        for t2_id in self.supplier_ids_by_tier[2]:
+        # T2 suppliers sell to T1 suppliers using preferential attachment
+        t2_shuffled = list(self.supplier_ids_by_tier[2])
+        random.shuffle(t2_shuffled)
+
+        for t2_id in t2_shuffled:
             # Each T2 sells to 1-2 T1 suppliers
             num_buyers = random.randint(1, 2)
-            buyers = random.sample(self.supplier_ids_by_tier[1], min(num_buyers, len(self.supplier_ids_by_tier[1])))
-            for t1_id in buyers:
-                if (t2_id, t1_id) not in existing_rels:
+
+            # Get candidates (T1 suppliers not already connected to this T2)
+            candidates = [t1 for t1 in self.supplier_ids_by_tier[1] if (t2_id, t1) not in existing_rels]
+
+            if candidates:
+                buyers = preferential_attachment_targets(
+                    self.supplier_connection_counts,
+                    candidates,
+                    num_buyers,
+                    alpha=1.0
+                )
+
+                for t1_id in buyers:
                     is_active, status = get_relationship_status()
                     self.supplier_relationships.append({
                         "id": rel_id,
@@ -385,7 +513,20 @@ class SupplyChainGenerator:
                         "relationship_status": status,
                     })
                     existing_rels.add((t2_id, t1_id))
+                    self.supplier_connection_counts[t1_id] = self.supplier_connection_counts.get(t1_id, 0) + 1
                     rel_id += 1
+
+        # Identify super hub suppliers (10x median connections)
+        connection_values = list(self.supplier_connection_counts.values())
+        if connection_values:
+            median_connections = float(np.median(connection_values))
+            threshold = max(median_connections * 10, 5)  # At least 5 connections to be a hub
+            self.super_hub_supplier_ids = [
+                sid for sid, count in self.supplier_connection_counts.items()
+                if count >= threshold
+            ]
+            print(f"  → Scale-free network: {len(self.super_hub_supplier_ids)} super hubs identified "
+                  f"(threshold: {threshold:.0f} connections, median: {median_connections:.1f})")
 
     def generate_parts_with_bom(self, count: int):
         """
@@ -750,6 +891,16 @@ class SupplyChainGenerator:
                 })
                 pc_id += 1
 
+        # Initialize Zipf weights for Pareto distribution (80/20 rule)
+        # Top 20% of products will receive ~80% of order volume
+        product_ids = [p["id"] for p in self.products]
+        self.product_zipf_weights = create_zipf_weights(len(product_ids), s=1.2)
+
+        # Track top 20% as "popular" products
+        top_20_pct = max(1, len(product_ids) // 5)
+        self.popular_product_ids = product_ids[:top_20_pct]
+        print(f"  → Pareto distribution: top {top_20_pct} products (~20%) will receive ~80% of orders")
+
     def generate_facilities(self, count: int):
         """Generate warehouses, factories, and distribution centers."""
         facility_types = ["warehouse", "factory", "distribution_center"]
@@ -967,11 +1118,37 @@ class SupplyChainGenerator:
             })
 
     def generate_orders(self, count: int):
-        """Generate orders with items (composite key) and shipments."""
+        """
+        Generate orders with items (composite key) and shipments.
+
+        Uses Zipf/Pareto distribution for product selection:
+        - Top 20% of products receive ~80% of order volume
+        - Creates realistic "bestseller" vs "long tail" pattern
+        """
         statuses = ["pending", "confirmed", "shipped", "delivered", "cancelled"]
         facility_ids = [f["id"] for f in self.facilities]
         product_ids = [p["id"] for p in self.products]
         customer_ids = [c["id"] for c in self.customers]
+
+        # Pre-sample products for all order items using Zipf distribution
+        # Estimate ~3 items per order on average (1-5 range)
+        estimated_total_items = count * 3
+        zipf_sampled_products = zipf_sample(
+            product_ids,
+            self.product_zipf_weights,
+            size=estimated_total_items
+        )
+        zipf_sample_idx = 0
+
+        def get_zipf_product():
+            """Get next pre-sampled product, or fallback to random."""
+            nonlocal zipf_sample_idx
+            if zipf_sample_idx < len(zipf_sampled_products):
+                product = zipf_sampled_products[zipf_sample_idx]
+                zipf_sample_idx += 1
+                return product
+            # Fallback if we run out (shouldn't happen often)
+            return zipf_sample(product_ids, self.product_zipf_weights, size=1)[0]
 
         shipment_id = 1
 
@@ -1066,7 +1243,7 @@ class SupplyChainGenerator:
                 self.order_items.append({
                     "order_id": order_id,
                     "line_number": line_num,
-                    "product_id": random.choice(product_ids),
+                    "product_id": get_zipf_product(),  # Pareto/Zipf distribution
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "discount_percent": discount,

@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.17] - 2025-12-16
+
+### Added
+
+- **SCOR Orchestrate Domain** - New `kpi_targets` table for performance measurement:
+  - Supports KPI categories: delivery, quality, cost, inventory, production
+  - Target values with warning/critical thresholds
+  - Product and facility-specific targets with effectivity dates
+  - Schema now has 26 tables (was 25)
+
+- **Realistic Data Distributions** - Addresses "Potemkin Village" feedback:
+  - **Pareto/Zipf for Orders**: Top 20% of products receive ~80% of order volume
+  - **Scale-Free Supplier Network**: Barabási-Albert preferential attachment creates natural "super hub" suppliers
+  - Tracks `popular_product_ids` and `super_hub_supplier_ids` for validation
+
+- **numpy dependency** - Added for statistical distributions (`numpy>=1.26`)
+
+### Changed
+
+- **Data Generator** (`generate_data.py`):
+  - Added `create_zipf_weights()` and `zipf_sample()` for Pareto distribution
+  - Added `preferential_attachment_targets()` for BA model
+  - `generate_supplier_relationships()` now uses preferential attachment
+  - `generate_orders()` uses Zipf-weighted product selection
+  - `generate_products()` initializes distribution weights
+
+### Technical
+
+- Pre-samples products using numpy for efficient Zipf distribution
+- Suppliers shuffled to simulate BA model arrival order
+- Super hubs identified as suppliers with 10x median connections
+
+---
+
 ## [0.9.16] - 2025-12-16
 
 ### Changed
@@ -16,10 +50,6 @@ All notable changes to this project will be documented in this file.
   - `effective_cache_size=512MB`, `synchronous_commit=off`
   - `wal_level=minimal`, `checkpoint_completion_target=0.9`
   - 1GB memory limit for consistent performance
-
-### Technical
-
-- Preparing for "realistic data" improvements (Pareto distribution, scale-free network, deep BOM cycles, OEE benchmarks)
 
 ---
 

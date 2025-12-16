@@ -563,6 +563,33 @@ CREATE TABLE return_items (
 CREATE INDEX idx_return_items_order ON return_items(order_id, order_line_number);
 
 -- ============================================================================
+-- ORCHESTRATE DOMAIN (SCOR Model)
+-- ============================================================================
+
+-- KPI targets for performance measurement against industry benchmarks
+-- Supports SCOR Orchestrate process: metrics like OTD, OEE, Perfect Order Rate
+CREATE TABLE kpi_targets (
+    id SERIAL PRIMARY KEY,
+    kpi_name VARCHAR(100) NOT NULL,
+    kpi_category VARCHAR(50) NOT NULL
+        CHECK (kpi_category IN ('delivery', 'quality', 'cost', 'inventory', 'production')),
+    target_value DECIMAL(12, 4) NOT NULL,
+    target_unit VARCHAR(20) NOT NULL,
+    threshold_warning DECIMAL(12, 4),
+    threshold_critical DECIMAL(12, 4),
+    effective_from DATE DEFAULT CURRENT_DATE,
+    effective_to DATE,
+    product_id INTEGER REFERENCES products(id),
+    facility_id INTEGER REFERENCES facilities(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_kpi_targets_category ON kpi_targets(kpi_category);
+CREATE INDEX idx_kpi_targets_product ON kpi_targets(product_id);
+CREATE INDEX idx_kpi_targets_facility ON kpi_targets(facility_id);
+CREATE INDEX idx_kpi_targets_effective ON kpi_targets(effective_from, effective_to);
+
+-- ============================================================================
 -- AUDIT / QUALITY DOMAIN
 -- ============================================================================
 
@@ -609,7 +636,7 @@ ALTER TABLE shipments ADD CONSTRAINT fk_shipments_return
     FOREIGN KEY (return_id) REFERENCES returns(id);
 
 -- ============================================================================
--- SUMMARY: 25 Tables
+-- SUMMARY: 26 Tables
 -- ============================================================================
 -- SUPPLIER DOMAIN:
 --   1. suppliers
@@ -646,8 +673,10 @@ ALTER TABLE shipments ADD CONSTRAINT fk_shipments_return
 -- RETURN DOMAIN (SCOR Model):
 --  23. returns
 --  24. return_items (composite key)
+-- ORCHESTRATE DOMAIN (SCOR Model):
+--  25. kpi_targets
 -- AUDIT / QUALITY DOMAIN:
---  25. supplier_certifications
+--  26. supplier_certifications
 -- + audit_log (utility table)
 
 -- ============================================================================
