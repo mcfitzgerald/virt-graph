@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.14] - 2025-12-16
+
+### Added
+
+- **`order_by` parameter for traversal handlers** - Enables sequence-aware result ordering:
+  - `fetch_nodes()` now accepts `order_by` parameter (e.g., `order_by="step_sequence"`)
+  - `traverse()`, `traverse_collecting()`, `path_aggregate()` pass through ordering
+  - Supports ascending (default) and descending (`"column DESC"`) ordering
+  - Critical for reconstructing production runs from `work_order_steps`
+
+- **Q69-Q85 benchmark questions** - 17 new questions covering Manufacturing Execution and Traceability:
+  - **Q69-Q76: Manufacturing Execution** - Demand-to-supply linking, capacity aggregation, work center utilization, performance analysis
+  - **Q77-Q85: Traceability & Quality (Genealogy)** - Component traceability, root cause analysis, impact radius, cost of quality, As-Built conformance
+
+- **New ontology relationship mappings** in annotated_questions.md:
+  - `FulfilledBy`: Order → WorkOrder
+  - `HasRouting`: Product → ProductionRouting
+  - `HasStep`: WorkOrder → WorkOrderStep
+  - `ForWorkOrder`: MaterialTransaction → WorkOrder
+  - `IssuesTo`: MaterialTransaction → Part
+  - `LocatedAt`: WorkCenter → Facility
+
+- **Dual-model table entries** for manufacturing:
+  - `material_transactions` as Node (scrap analysis) and Edge (traceability)
+  - `work_order_steps` as Node (performance) and Edge (capacity/queue)
+
+- **Design Notes section** in annotated_questions.md:
+  - As-Planned vs. As-Built path distinction
+  - MaterialTransaction dual-model usage
+  - Step sequence ordering requirements
+
+### Documentation
+
+- Updated `TODO.md` with Phase B manufacturing ontology implementation tasks
+- Updated question inventory from 68 to 85 questions
+- Updated summary statistics with new pattern types and handler counts
+
+---
+
 ## [0.9.13] - 2025-12-16
 
 ### Added

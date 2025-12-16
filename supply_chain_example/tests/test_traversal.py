@@ -9,7 +9,7 @@ structure.
 import pytest
 
 from virt_graph.handlers.base import get_connection
-from virt_graph.handlers.traversal import traverse_collecting
+from virt_graph.handlers.traversal import traverse, traverse_collecting
 
 
 @pytest.fixture
@@ -218,3 +218,112 @@ class TestTraverseCollecting:
 
         # Total traversed should be >= matching nodes
         assert result["total_traversed"] >= len(result["matching_nodes"])
+
+
+class TestOrderedTraversal:
+    """Tests for order_by parameter in traversal handlers."""
+
+    def test_traverse_with_order_by_step_sequence(self, conn):
+        """Verify order_by returns work order steps in sequence order."""
+        # Get a work order with steps
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT wo.id, COUNT(*) as step_count
+                FROM work_orders wo
+                JOIN work_order_steps wos ON wos.work_order_id = wo.id
+                GROUP BY wo.id
+                HAVING COUNT(*) >= 3
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("No work orders with steps found")
+            wo_id = row[0]
+
+        # Traverse to get steps (using direct node lookup with ordering)
+        from virt_graph.handlers.base import fetch_nodes
+
+        # Get step IDs for this work order
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM work_order_steps WHERE work_order_id = %s",
+                (wo_id,)
+            )
+            step_ids = [row[0] for row in cur.fetchall()]
+
+        # Fetch without ordering
+        unordered = fetch_nodes(conn, "work_order_steps", step_ids)
+
+        # Fetch with ordering
+        ordered = fetch_nodes(
+            conn, "work_order_steps", step_ids,
+            order_by="step_sequence"
+        )
+
+        # Verify ordered results are in step_sequence order
+        sequences = [step["step_sequence"] for step in ordered]
+        assert sequences == sorted(sequences), "Steps should be in sequence order"
+
+        # Verify we got the same number of results
+        assert len(ordered) == len(unordered)
+
+    def test_traverse_work_order_steps_ordered(self, conn):
+        """Test traverse with order_by for work order step traversal."""
+        # Get work order WO-2024-00001
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM work_orders WHERE wo_number = %s",
+                ('WO-2024-00001',)
+            )
+            row = cur.fetchone()
+            if row is None:
+                pytest.skip("Work order WO-2024-00001 not found")
+            wo_id = row[0]
+
+        # Note: For a true traversal test, we'd need to set up edges.
+        # This test uses direct fetch to verify order_by works
+        from virt_graph.handlers.base import fetch_nodes
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM work_order_steps WHERE work_order_id = %s",
+                (wo_id,)
+            )
+            step_ids = [row[0] for row in cur.fetchall()]
+
+        if not step_ids:
+            pytest.skip("No steps found for work order")
+
+        # Fetch ordered by step_sequence
+        steps = fetch_nodes(
+            conn, "work_order_steps", step_ids,
+            order_by="step_sequence"
+        )
+
+        # Verify ordering
+        for i in range(1, len(steps)):
+            assert steps[i]["step_sequence"] >= steps[i-1]["step_sequence"], \
+                f"Step {i} should have sequence >= step {i-1}"
+
+    def test_traverse_order_by_descending(self, conn):
+        """Test order_by with DESC for reverse ordering."""
+        from virt_graph.handlers.base import fetch_nodes
+
+        # Get any work order steps
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM work_order_steps LIMIT 10")
+            step_ids = [row[0] for row in cur.fetchall()]
+
+        if len(step_ids) < 2:
+            pytest.skip("Not enough work order steps")
+
+        # Fetch ordered descending
+        steps = fetch_nodes(
+            conn, "work_order_steps", step_ids,
+            order_by="step_sequence DESC"
+        )
+
+        # Verify descending order
+        sequences = [step["step_sequence"] for step in steps]
+        assert sequences == sorted(sequences, reverse=True), \
+            "Steps should be in descending sequence order"

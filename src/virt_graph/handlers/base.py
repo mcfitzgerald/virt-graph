@@ -440,6 +440,7 @@ def fetch_nodes(
     columns: list[str] | None = None,
     id_column: str | list[str] = "id",
     soft_delete_column: str | None = None,
+    order_by: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch node data for a list of node IDs.
@@ -454,9 +455,11 @@ def fetch_nodes(
         id_column: Name(s) of the ID column(s) - string or list for composite keys
         soft_delete_column: Column to check for soft-delete (e.g., "deleted_at").
                            If provided, only returns nodes where this column IS NULL.
+        order_by: Column to order results by (e.g., "step_sequence" for work order steps).
+                  Use "column_name DESC" for descending order.
 
     Returns:
-        List of node dicts with requested columns
+        List of node dicts with requested columns, ordered if order_by specified
     """
     if not node_ids:
         return []
@@ -498,6 +501,8 @@ def fetch_nodes(
     """
     if soft_delete_column:
         query += f" AND {soft_delete_column} IS NULL"
+    if order_by:
+        query += f" ORDER BY {order_by}"
 
     with conn.cursor() as cur:
         cur.execute(f"SET statement_timeout = '{QUERY_TIMEOUT_SEC * 1000}'")

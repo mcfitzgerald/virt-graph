@@ -55,6 +55,8 @@ def traverse(
     temporal_end_col: str | None = None,
     # Edge filtering
     sql_filter: str | None = None,
+    # Result ordering
+    order_by: str | None = None,
 ) -> dict[str, Any]:
     """
     Generic graph traversal using iterative frontier-batched BFS.
@@ -94,6 +96,8 @@ def traverse(
                          Required if valid_at is provided.
         sql_filter: SQL WHERE clause to filter edges (e.g., "is_active = true").
                    Applied during edge fetching. Combines with temporal filtering.
+        order_by: Column to order result nodes by (e.g., "step_sequence" for work order steps).
+                  Useful for sequential data like routing steps. Use "col DESC" for descending.
 
     Returns:
         dict with:
@@ -260,7 +264,8 @@ def traverse(
     nodes = fetch_nodes(
         conn, nodes_table, nodes_to_fetch, collect_columns,
         id_cols if len(id_cols) > 1 else id_cols[0],
-        soft_delete_column
+        soft_delete_column,
+        order_by,
     )
 
     return {
@@ -331,6 +336,7 @@ def traverse_collecting(
     collect_columns: list[str] | None = None,
     id_column: str | list[str] = "id",
     sql_filter: str | None = None,
+    order_by: str | None = None,
 ) -> dict[str, Any]:
     """
     Traverse graph and collect all nodes matching a target condition.
@@ -350,6 +356,8 @@ def traverse_collecting(
         max_depth: Maximum depth
         collect_columns: Columns to return
         id_column: ID column name
+        sql_filter: SQL WHERE clause to filter edges
+        order_by: Column to order result nodes by
 
     Returns:
         dict with matching nodes and traversal metadata
@@ -382,6 +390,7 @@ def traverse_collecting(
         include_start=False,
         id_column=id_column,
         sql_filter=sql_filter,
+        order_by=order_by,
     )
 
     # Normalize id_column to list
@@ -466,6 +475,8 @@ def path_aggregate(
     temporal_end_col: str | None = None,
     # Edge filtering
     sql_filter: str | None = None,
+    # Result ordering
+    order_by: str | None = None,
 ) -> dict[str, Any]:
     """
     Aggregate values along all paths from a start node.
@@ -498,6 +509,8 @@ def path_aggregate(
         valid_at: Point in time for temporal filtering
         temporal_start_col: Column containing edge start/effective date
         temporal_end_col: Column containing edge end/expiry date
+        sql_filter: SQL WHERE clause to filter edges
+        order_by: Column to order result nodes by
 
     Returns:
         PathAggregateResult dict with:
@@ -553,6 +566,7 @@ def path_aggregate(
         temporal_start_col=temporal_start_col,
         temporal_end_col=temporal_end_col,
         sql_filter=sql_filter,
+        order_by=order_by,
     )
 
     # Build the recursive CTE for path aggregation
