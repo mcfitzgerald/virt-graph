@@ -316,6 +316,135 @@ CREATE INDEX idx_shipments_route ON shipments(transport_route_id);
 CREATE INDEX idx_shipments_type ON shipments(shipment_type);
 
 -- ============================================================================
+-- MANUFACTURING EXECUTION DOMAIN
+-- ============================================================================
+
+-- Work centers - manufacturing capacity within factories
+CREATE TABLE work_centers (
+    id SERIAL PRIMARY KEY,
+    wc_code VARCHAR(20) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    facility_id INTEGER NOT NULL REFERENCES facilities(id),
+    work_center_type VARCHAR(50) NOT NULL
+        CHECK (work_center_type IN ('assembly', 'machining', 'fabrication', 'testing', 'packaging')),
+    capacity_per_day INTEGER,
+    efficiency_rating DECIMAL(3, 2) DEFAULT 0.85
+        CHECK (efficiency_rating >= 0.00 AND efficiency_rating <= 1.00),
+    hourly_rate_usd DECIMAL(10, 2),
+    setup_time_mins INTEGER DEFAULT 30,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_work_centers_facility ON work_centers(facility_id);
+CREATE INDEX idx_work_centers_type ON work_centers(work_center_type);
+CREATE INDEX idx_work_centers_active ON work_centers(is_active) WHERE is_active = true;
+
+-- Production routings - process steps to make a product
+CREATE TABLE production_routings (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    step_sequence INTEGER NOT NULL,  -- 10, 20, 30... SAP-style gaps
+    operation_name VARCHAR(100) NOT NULL,
+    work_center_id INTEGER NOT NULL REFERENCES work_centers(id),
+    setup_time_mins INTEGER DEFAULT 15,
+    run_time_per_unit_mins DECIMAL(8, 2) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    effective_from DATE DEFAULT CURRENT_DATE,
+    effective_to DATE,  -- NULL = currently active
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_routings_product ON production_routings(product_id);
+CREATE INDEX idx_routings_wc ON production_routings(work_center_id);
+CREATE UNIQUE INDEX idx_routings_unique ON production_routings(product_id, step_sequence, effective_from);
+CREATE INDEX idx_routings_effective ON production_routings(effective_from, effective_to);
+
+-- Work orders - the "make" signal for production
+CREATE TABLE work_orders (
+    id SERIAL PRIMARY KEY,
+    wo_number VARCHAR(30) UNIQUE NOT NULL,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    facility_id INTEGER NOT NULL REFERENCES facilities(id),
+    order_id INTEGER REFERENCES orders(id),  -- NULL for make-to-stock
+    order_type VARCHAR(20) NOT NULL DEFAULT 'make_to_order'
+        CHECK (order_type IN ('make_to_order', 'make_to_stock')),
+    priority INTEGER DEFAULT 3
+        CHECK (priority >= 1 AND priority <= 5),  -- 1=highest, 5=lowest
+    quantity_planned INTEGER NOT NULL,
+    quantity_completed INTEGER DEFAULT 0,
+    quantity_scrapped INTEGER DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'released'
+        CHECK (status IN ('released', 'in_progress', 'quality_hold', 'completed', 'cancelled')),
+    planned_start_date DATE,
+    planned_end_date DATE,
+    actual_start_date TIMESTAMP,
+    actual_end_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_work_orders_product ON work_orders(product_id);
+CREATE INDEX idx_work_orders_facility ON work_orders(facility_id);
+CREATE INDEX idx_work_orders_order ON work_orders(order_id);
+CREATE INDEX idx_work_orders_status ON work_orders(status);
+CREATE INDEX idx_work_orders_type ON work_orders(order_type);
+CREATE INDEX idx_work_orders_dates ON work_orders(planned_start_date, planned_end_date);
+
+-- Work order steps - execution progress through routing
+CREATE TABLE work_order_steps (
+    id SERIAL PRIMARY KEY,
+    work_order_id INTEGER NOT NULL REFERENCES work_orders(id),
+    routing_step_id INTEGER REFERENCES production_routings(id),
+    step_sequence INTEGER NOT NULL,
+    work_center_id INTEGER NOT NULL REFERENCES work_centers(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'in_progress', 'completed', 'skipped')),
+    quantity_in INTEGER,
+    quantity_out INTEGER,
+    quantity_scrapped INTEGER DEFAULT 0,
+    planned_start TIMESTAMP,
+    actual_start TIMESTAMP,
+    actual_end TIMESTAMP,
+    labor_hours DECIMAL(8, 2),
+    machine_hours DECIMAL(8, 2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_wo_steps_wo ON work_order_steps(work_order_id);
+CREATE INDEX idx_wo_steps_routing ON work_order_steps(routing_step_id);
+CREATE INDEX idx_wo_steps_wc ON work_order_steps(work_center_id);
+CREATE INDEX idx_wo_steps_status ON work_order_steps(status);
+
+-- Material transactions - WIP, consumption, and scrap tracking
+CREATE TABLE material_transactions (
+    id SERIAL PRIMARY KEY,
+    transaction_number VARCHAR(30) UNIQUE NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL
+        CHECK (transaction_type IN ('issue_to_wo', 'receipt_from_wo', 'scrap', 'return_to_stock')),
+    work_order_id INTEGER NOT NULL REFERENCES work_orders(id),
+    part_id INTEGER REFERENCES parts(id),       -- For issue/scrap: component consumed
+    product_id INTEGER REFERENCES products(id),  -- For receipt: product completed
+    facility_id INTEGER NOT NULL REFERENCES facilities(id),
+    quantity INTEGER NOT NULL,
+    unit_cost DECIMAL(12, 2),
+    reason_code VARCHAR(50),  -- For scrap: quality_defect, machine_error, operator_error, material_defect
+    reference_number VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(100)
+);
+
+CREATE INDEX idx_mtx_wo ON material_transactions(work_order_id);
+CREATE INDEX idx_mtx_part ON material_transactions(part_id);
+CREATE INDEX idx_mtx_product ON material_transactions(product_id);
+CREATE INDEX idx_mtx_facility ON material_transactions(facility_id);
+CREATE INDEX idx_mtx_type ON material_transactions(transaction_type);
+CREATE INDEX idx_mtx_date ON material_transactions(created_at);
+
+-- ============================================================================
 -- AUDIT / QUALITY DOMAIN
 -- ============================================================================
 
@@ -351,23 +480,37 @@ CREATE INDEX idx_audit_record ON audit_log(table_name, record_id);
 CREATE INDEX idx_audit_time ON audit_log(changed_at);
 
 -- ============================================================================
--- SUMMARY: 15 Tables
+-- SUMMARY: 20 Tables
 -- ============================================================================
--- 1. suppliers
--- 2. supplier_relationships (self-referential edges)
--- 3. parts
--- 4. bill_of_materials (recursive BOM edges)
--- 5. part_suppliers (many-to-many)
--- 6. products
--- 7. product_components
--- 8. facilities
--- 9. transport_routes (weighted edges)
--- 10. inventory
--- 11. customers
--- 12. orders
--- 13. order_items
--- 14. shipments
--- 15. supplier_certifications
+-- SUPPLIER DOMAIN:
+--   1. suppliers
+--   2. supplier_relationships (self-referential edges)
+-- PARTS DOMAIN:
+--   3. parts
+--   4. bill_of_materials (recursive BOM edges)
+--   5. part_suppliers (many-to-many)
+-- PRODUCTS DOMAIN:
+--   6. products
+--   7. product_components
+-- FACILITIES DOMAIN:
+--   8. facilities
+--   9. transport_routes (weighted edges)
+-- INVENTORY DOMAIN:
+--  10. inventory
+-- ORDERS DOMAIN:
+--  11. customers
+--  12. orders
+--  13. order_items (composite key)
+-- SHIPMENTS DOMAIN:
+--  14. shipments
+-- MANUFACTURING EXECUTION DOMAIN:
+--  15. work_centers
+--  16. production_routings
+--  17. work_orders
+--  18. work_order_steps
+--  19. material_transactions
+-- AUDIT / QUALITY DOMAIN:
+--  20. supplier_certifications
 -- + audit_log (utility table)
 
 -- ============================================================================

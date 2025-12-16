@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.13] - 2025-12-16
+
+### Added
+
+- **Manufacturing Execution Domain** - 5 new tables (~1.24M rows):
+  - `work_centers` (126 rows) - Manufacturing capacity at factories
+  - `production_routings` (2,002 rows) - Process steps per product (3-5 steps each)
+  - `work_orders` (120,000 rows) - Production orders (make-to-order/make-to-stock)
+  - `work_order_steps` (480,352 rows) - Execution progress through routing
+  - `material_transactions` (639,666 rows) - WIP, consumption, and scrap tracking
+
+- **Named manufacturing entities for testing**:
+  - `WC-ASM-01`, `WC-TEST-01`, `WC-PACK-01` - Named work centers at New York Factory
+  - `WC-MUN-ASM`, `WC-MUN-FAB` - Named work centers at Munich Factory
+  - `WO-2024-00001`, `WO-2024-00002`, `WO-2024-00003` - Named work orders
+
+- **Manufacturing relationships** (planned for ontology v2):
+  - Work center location, production routings, work order execution
+  - Material transactions with split relationships by type (issue, receipt, scrap)
+
+### Changed
+
+- **Data scale**: ~1.73M rows across 20 tables (was 500K across 16 tables)
+- Updated `generate_data.py` with manufacturing domain generation methods
+- Regenerated seed data (~518 MB) with full manufacturing execution layer
+
+### Documentation
+
+- Comprehensive overhaul of `data_description.md` with actual database statistics
+- Updated `README.md` with new table counts and manufacturing entities
+- Updated Phase B plan (`warm-swimming-crystal.md`) with manufacturing relationships and Q69-Q76
+
+---
+
 ## [0.9.12] - 2025-12-16
 
 ### Added

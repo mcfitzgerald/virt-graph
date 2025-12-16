@@ -2,7 +2,9 @@
 """
 Generate synthetic supply chain data for Virtual Graph POC.
 
-Target data volumes (~500K rows):
+Target data volumes (~1.6M rows across 20 tables):
+
+EXISTING DOMAIN (~500K rows):
 - 1,000 suppliers (tiered: 100 T1, 300 T2, 600 T3)
 - 15,000 parts with BOM hierarchy (avg depth: 5 levels)
 - 100 facilities with transport network
@@ -12,12 +14,22 @@ Target data volumes (~500K rows):
 - 50,000 BOM entries with effectivity dates
 - 30,000 inventory records
 
+MANUFACTURING EXECUTION DOMAIN (~1.1M new rows):
+- 150 work centers (3-5 per factory)
+- 2,500 production routings (3-5 steps per product)
+- 120,000 work orders (80% make-to-order, 20% make-to-stock)
+- 400,000 work order steps
+- 600,000 material transactions (issue, receipt, scrap)
+
 This generates realistic "enterprise messiness":
 - Composite keys (order_items)
 - BOM effectivity dates (80% current, 15% superseded, 5% future)
 - Shipment type polymorphism
 - Supplier relationship status (10% inactive/suspended)
 - Transport route status (5% seasonal/suspended)
+- Work order status (released, in_progress, quality_hold, completed, cancelled)
+- Material transaction types (issue_to_wo, receipt_from_wo, scrap, return_to_stock)
+- Scrap tracking with reason codes
 - Some nullable FKs
 - Realistic distributions
 - Named entities for testing
@@ -92,12 +104,19 @@ class SupplyChainGenerator:
         self.order_items: list[dict] = []
         self.shipments: list[dict] = []
         self.supplier_certifications: list[dict] = []
+        # Manufacturing execution domain
+        self.work_centers: list[dict] = []
+        self.production_routings: list[dict] = []
+        self.work_orders: list[dict] = []
+        self.work_order_steps: list[dict] = []
+        self.material_transactions: list[dict] = []
 
         # Track IDs for relationships
         self.supplier_ids_by_tier: dict[int, list[int]] = {1: [], 2: [], 3: []}
         self.part_ids: list[int] = []
         self.leaf_part_ids: list[int] = []  # Parts with no children (raw materials)
         self.top_part_ids: list[int] = []  # Parts that go into products
+        self.factory_ids: list[int] = []  # Facilities that are factories (have work centers)
 
     def generate_all(self):
         """Generate all data in dependency order."""
@@ -136,6 +155,22 @@ class SupplyChainGenerator:
 
         print("Generating supplier certifications...")
         self.generate_supplier_certifications()
+
+        # Manufacturing execution domain
+        print("Generating work centers...")
+        self.generate_work_centers()
+
+        print("Generating production routings...")
+        self.generate_production_routings()
+
+        print("Generating work orders...")
+        self.generate_work_orders(120000)
+
+        print("Generating work order steps...")
+        self.generate_work_order_steps()
+
+        print("Generating material transactions...")
+        self.generate_material_transactions()
 
     def generate_suppliers(self, count: int):
         """Generate tiered suppliers: 10% T1, 30% T2, 60% T3."""
@@ -657,8 +692,9 @@ class SupplyChainGenerator:
         ]
 
         for i, (code, name, ftype, city, state, country) in enumerate(named_facilities):
+            fac_id = i + 1
             self.facilities.append({
-                "id": i + 1,
+                "id": fac_id,
                 "facility_code": code,
                 "name": name,
                 "facility_type": ftype,
@@ -670,6 +706,8 @@ class SupplyChainGenerator:
                 "capacity_units": random.randint(10000, 100000),
                 "is_active": True,
             })
+            if ftype == "factory":
+                self.factory_ids.append(fac_id)
 
         start_id = len(named_facilities) + 1
         us_states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI"]
@@ -677,11 +715,12 @@ class SupplyChainGenerator:
 
         for fac_id in range(start_id, count + 1):
             country = random.choice(countries)
+            ftype = random.choice(facility_types)
             self.facilities.append({
                 "id": fac_id,
                 "facility_code": f"FAC-{fac_id:03d}",
                 "name": f"{fake.city()} {random.choice(['Warehouse', 'Distribution Center', 'Factory', 'Hub'])}",
-                "facility_type": random.choice(facility_types),
+                "facility_type": ftype,
                 "city": fake.city(),
                 "state": random.choice(us_states) if country == "USA" else None,
                 "country": country,
@@ -690,6 +729,8 @@ class SupplyChainGenerator:
                 "capacity_units": random.randint(5000, 100000),
                 "is_active": random.random() > 0.05,
             })
+            if ftype == "factory":
+                self.factory_ids.append(fac_id)
 
     def generate_transport_routes(self):
         """Generate transport routes between facilities (connected network)."""
@@ -1112,6 +1153,541 @@ class SupplyChainGenerator:
                     })
                     cert_id += 1
 
+    def generate_work_centers(self):
+        """Generate work centers at factory facilities."""
+        wc_id = 1
+
+        # Work center types and their naming patterns
+        wc_types = {
+            'assembly': ['Assembly Line', 'Final Assembly', 'Sub-Assembly Station'],
+            'machining': ['CNC Station', 'Lathe Cell', 'Mill Center', 'Grinding Bay'],
+            'fabrication': ['Welding Bay', 'Stamping Press', 'Forming Line', 'Cutting Station'],
+            'testing': ['QC Station', 'Test Bench', 'Burn-In Rack', 'Inspection Bay'],
+            'packaging': ['Pack Line', 'Shipping Prep', 'Kitting Station', 'Label Station']
+        }
+
+        # Named work centers for testing (at named factories: NYC=3, Munich=5)
+        named_wcs = [
+            ("WC-ASM-01", "Primary Assembly Line", 3, "assembly", 500, 0.92, 150.00),
+            ("WC-TEST-01", "Main Test Bench", 3, "testing", 200, 0.95, 120.00),
+            ("WC-PACK-01", "Packaging Line Alpha", 3, "packaging", 800, 0.88, 80.00),
+            ("WC-MUN-ASM", "Munich Assembly", 5, "assembly", 400, 0.90, 180.00),
+            ("WC-MUN-FAB", "Munich Fabrication", 5, "fabrication", 300, 0.85, 200.00),
+        ]
+
+        for wc_code, name, fac_id, wc_type, capacity, efficiency, hourly_rate in named_wcs:
+            self.work_centers.append({
+                "id": wc_id,
+                "wc_code": wc_code,
+                "name": name,
+                "facility_id": fac_id,
+                "work_center_type": wc_type,
+                "capacity_per_day": capacity,
+                "efficiency_rating": efficiency,
+                "hourly_rate_usd": hourly_rate,
+                "setup_time_mins": random.randint(15, 60),
+                "is_active": True,
+            })
+            wc_id += 1
+
+        # Generate 3-5 work centers per factory
+        for fac_id in self.factory_ids:
+            # Skip named factories (3=NYC, 5=Munich) - already have work centers
+            if fac_id in [3, 5]:
+                continue
+
+            num_wcs = random.randint(3, 5)
+            used_types = set()
+
+            for _ in range(num_wcs):
+                # Pick a type we haven't used at this factory
+                available_types = [t for t in wc_types.keys() if t not in used_types]
+                if not available_types:
+                    available_types = list(wc_types.keys())
+                wc_type = random.choice(available_types)
+                used_types.add(wc_type)
+
+                name_template = random.choice(wc_types[wc_type])
+                self.work_centers.append({
+                    "id": wc_id,
+                    "wc_code": f"WC-{fac_id:03d}-{wc_id:03d}",
+                    "name": f"{name_template} {random.choice(['A', 'B', 'C', '1', '2'])}",
+                    "facility_id": fac_id,
+                    "work_center_type": wc_type,
+                    "capacity_per_day": random.randint(100, 1000),
+                    "efficiency_rating": round(random.uniform(0.75, 0.98), 2),
+                    "hourly_rate_usd": round(random.uniform(50, 250), 2),
+                    "setup_time_mins": random.randint(10, 90),
+                    "is_active": random.random() > 0.05,
+                })
+                wc_id += 1
+
+    def generate_production_routings(self):
+        """Generate production routings (process steps) for products."""
+        routing_id = 1
+
+        # Operation templates by step type
+        operations = {
+            'setup': ['Receive materials', 'Stage components', 'Material verification'],
+            'pre_assembly': ['Pre-assembly inspection', 'Component sorting', 'Kit preparation'],
+            'assembly': ['Mechanical assembly', 'Wire harness assembly', 'Solder components',
+                        'Mount PCB', 'Sub-assembly integration'],
+            'calibration': ['Calibration', 'Alignment', 'Parameter tuning'],
+            'testing': ['Functional test', 'Burn-in test', 'Quality inspection', 'Performance test'],
+            'finishing': ['Final QC inspection', 'Packaging', 'Label and ship']
+        }
+
+        # Map operation categories to work center types
+        op_to_wc_type = {
+            'setup': ['assembly', 'fabrication'],
+            'pre_assembly': ['assembly'],
+            'assembly': ['assembly'],
+            'calibration': ['testing'],
+            'testing': ['testing'],
+            'finishing': ['packaging']
+        }
+
+        # Build WC lookup by facility and type
+        wc_by_facility_type: dict[tuple[int, str], list[int]] = {}
+        for wc in self.work_centers:
+            if wc["is_active"]:
+                key = (wc["facility_id"], wc["work_center_type"])
+                if key not in wc_by_facility_type:
+                    wc_by_facility_type[key] = []
+                wc_by_facility_type[key].append(wc["id"])
+
+        # Each product gets 3-5 routing steps
+        for product in self.products:
+            # Pick a factory for this product's routing
+            if not self.factory_ids:
+                continue
+            factory_id = random.choice(self.factory_ids)
+
+            # Generate 3-5 steps in sequence
+            num_steps = random.randint(3, 5)
+            step_categories = ['setup']
+
+            # Always have some assembly
+            step_categories.extend(random.sample(['pre_assembly', 'assembly'], min(num_steps - 2, 2)))
+
+            # Testing and finishing
+            if num_steps >= 4:
+                step_categories.append(random.choice(['calibration', 'testing']))
+            step_categories.append('finishing')
+
+            # Trim to exact num_steps
+            step_categories = step_categories[:num_steps]
+
+            for seq_idx, category in enumerate(step_categories):
+                sequence = (seq_idx + 1) * 10  # 10, 20, 30...
+                operation = random.choice(operations[category])
+
+                # Find a suitable work center
+                wc_id = None
+                for wc_type in op_to_wc_type.get(category, ['assembly']):
+                    candidates = wc_by_facility_type.get((factory_id, wc_type), [])
+                    if candidates:
+                        wc_id = random.choice(candidates)
+                        break
+
+                # Fallback to any WC at this factory
+                if wc_id is None:
+                    any_wc = [wc["id"] for wc in self.work_centers if wc["facility_id"] == factory_id]
+                    wc_id = random.choice(any_wc) if any_wc else 1
+
+                self.production_routings.append({
+                    "id": routing_id,
+                    "product_id": product["id"],
+                    "step_sequence": sequence,
+                    "operation_name": operation,
+                    "work_center_id": wc_id,
+                    "setup_time_mins": random.randint(5, 30),
+                    "run_time_per_unit_mins": round(random.uniform(0.5, 15.0), 2),
+                    "is_active": True,
+                    "effective_from": fake.date_between(start_date="-2y", end_date="-6m"),
+                    "effective_to": None,
+                })
+                routing_id += 1
+
+    def generate_work_orders(self, count: int):
+        """Generate work orders for production."""
+        wo_id = 1
+        product_ids = [p["id"] for p in self.products]
+        order_ids = [o["id"] for o in self.orders if o["status"] not in ["cancelled"]]
+
+        # Status distribution
+        def get_wo_status():
+            r = random.random()
+            if r < 0.05:
+                return "released"
+            elif r < 0.15:
+                return "in_progress"
+            elif r < 0.17:
+                return "quality_hold"
+            elif r < 0.97:
+                return "completed"
+            else:
+                return "cancelled"
+
+        # Named work orders for testing
+        named_wos = [
+            ("WO-2024-00001", 1, 3, 1, "make_to_order", 1, 100, "completed"),  # Product 1 at NYC Factory for Order 1
+            ("WO-2024-00002", 2, 5, 2, "make_to_order", 2, 50, "in_progress"),  # Product 2 at Munich for Order 2
+            ("WO-2024-00003", 3, 3, None, "make_to_stock", 3, 200, "completed"),  # Make-to-stock
+        ]
+
+        for wo_num, prod_id, fac_id, order_id, order_type, priority, qty, status in named_wos:
+            planned_start = fake.date_between(start_date="-6m", end_date="-1m")
+            planned_end = planned_start + timedelta(days=random.randint(1, 14))
+            actual_start = datetime.combine(planned_start, datetime.min.time()) + timedelta(hours=random.randint(0, 48))
+            actual_end = None
+            qty_completed = 0
+            qty_scrapped = 0
+
+            if status in ["completed", "quality_hold"]:
+                actual_end = actual_start + timedelta(hours=random.randint(8, 120))
+                scrap_rate = random.uniform(0.01, 0.08)
+                qty_scrapped = int(qty * scrap_rate)
+                qty_completed = qty - qty_scrapped
+
+            self.work_orders.append({
+                "id": wo_id,
+                "wo_number": wo_num,
+                "product_id": prod_id,
+                "facility_id": fac_id,
+                "order_id": order_id,
+                "order_type": order_type,
+                "priority": priority,
+                "quantity_planned": qty,
+                "quantity_completed": qty_completed,
+                "quantity_scrapped": qty_scrapped,
+                "status": status,
+                "planned_start_date": planned_start,
+                "planned_end_date": planned_end,
+                "actual_start_date": actual_start if status != "released" else None,
+                "actual_end_date": actual_end,
+            })
+            wo_id += 1
+
+        # Make-to-order WOs: ~80% of total, linked to orders
+        mto_count = int(count * 0.80)
+        # Make-to-stock WOs: ~20% of total, no order link
+        mts_count = count - mto_count
+
+        # Generate make-to-order work orders
+        for _ in range(mto_count - len([w for w in named_wos if w[4] == "make_to_order"])):
+            status = get_wo_status()
+            order_id = random.choice(order_ids) if order_ids else None
+            product_id = random.choice(product_ids)
+            facility_id = random.choice(self.factory_ids) if self.factory_ids else 1
+
+            planned_start = fake.date_between(start_date="-2y", end_date="today")
+            planned_end = planned_start + timedelta(days=random.randint(1, 21))
+            qty = random.randint(10, 500)
+
+            actual_start = None
+            actual_end = None
+            qty_completed = 0
+            qty_scrapped = 0
+
+            if status in ["in_progress", "completed", "quality_hold"]:
+                actual_start = datetime.combine(planned_start, datetime.min.time()) + timedelta(hours=random.randint(0, 48))
+
+            if status in ["completed", "quality_hold"]:
+                actual_end = actual_start + timedelta(hours=random.randint(8, 240)) if actual_start else None
+                scrap_rate = random.uniform(0.02, 0.10)
+                qty_scrapped = int(qty * scrap_rate)
+                qty_completed = qty - qty_scrapped if status == "completed" else int(qty * random.uniform(0.5, 0.9))
+
+            self.work_orders.append({
+                "id": wo_id,
+                "wo_number": f"WO-{wo_id:08d}",
+                "product_id": product_id,
+                "facility_id": facility_id,
+                "order_id": order_id,
+                "order_type": "make_to_order",
+                "priority": random.randint(1, 5),
+                "quantity_planned": qty,
+                "quantity_completed": qty_completed,
+                "quantity_scrapped": qty_scrapped,
+                "status": status,
+                "planned_start_date": planned_start,
+                "planned_end_date": planned_end,
+                "actual_start_date": actual_start,
+                "actual_end_date": actual_end,
+            })
+            wo_id += 1
+
+        # Generate make-to-stock work orders
+        for _ in range(mts_count - len([w for w in named_wos if w[4] == "make_to_stock"])):
+            status = get_wo_status()
+            product_id = random.choice(product_ids)
+            facility_id = random.choice(self.factory_ids) if self.factory_ids else 1
+
+            planned_start = fake.date_between(start_date="-2y", end_date="today")
+            planned_end = planned_start + timedelta(days=random.randint(1, 21))
+            qty = random.randint(50, 1000)  # Larger batches for make-to-stock
+
+            actual_start = None
+            actual_end = None
+            qty_completed = 0
+            qty_scrapped = 0
+
+            if status in ["in_progress", "completed", "quality_hold"]:
+                actual_start = datetime.combine(planned_start, datetime.min.time()) + timedelta(hours=random.randint(0, 48))
+
+            if status in ["completed", "quality_hold"]:
+                actual_end = actual_start + timedelta(hours=random.randint(8, 240)) if actual_start else None
+                scrap_rate = random.uniform(0.02, 0.10)
+                qty_scrapped = int(qty * scrap_rate)
+                qty_completed = qty - qty_scrapped if status == "completed" else int(qty * random.uniform(0.5, 0.9))
+
+            self.work_orders.append({
+                "id": wo_id,
+                "wo_number": f"WO-{wo_id:08d}",
+                "product_id": product_id,
+                "facility_id": facility_id,
+                "order_id": None,
+                "order_type": "make_to_stock",
+                "priority": random.randint(2, 5),  # Stock replenishment usually lower priority
+                "quantity_planned": qty,
+                "quantity_completed": qty_completed,
+                "quantity_scrapped": qty_scrapped,
+                "status": status,
+                "planned_start_date": planned_start,
+                "planned_end_date": planned_end,
+                "actual_start_date": actual_start,
+                "actual_end_date": actual_end,
+            })
+            wo_id += 1
+
+    def generate_work_order_steps(self):
+        """Generate work order steps tracking progress through routing."""
+        step_id = 1
+
+        # Build routing lookup by product
+        routings_by_product: dict[int, list[dict]] = {}
+        for r in self.production_routings:
+            pid = r["product_id"]
+            if pid not in routings_by_product:
+                routings_by_product[pid] = []
+            routings_by_product[pid].append(r)
+
+        # Sort routings by sequence
+        for pid in routings_by_product:
+            routings_by_product[pid].sort(key=lambda x: x["step_sequence"])
+
+        for wo in self.work_orders:
+            product_id = wo["product_id"]
+            routings = routings_by_product.get(product_id, [])
+
+            if not routings:
+                continue
+
+            # Generate step records for each routing step
+            qty_remaining = wo["quantity_planned"]
+
+            for i, routing in enumerate(routings):
+                # Determine step status based on WO status and position
+                if wo["status"] == "released":
+                    step_status = "pending"
+                    qty_in = None
+                    qty_out = None
+                    qty_scrapped = 0
+                elif wo["status"] == "cancelled":
+                    step_status = "skipped" if i > 0 else "pending"
+                    qty_in = None
+                    qty_out = None
+                    qty_scrapped = 0
+                elif wo["status"] == "in_progress":
+                    # Some steps completed, current one in progress, rest pending
+                    progress_point = random.randint(0, len(routings) - 1)
+                    if i < progress_point:
+                        step_status = "completed"
+                        qty_in = qty_remaining
+                        step_scrap = int(qty_remaining * random.uniform(0, 0.03))
+                        qty_scrapped = step_scrap
+                        qty_out = qty_remaining - step_scrap
+                        qty_remaining = qty_out
+                    elif i == progress_point:
+                        step_status = "in_progress"
+                        qty_in = qty_remaining
+                        qty_out = None
+                        qty_scrapped = 0
+                    else:
+                        step_status = "pending"
+                        qty_in = None
+                        qty_out = None
+                        qty_scrapped = 0
+                else:  # completed or quality_hold
+                    step_status = "completed"
+                    qty_in = qty_remaining
+                    step_scrap = int(qty_remaining * random.uniform(0, 0.03))
+                    qty_scrapped = step_scrap
+                    qty_out = qty_remaining - step_scrap
+                    qty_remaining = qty_out
+
+                # Timing
+                planned_start = None
+                actual_start = None
+                actual_end = None
+
+                if wo["actual_start_date"]:
+                    planned_start = wo["actual_start_date"] + timedelta(hours=i * random.randint(1, 8))
+                    if step_status in ["completed", "in_progress"]:
+                        actual_start = planned_start + timedelta(minutes=random.randint(-30, 60))
+                    if step_status == "completed":
+                        actual_end = actual_start + timedelta(minutes=random.randint(30, 480))
+
+                # Labor and machine hours
+                labor_hours = None
+                machine_hours = None
+                if step_status == "completed" and qty_out:
+                    run_time = routing["run_time_per_unit_mins"] * qty_out / 60
+                    setup_time = routing["setup_time_mins"] / 60
+                    machine_hours = round(setup_time + run_time, 2)
+                    labor_hours = round(machine_hours * random.uniform(0.8, 1.2), 2)
+
+                self.work_order_steps.append({
+                    "id": step_id,
+                    "work_order_id": wo["id"],
+                    "routing_step_id": routing["id"],
+                    "step_sequence": routing["step_sequence"],
+                    "work_center_id": routing["work_center_id"],
+                    "status": step_status,
+                    "quantity_in": qty_in,
+                    "quantity_out": qty_out,
+                    "quantity_scrapped": qty_scrapped,
+                    "planned_start": planned_start,
+                    "actual_start": actual_start,
+                    "actual_end": actual_end,
+                    "labor_hours": labor_hours,
+                    "machine_hours": machine_hours,
+                })
+                step_id += 1
+
+    def generate_material_transactions(self):
+        """Generate material transactions for WIP, consumption, and scrap."""
+        tx_id = 1
+
+        # Scrap reason distribution
+        scrap_reasons = [
+            ("quality_defect", 0.40),
+            ("machine_error", 0.25),
+            ("operator_error", 0.20),
+            ("material_defect", 0.15),
+        ]
+
+        def get_scrap_reason():
+            r = random.random()
+            cumulative = 0
+            for reason, prob in scrap_reasons:
+                cumulative += prob
+                if r < cumulative:
+                    return reason
+            return "quality_defect"
+
+        # For completed/in_progress WOs, generate material transactions
+        for wo in self.work_orders:
+            if wo["status"] in ["released", "cancelled"]:
+                continue
+
+            product_id = wo["product_id"]
+            facility_id = wo["facility_id"]
+            wo_start = wo.get("actual_start_date") or datetime.now()
+
+            # Find BOM for this product via product_components
+            # product -> product_components -> parts (top-level) -> BOM (children)
+            product_parts = [pc for pc in self.product_components if pc["product_id"] == product_id]
+
+            # Get child parts from BOM for each top-level part
+            consumed_parts = []
+            for pc in product_parts:
+                top_part_id = pc["part_id"]
+                # Find BOM entries where this is the parent
+                bom_entries = [b for b in self.bom if b["parent_part_id"] == top_part_id]
+                for bom in bom_entries:
+                    consumed_parts.append({
+                        "part_id": bom["child_part_id"],
+                        "qty_per_unit": bom["quantity"],
+                    })
+
+            # If no BOM found, use some random leaf parts
+            if not consumed_parts and self.leaf_part_ids:
+                for part_id in random.sample(self.leaf_part_ids, min(3, len(self.leaf_part_ids))):
+                    consumed_parts.append({
+                        "part_id": part_id,
+                        "qty_per_unit": random.randint(1, 5),
+                    })
+
+            # Issue transactions (material consumption)
+            for cp in consumed_parts[:5]:  # Limit to 5 parts per WO for manageable data
+                qty = cp["qty_per_unit"] * wo["quantity_planned"]
+
+                # Get unit cost from parts
+                part = next((p for p in self.parts if p["id"] == cp["part_id"]), None)
+                unit_cost = part["unit_cost"] if part else round(random.uniform(1, 50), 2)
+
+                self.material_transactions.append({
+                    "id": tx_id,
+                    "transaction_number": f"MTX-{tx_id:08d}",
+                    "transaction_type": "issue_to_wo",
+                    "work_order_id": wo["id"],
+                    "part_id": cp["part_id"],
+                    "product_id": None,
+                    "facility_id": facility_id,
+                    "quantity": qty,
+                    "unit_cost": unit_cost,
+                    "reason_code": None,
+                    "reference_number": wo["wo_number"],
+                    "created_at": wo_start + timedelta(minutes=random.randint(0, 60)),
+                    "created_by": random.choice(["system", "operator", "supervisor"]),
+                })
+                tx_id += 1
+
+                # Scrap transaction for some issues (~5% scrap rate)
+                if random.random() < 0.05:
+                    scrap_qty = max(1, int(qty * random.uniform(0.01, 0.10)))
+                    self.material_transactions.append({
+                        "id": tx_id,
+                        "transaction_number": f"MTX-{tx_id:08d}",
+                        "transaction_type": "scrap",
+                        "work_order_id": wo["id"],
+                        "part_id": cp["part_id"],
+                        "product_id": None,
+                        "facility_id": facility_id,
+                        "quantity": scrap_qty,
+                        "unit_cost": unit_cost,
+                        "reason_code": get_scrap_reason(),
+                        "reference_number": wo["wo_number"],
+                        "created_at": wo_start + timedelta(hours=random.randint(1, 24)),
+                        "created_by": random.choice(["qc_inspector", "operator", "supervisor"]),
+                    })
+                    tx_id += 1
+
+            # Receipt transaction (product completion) - only for completed WOs
+            if wo["status"] == "completed" and wo["quantity_completed"] > 0:
+                # Get product list price as cost basis
+                product = next((p for p in self.products if p["id"] == product_id), None)
+                unit_cost = product["list_price"] * 0.6 if product else round(random.uniform(50, 500), 2)  # ~60% of list
+
+                self.material_transactions.append({
+                    "id": tx_id,
+                    "transaction_number": f"MTX-{tx_id:08d}",
+                    "transaction_type": "receipt_from_wo",
+                    "work_order_id": wo["id"],
+                    "part_id": None,
+                    "product_id": product_id,
+                    "facility_id": facility_id,
+                    "quantity": wo["quantity_completed"],
+                    "unit_cost": unit_cost,
+                    "reason_code": None,
+                    "reference_number": wo["wo_number"],
+                    "created_at": wo["actual_end_date"] if wo["actual_end_date"] else wo_start + timedelta(days=1),
+                    "created_by": "system",
+                })
+                tx_id += 1
+
     def to_sql(self) -> str:
         """Generate SQL INSERT statements."""
         lines = [
@@ -1313,6 +1889,85 @@ class SupplyChainGenerator:
             lines.append(f"SELECT setval('supplier_certifications_id_seq', {max(sc['id'] for sc in self.supplier_certifications)});")
         lines.append("")
 
+        # Work Centers
+        lines.append("-- Work Centers")
+        for wc in self.work_centers:
+            lines.append(
+                f"INSERT INTO work_centers (id, wc_code, name, facility_id, work_center_type, capacity_per_day, "
+                f"efficiency_rating, hourly_rate_usd, setup_time_mins, is_active) "
+                f"VALUES ({wc['id']}, {sql_str(wc['wc_code'])}, {sql_str(wc['name'])}, {wc['facility_id']}, "
+                f"{sql_str(wc['work_center_type'])}, {sql_num(wc.get('capacity_per_day'))}, "
+                f"{sql_num(wc.get('efficiency_rating'))}, {sql_num(wc.get('hourly_rate_usd'))}, "
+                f"{sql_num(wc.get('setup_time_mins'))}, {sql_bool(wc.get('is_active', True))});"
+            )
+        if self.work_centers:
+            lines.append(f"SELECT setval('work_centers_id_seq', {max(wc['id'] for wc in self.work_centers)});")
+        lines.append("")
+
+        # Production Routings
+        lines.append("-- Production Routings")
+        for pr in self.production_routings:
+            lines.append(
+                f"INSERT INTO production_routings (id, product_id, step_sequence, operation_name, work_center_id, "
+                f"setup_time_mins, run_time_per_unit_mins, is_active, effective_from, effective_to) "
+                f"VALUES ({pr['id']}, {pr['product_id']}, {pr['step_sequence']}, {sql_str(pr['operation_name'])}, "
+                f"{pr['work_center_id']}, {sql_num(pr.get('setup_time_mins'))}, {sql_num(pr['run_time_per_unit_mins'])}, "
+                f"{sql_bool(pr.get('is_active', True))}, {sql_date(pr.get('effective_from'))}, {sql_date(pr.get('effective_to'))});"
+            )
+        if self.production_routings:
+            lines.append(f"SELECT setval('production_routings_id_seq', {max(pr['id'] for pr in self.production_routings)});")
+        lines.append("")
+
+        # Work Orders
+        lines.append("-- Work Orders")
+        for wo in self.work_orders:
+            lines.append(
+                f"INSERT INTO work_orders (id, wo_number, product_id, facility_id, order_id, order_type, priority, "
+                f"quantity_planned, quantity_completed, quantity_scrapped, status, planned_start_date, planned_end_date, "
+                f"actual_start_date, actual_end_date) "
+                f"VALUES ({wo['id']}, {sql_str(wo['wo_number'])}, {wo['product_id']}, {wo['facility_id']}, "
+                f"{sql_num(wo.get('order_id'))}, {sql_str(wo['order_type'])}, {wo['priority']}, "
+                f"{wo['quantity_planned']}, {wo['quantity_completed']}, {wo['quantity_scrapped']}, "
+                f"{sql_str(wo['status'])}, {sql_date(wo.get('planned_start_date'))}, {sql_date(wo.get('planned_end_date'))}, "
+                f"{sql_timestamp(wo.get('actual_start_date'))}, {sql_timestamp(wo.get('actual_end_date'))});"
+            )
+        if self.work_orders:
+            lines.append(f"SELECT setval('work_orders_id_seq', {max(wo['id'] for wo in self.work_orders)});")
+        lines.append("")
+
+        # Work Order Steps
+        lines.append("-- Work Order Steps")
+        for ws in self.work_order_steps:
+            lines.append(
+                f"INSERT INTO work_order_steps (id, work_order_id, routing_step_id, step_sequence, work_center_id, "
+                f"status, quantity_in, quantity_out, quantity_scrapped, planned_start, actual_start, actual_end, "
+                f"labor_hours, machine_hours) "
+                f"VALUES ({ws['id']}, {ws['work_order_id']}, {sql_num(ws.get('routing_step_id'))}, {ws['step_sequence']}, "
+                f"{ws['work_center_id']}, {sql_str(ws['status'])}, {sql_num(ws.get('quantity_in'))}, "
+                f"{sql_num(ws.get('quantity_out'))}, {sql_num(ws.get('quantity_scrapped', 0))}, "
+                f"{sql_timestamp(ws.get('planned_start'))}, {sql_timestamp(ws.get('actual_start'))}, "
+                f"{sql_timestamp(ws.get('actual_end'))}, {sql_num(ws.get('labor_hours'))}, {sql_num(ws.get('machine_hours'))});"
+            )
+        if self.work_order_steps:
+            lines.append(f"SELECT setval('work_order_steps_id_seq', {max(ws['id'] for ws in self.work_order_steps)});")
+        lines.append("")
+
+        # Material Transactions
+        lines.append("-- Material Transactions")
+        for mt in self.material_transactions:
+            lines.append(
+                f"INSERT INTO material_transactions (id, transaction_number, transaction_type, work_order_id, part_id, "
+                f"product_id, facility_id, quantity, unit_cost, reason_code, reference_number, created_at, created_by) "
+                f"VALUES ({mt['id']}, {sql_str(mt['transaction_number'])}, {sql_str(mt['transaction_type'])}, "
+                f"{mt['work_order_id']}, {sql_num(mt.get('part_id'))}, {sql_num(mt.get('product_id'))}, "
+                f"{mt['facility_id']}, {mt['quantity']}, {sql_num(mt.get('unit_cost'))}, "
+                f"{sql_str(mt.get('reason_code'))}, {sql_str(mt.get('reference_number'))}, "
+                f"{sql_timestamp(mt.get('created_at'))}, {sql_str(mt.get('created_by'))});"
+            )
+        if self.material_transactions:
+            lines.append(f"SELECT setval('material_transactions_id_seq', {max(mt['id'] for mt in self.material_transactions)});")
+        lines.append("")
+
         lines.append("COMMIT;")
         lines.append("")
 
@@ -1332,7 +1987,12 @@ class SupplyChainGenerator:
             len(self.order_items) +
             len(self.shipments) +
             len(self.inventory) +
-            len(self.supplier_certifications)
+            len(self.supplier_certifications) +
+            len(self.work_centers) +
+            len(self.production_routings) +
+            len(self.work_orders) +
+            len(self.work_order_steps) +
+            len(self.material_transactions)
         )
 
         lines.append(f"-- Total rows: {total_rows:,}")
@@ -1351,6 +2011,11 @@ class SupplyChainGenerator:
         lines.append(f"-- Shipments: {len(self.shipments):,}")
         lines.append(f"-- Inventory: {len(self.inventory):,}")
         lines.append(f"-- Supplier Certifications: {len(self.supplier_certifications):,}")
+        lines.append(f"-- Work Centers: {len(self.work_centers):,}")
+        lines.append(f"-- Production Routings: {len(self.production_routings):,}")
+        lines.append(f"-- Work Orders: {len(self.work_orders):,}")
+        lines.append(f"-- Work Order Steps: {len(self.work_order_steps):,}")
+        lines.append(f"-- Material Transactions: {len(self.material_transactions):,}")
 
         return "\n".join(lines)
 

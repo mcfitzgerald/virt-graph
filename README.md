@@ -203,8 +203,8 @@ The ontology classifies relationships by what operations they support:
 
 ### Data Overview
 
-**PostgreSQL** contains 16 relational tables (~488K rows total):
-`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`
+**PostgreSQL** contains 20 relational tables (~1.6M rows total):
+`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `material_transactions`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `production_routings`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`, `work_centers`, `work_order_steps`, `work_orders`
 
 | Entity | Rows | Notes |
 |--------|------|-------|
@@ -218,6 +218,11 @@ The ontology classifies relationships by what operations they support:
 | Suppliers | 1,000 | Tiered (T1/T2/T3) |
 | Facilities | 100 | Warehouses, factories, distribution centers |
 | Products | 500 | Finished goods |
+| Material Transactions | 639,666 | WIP, consumption, scrap tracking |
+| Work Order Steps | 480,352 | Execution progress through routing |
+| Work Orders | 120,000 | Make-to-order and make-to-stock |
+| Production Routings | 2,002 | Process steps per product |
+| Work Centers | 126 | Manufacturing capacity at factories |
 
 **Schema Enhancements (v0.9.9)**:
 - `order_items`: SAP-style composite key `(order_id, line_number)`

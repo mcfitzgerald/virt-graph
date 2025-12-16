@@ -3,10 +3,13 @@
 ## Overview
 Fresh rewrite of `supply_chain.yaml` using metamodel v2.0/v2.1 features, following the guided direct write approach (protocol as checklist, not full interactive 4-round).
 
+**Data Scale:** ~1.6M rows across 20 tables (500K logistics + 1.1M manufacturing)
+
 ## Design Decisions (Confirmed)
 - **Discovery approach**: Guided direct write (protocol as checklist)
 - **Shipment polymorphism**: Split relationships with `sql_filter` (ForOrder, TransfersInventory, Replenishes)
 - **ContextBlocks**: Minimal - traversal_semantics on key relationships only
+- **Manufacturing domain**: 5 new entity classes, 12 new relationships
 
 ---
 
@@ -43,13 +46,17 @@ Add the following sections:
 - **Data source**: `supply_chain_example/postgres/schema.sql` - Tables, columns, FKs, constraints available
 - **Extension docs**: `docs/ontology/vg-extensions.md` - Detailed annotation documentation
 
-#### 3.1 Entity Classes (TBox) - 13 entities
-**Core Entities (9):**
+#### 3.1 Entity Classes (TBox) - 18 entities
+**Core Entities (14):**
 - Supplier, Part, Product, Facility, Customer, Order, Shipment, Inventory (implicit), AuditLog (utility)
-- This entitie list should be confirmed by introspecting schema, we  might have missed some things
+- **WorkCenter** (126 rows) - Manufacturing capacity at factories
+- **ProductionRouting** (2,002 rows) - Process steps to make products
+- **WorkOrder** (120,000 rows) - Production orders (make-to-order/make-to-stock)
+- **WorkOrderStep** (480,352 rows) - Execution progress through routing
+- **MaterialTransaction** (639,666 rows) - WIP, consumption, scrap tracking
 
 **Dual-Model Node Classes (4 new):**
-- NOTE: this was proposed during a reasearch step on how to build the ontology. Ultimately this should be discovered or defined interactively. it's good to start here but discover process should still think through others and make its own inference as to 
+- NOTE: this was proposed during a research step on how to build the ontology. Ultimately this should be discovered or defined interactively. It's good to start here but discover process should still think through others and make its own inference as to
 what could/should be dual modeled and can support this with web research if needed
 - **SupplierContract** - Node view of `supplier_relationships` (contract lifecycle)
 - **BOMEntry** - Node view of `bill_of_materials` (version management)
@@ -62,6 +69,7 @@ All entities get:
 
 #### 3.2 Relationship Classes (RBox) - Core Changes
 
+**Logistics Domain:**
 | Relationship | New Features |
 |--------------|--------------|
 | **SuppliesTo** | `sql_filter: "relationship_status = 'active'"`, `traversal_semantics` |
@@ -74,11 +82,29 @@ All entities get:
 | **TransfersInventory** (NEW) | `sql_filter: "shipment_type = 'transfer'"`, Facility → Facility (inter-warehouse) |
 | **Replenishes** (NEW) | `sql_filter: "shipment_type = 'replenishment'"`, Supplier → Facility (inbound stock) |
 
+**Manufacturing Execution Domain (NEW):**
+| Relationship | From → To | Features |
+|--------------|-----------|----------|
+| **LocatedAt** | WorkCenter → Facility | Direct join on `facility_id` |
+| **HasRouting** | Product → ProductionRouting | `temporal_bounds: {start: effective_from, end: effective_to}` |
+| **PerformedAt** | WorkOrder → Facility | Direct join on `facility_id` |
+| **Produces** | WorkOrder → Product | Direct join on `product_id` |
+| **FulfilledBy** | Order → WorkOrder | Optional FK (`order_id` nullable for make-to-stock), `sql_filter: "order_id IS NOT NULL"` |
+| **HasStep** | WorkOrder → WorkOrderStep | `traversal_semantics` for execution progress |
+| **UsesWorkCenter** | WorkOrderStep → WorkCenter | Via `work_center_id` |
+| **RoutingUsesWorkCenter** | ProductionRouting → WorkCenter | Via `work_center_id` |
+| **IssuesTo** | MaterialTransaction → Part | `sql_filter: "transaction_type = 'issue_to_wo'"`, tracks consumption |
+| **ReceivesFrom** | MaterialTransaction → Product | `sql_filter: "transaction_type = 'receipt_from_wo'"`, tracks production |
+| **ScrapsPart** | MaterialTransaction → Part | `sql_filter: "transaction_type = 'scrap'"`, `edge_attributes` for reason_code |
+| **ForWorkOrder** | MaterialTransaction → WorkOrder | All transaction types link to work order |
+
 #### 3.3 ContextBlocks (Minimal)
 Add `traversal_semantics` to these key relationships:
 - SuppliesTo (inbound/outbound supplier network)
 - ComponentOf/HasComponent (BOM explosion direction)
 - ConnectsTo (logistics routing)
+- HasStep (work order execution progress)
+- HasRouting (product manufacturing process)
 
 ### Step 4: Validate Ontology
 ```bash
@@ -142,10 +168,13 @@ The metamodel supports mapping one SQL table to both a Node (SQLMappedClass) and
 | `bill_of_materials` | BOMEntry | ComponentOf, HasComponent | "BOM versions expiring soon" | BOM explosion/where-used |
 | `transport_routes` | Route | ConnectsTo | "Routes needing review" | Shortest path algorithms |
 | `order_items` | OrderLineItem | OrderContains | "High-discount line items" | "Products in order X" |
+| `material_transactions` | MaterialTransaction | IssuesTo, ReceivesFrom, ScrapsPart | "Scrap transactions this month" | Material flow tracking |
+| `work_order_steps` | WorkOrderStep | HasStep, UsesWorkCenter | "Steps on quality hold" | WO execution progress |
 
 **Deferred (add later if needed):**
 - `part_suppliers` → SourcingAgreement node + CanSupply edge
 - `inventory` → InventoryRecord node + StocksAt edge
+- `production_routings` → RoutingStep node + HasRouting edge (if routing versioning queries needed)
 
 **Implementation:** Same table name in both `vg:table` (class) and `vg:edge_table` (relationship). No metamodel changes needed - it's a configuration choice.
 
@@ -158,6 +187,17 @@ The metamodel supports mapping one SQL table to both a Node (SQLMappedClass) and
 - Each question targets a specific v2.0 feature
 - Questions should be answerable with existing handler capabilities
 - Include questions that exercise both Node and Edge views of dual-modeled tables
+
+### Q69+ Manufacturing Questions (NEW)
+Add questions to exercise the manufacturing execution domain:
+- **Q69**: "What work centers are available at facility X?" (WorkCenter → Facility)
+- **Q70**: "Show the production routing for product 'Turbo Encabulator'" (Product → ProductionRouting)
+- **Q71**: "Find all work orders in 'quality_hold' status" (WorkOrder node query)
+- **Q72**: "What materials were consumed by work order WO-2024-00001?" (MaterialTransaction → Part via IssuesTo)
+- **Q73**: "Calculate total scrap by reason code this month" (MaterialTransaction aggregation)
+- **Q74**: "Trace work order execution progress through all steps" (WorkOrder → WorkOrderStep traversal)
+- **Q75**: "Which work orders are fulfilling order #12345?" (Order → WorkOrder via FulfilledBy)
+- **Q76**: "Find bottleneck work centers with most in-progress steps" (WorkOrderStep → WorkCenter aggregation)
 
 ### UoM Handling (Implemented)
 **Status:** DONE - Schema and data updated
@@ -175,3 +215,27 @@ The BOM has mixed units (each, kg, m, L) which require conversion factors for we
 The metamodel's `edge_table` accepts any string - views work without metamodel changes. The view includes all required columns (parent_part_id, child_part_id, effective_from, effective_to).
 
 **Documentation:** See `supply_chain_example/data_description.md` § "Unit of Measure (UoM) Handling"
+
+### Manufacturing Execution Domain (NEW)
+**Status:** Schema and data implemented (v0.9.12)
+
+**Tables:**
+| Table | Rows | Graph Role |
+|-------|------|------------|
+| `work_centers` | 126 | Node - manufacturing capacity |
+| `production_routings` | 2,002 | Edge table (Product → WorkCenter via steps) |
+| `work_orders` | 120,000 | Node - production orders |
+| `work_order_steps` | 480,352 | Dual: Node + Edge (WO progress) |
+| `material_transactions` | 639,666 | Dual: Node + Edge (material flow) |
+
+**Key Graph Patterns:**
+1. **Product → Routing → WorkCenter**: How to manufacture a product
+2. **WorkOrder → Steps → WorkCenter**: Production execution progress
+3. **Order → WorkOrder → Product**: Make-to-order fulfillment chain
+4. **MaterialTransaction → Part/Product**: Material consumption and production tracking
+
+**Named Entities for Testing:**
+- `WC-ASM-01` - Primary assembly line (Chicago)
+- `WO-2024-00001` - Reference work order (Turbo Encabulator)
+
+**Documentation:** See `supply_chain_example/data_description.md` § "Manufacturing Execution Domain"
