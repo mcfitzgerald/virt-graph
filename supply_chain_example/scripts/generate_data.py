@@ -59,7 +59,7 @@ OUTPUT_PATH = Path(__file__).parent.parent / "postgres" / "seed.sql"
 
 
 def sql_str(val: str | None) -> str:
-    """Escape string for SQL."""
+    """Escape string for SQL INSERT statements."""
     if val is None:
         return "NULL"
     return "'" + val.replace("'", "''") + "'"
@@ -80,17 +80,62 @@ def sql_bool(val: bool | None) -> str:
 
 
 def sql_date(val: date | None) -> str:
-    """Format date for SQL."""
+    """Format date for SQL INSERT statements."""
     if val is None:
         return "NULL"
     return f"'{val.isoformat()}'"
 
 
 def sql_timestamp(val: datetime | None) -> str:
-    """Format timestamp for SQL."""
+    """Format timestamp for SQL INSERT statements."""
     if val is None:
         return "NULL"
     return f"'{val.isoformat()}'"
+
+
+# =============================================================================
+# COPY format helpers (PostgreSQL bulk loading - 10x faster than INSERT)
+# =============================================================================
+
+def copy_str(val: str | None) -> str:
+    """Escape string for PostgreSQL COPY format (tab-separated)."""
+    if val is None:
+        return r"\N"
+    # Escape backslashes, tabs, newlines, carriage returns
+    return (
+        val.replace("\\", "\\\\")
+        .replace("\t", "\\t")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+    )
+
+
+def copy_num(val: float | int | Decimal | None) -> str:
+    """Format number for COPY format."""
+    if val is None:
+        return r"\N"
+    return str(val)
+
+
+def copy_bool(val: bool | None) -> str:
+    """Format boolean for COPY format."""
+    if val is None:
+        return r"\N"
+    return "t" if val else "f"
+
+
+def copy_date(val: date | None) -> str:
+    """Format date for COPY format (ISO format, no quotes)."""
+    if val is None:
+        return r"\N"
+    return val.isoformat()
+
+
+def copy_timestamp(val: datetime | None) -> str:
+    """Format timestamp for COPY format (ISO format, no quotes)."""
+    if val is None:
+        return r"\N"
+    return val.isoformat()
 
 
 class SupplyChainGenerator:
@@ -2284,347 +2329,513 @@ class SupplyChainGenerator:
             return_id += 1
 
     def to_sql(self) -> str:
-        """Generate SQL INSERT statements."""
+        """Generate SQL using COPY format for fast bulk loading."""
         lines = [
             "-- Generated seed data for Virtual Graph POC",
             "-- DO NOT EDIT - regenerate with scripts/generate_data.py",
+            "-- Using PostgreSQL COPY format for 10x faster loading",
             "",
             "BEGIN;",
             "",
         ]
 
         # Suppliers
-        lines.append("-- Suppliers")
+        lines.append("-- Suppliers ({:,} rows)".format(len(self.suppliers)))
+        lines.append("COPY suppliers (id, supplier_code, name, tier, country, city, contact_email, credit_rating, is_active, created_by) FROM stdin;")
         for s in self.suppliers:
-            lines.append(
-                f"INSERT INTO suppliers (id, supplier_code, name, tier, country, city, contact_email, credit_rating, is_active, created_by) "
-                f"VALUES ({s['id']}, {sql_str(s['supplier_code'])}, {sql_str(s['name'])}, {s['tier']}, "
-                f"{sql_str(s['country'])}, {sql_str(s['city'])}, {sql_str(s.get('contact_email'))}, "
-                f"{sql_str(s['credit_rating'])}, {sql_bool(s['is_active'])}, {sql_str(s.get('created_by'))});"
-            )
+            lines.append("\t".join([
+                copy_num(s['id']),
+                copy_str(s['supplier_code']),
+                copy_str(s['name']),
+                copy_num(s['tier']),
+                copy_str(s['country']),
+                copy_str(s['city']),
+                copy_str(s.get('contact_email')),
+                copy_str(s['credit_rating']),
+                copy_bool(s['is_active']),
+                copy_str(s.get('created_by')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('suppliers_id_seq', {max(s['id'] for s in self.suppliers)});")
         lines.append("")
 
         # Supplier relationships
-        lines.append("-- Supplier Relationships")
+        lines.append("-- Supplier Relationships ({:,} rows)".format(len(self.supplier_relationships)))
+        lines.append("COPY supplier_relationships (id, seller_id, buyer_id, relationship_type, contract_start_date, is_primary, is_active, relationship_status) FROM stdin;")
         for sr in self.supplier_relationships:
-            lines.append(
-                f"INSERT INTO supplier_relationships (id, seller_id, buyer_id, relationship_type, contract_start_date, is_primary, is_active, relationship_status) "
-                f"VALUES ({sr['id']}, {sr['seller_id']}, {sr['buyer_id']}, {sql_str(sr['relationship_type'])}, "
-                f"{sql_date(sr.get('contract_start_date'))}, {sql_bool(sr['is_primary'])}, "
-                f"{sql_bool(sr.get('is_active', True))}, {sql_str(sr.get('relationship_status', 'active'))});"
-            )
+            lines.append("\t".join([
+                copy_num(sr['id']),
+                copy_num(sr['seller_id']),
+                copy_num(sr['buyer_id']),
+                copy_str(sr['relationship_type']),
+                copy_date(sr.get('contract_start_date')),
+                copy_bool(sr['is_primary']),
+                copy_bool(sr.get('is_active', True)),
+                copy_str(sr.get('relationship_status', 'active')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('supplier_relationships_id_seq', {max(sr['id'] for sr in self.supplier_relationships)});")
         lines.append("")
 
         # Parts
-        lines.append("-- Parts")
+        lines.append("-- Parts ({:,} rows)".format(len(self.parts)))
+        lines.append("COPY parts (id, part_number, description, category, unit_cost, weight_kg, lead_time_days, primary_supplier_id, is_critical, min_stock_level, base_uom, unit_weight_kg, unit_length_m, unit_volume_l) FROM stdin;")
         for p in self.parts:
-            lines.append(
-                f"INSERT INTO parts (id, part_number, description, category, unit_cost, weight_kg, lead_time_days, "
-                f"primary_supplier_id, is_critical, min_stock_level, base_uom, unit_weight_kg, unit_length_m, unit_volume_l) "
-                f"VALUES ({p['id']}, {sql_str(p['part_number'])}, {sql_str(p['description'])}, {sql_str(p['category'])}, "
-                f"{sql_num(p['unit_cost'])}, {sql_num(p['weight_kg'])}, {sql_num(p['lead_time_days'])}, "
-                f"{sql_num(p.get('primary_supplier_id'))}, {sql_bool(p['is_critical'])}, {sql_num(p['min_stock_level'])}, "
-                f"{sql_str(p.get('base_uom', 'each'))}, {sql_num(p.get('unit_weight_kg'))}, "
-                f"{sql_num(p.get('unit_length_m'))}, {sql_num(p.get('unit_volume_l'))});"
-            )
+            lines.append("\t".join([
+                copy_num(p['id']),
+                copy_str(p['part_number']),
+                copy_str(p['description']),
+                copy_str(p['category']),
+                copy_num(p['unit_cost']),
+                copy_num(p['weight_kg']),
+                copy_num(p['lead_time_days']),
+                copy_num(p.get('primary_supplier_id')),
+                copy_bool(p['is_critical']),
+                copy_num(p['min_stock_level']),
+                copy_str(p.get('base_uom', 'each')),
+                copy_num(p.get('unit_weight_kg')),
+                copy_num(p.get('unit_length_m')),
+                copy_num(p.get('unit_volume_l')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('parts_id_seq', {max(p['id'] for p in self.parts)});")
         lines.append("")
 
         # Bill of Materials
-        lines.append("-- Bill of Materials")
+        lines.append("-- Bill of Materials ({:,} rows)".format(len(self.bom)))
+        lines.append("COPY bill_of_materials (id, parent_part_id, child_part_id, quantity, unit, is_optional, assembly_sequence, effective_from, effective_to) FROM stdin;")
         for b in self.bom:
-            lines.append(
-                f"INSERT INTO bill_of_materials (id, parent_part_id, child_part_id, quantity, unit, is_optional, assembly_sequence, effective_from, effective_to) "
-                f"VALUES ({b['id']}, {b['parent_part_id']}, {b['child_part_id']}, {b['quantity']}, "
-                f"{sql_str(b['unit'])}, {sql_bool(b['is_optional'])}, {sql_num(b.get('assembly_sequence'))}, "
-                f"{sql_date(b.get('effective_from'))}, {sql_date(b.get('effective_to'))});"
-            )
+            lines.append("\t".join([
+                copy_num(b['id']),
+                copy_num(b['parent_part_id']),
+                copy_num(b['child_part_id']),
+                copy_num(b['quantity']),
+                copy_str(b['unit']),
+                copy_bool(b['is_optional']),
+                copy_num(b.get('assembly_sequence')),
+                copy_date(b.get('effective_from')),
+                copy_date(b.get('effective_to')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('bill_of_materials_id_seq', {max(b['id'] for b in self.bom)});")
         lines.append("")
 
         # Part Suppliers
-        lines.append("-- Part Suppliers")
+        lines.append("-- Part Suppliers ({:,} rows)".format(len(self.part_suppliers)))
+        lines.append("COPY part_suppliers (id, part_id, supplier_id, supplier_part_number, unit_cost, lead_time_days, is_approved, approval_date) FROM stdin;")
         for ps in self.part_suppliers:
-            lines.append(
-                f"INSERT INTO part_suppliers (id, part_id, supplier_id, supplier_part_number, unit_cost, lead_time_days, is_approved, approval_date) "
-                f"VALUES ({ps['id']}, {ps['part_id']}, {ps['supplier_id']}, {sql_str(ps['supplier_part_number'])}, "
-                f"{sql_num(ps['unit_cost'])}, {sql_num(ps['lead_time_days'])}, {sql_bool(ps['is_approved'])}, {sql_date(ps.get('approval_date'))});"
-            )
+            lines.append("\t".join([
+                copy_num(ps['id']),
+                copy_num(ps['part_id']),
+                copy_num(ps['supplier_id']),
+                copy_str(ps['supplier_part_number']),
+                copy_num(ps['unit_cost']),
+                copy_num(ps['lead_time_days']),
+                copy_bool(ps['is_approved']),
+                copy_date(ps.get('approval_date')),
+            ]))
+        lines.append("\\.")
         if self.part_suppliers:
             lines.append(f"SELECT setval('part_suppliers_id_seq', {max(ps['id'] for ps in self.part_suppliers)});")
         lines.append("")
 
         # Products
-        lines.append("-- Products")
+        lines.append("-- Products ({:,} rows)".format(len(self.products)))
+        lines.append("COPY products (id, sku, name, description, category, list_price, is_active, launch_date, discontinued_date) FROM stdin;")
         for p in self.products:
-            lines.append(
-                f"INSERT INTO products (id, sku, name, description, category, list_price, is_active, launch_date, discontinued_date) "
-                f"VALUES ({p['id']}, {sql_str(p['sku'])}, {sql_str(p['name'])}, {sql_str(p.get('description'))}, "
-                f"{sql_str(p.get('category'))}, {sql_num(p.get('list_price'))}, {sql_bool(p['is_active'])}, "
-                f"{sql_date(p.get('launch_date'))}, {sql_date(p.get('discontinued_date'))});"
-            )
+            lines.append("\t".join([
+                copy_num(p['id']),
+                copy_str(p['sku']),
+                copy_str(p['name']),
+                copy_str(p.get('description')),
+                copy_str(p.get('category')),
+                copy_num(p.get('list_price')),
+                copy_bool(p['is_active']),
+                copy_date(p.get('launch_date')),
+                copy_date(p.get('discontinued_date')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('products_id_seq', {max(p['id'] for p in self.products)});")
         lines.append("")
 
         # Product Components
-        lines.append("-- Product Components")
+        lines.append("-- Product Components ({:,} rows)".format(len(self.product_components)))
+        lines.append("COPY product_components (id, product_id, part_id, quantity, is_required) FROM stdin;")
         for pc in self.product_components:
-            lines.append(
-                f"INSERT INTO product_components (id, product_id, part_id, quantity, is_required) "
-                f"VALUES ({pc['id']}, {pc['product_id']}, {pc['part_id']}, {pc['quantity']}, {sql_bool(pc['is_required'])});"
-            )
+            lines.append("\t".join([
+                copy_num(pc['id']),
+                copy_num(pc['product_id']),
+                copy_num(pc['part_id']),
+                copy_num(pc['quantity']),
+                copy_bool(pc['is_required']),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('product_components_id_seq', {max(pc['id'] for pc in self.product_components)});")
         lines.append("")
 
         # Facilities
-        lines.append("-- Facilities")
+        lines.append("-- Facilities ({:,} rows)".format(len(self.facilities)))
+        lines.append("COPY facilities (id, facility_code, name, facility_type, city, state, country, latitude, longitude, capacity_units, is_active) FROM stdin;")
         for f in self.facilities:
-            lines.append(
-                f"INSERT INTO facilities (id, facility_code, name, facility_type, city, state, country, latitude, longitude, capacity_units, is_active) "
-                f"VALUES ({f['id']}, {sql_str(f['facility_code'])}, {sql_str(f['name'])}, {sql_str(f['facility_type'])}, "
-                f"{sql_str(f['city'])}, {sql_str(f.get('state'))}, {sql_str(f['country'])}, "
-                f"{sql_num(f.get('latitude'))}, {sql_num(f.get('longitude'))}, {sql_num(f.get('capacity_units'))}, {sql_bool(f['is_active'])});"
-            )
+            lines.append("\t".join([
+                copy_num(f['id']),
+                copy_str(f['facility_code']),
+                copy_str(f['name']),
+                copy_str(f['facility_type']),
+                copy_str(f['city']),
+                copy_str(f.get('state')),
+                copy_str(f['country']),
+                copy_num(f.get('latitude')),
+                copy_num(f.get('longitude')),
+                copy_num(f.get('capacity_units')),
+                copy_bool(f['is_active']),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('facilities_id_seq', {max(f['id'] for f in self.facilities)});")
         lines.append("")
 
         # Transport Routes
-        lines.append("-- Transport Routes")
+        lines.append("-- Transport Routes ({:,} rows)".format(len(self.transport_routes)))
+        lines.append("COPY transport_routes (id, origin_facility_id, destination_facility_id, transport_mode, distance_km, transit_time_hours, cost_usd, capacity_tons, is_active, route_status) FROM stdin;")
         for tr in self.transport_routes:
-            lines.append(
-                f"INSERT INTO transport_routes (id, origin_facility_id, destination_facility_id, transport_mode, "
-                f"distance_km, transit_time_hours, cost_usd, capacity_tons, is_active, route_status) "
-                f"VALUES ({tr['id']}, {tr['origin_facility_id']}, {tr['destination_facility_id']}, {sql_str(tr['transport_mode'])}, "
-                f"{sql_num(tr['distance_km'])}, {sql_num(tr['transit_time_hours'])}, {sql_num(tr['cost_usd'])}, "
-                f"{sql_num(tr['capacity_tons'])}, {sql_bool(tr['is_active'])}, {sql_str(tr.get('route_status', 'active'))});"
-            )
+            lines.append("\t".join([
+                copy_num(tr['id']),
+                copy_num(tr['origin_facility_id']),
+                copy_num(tr['destination_facility_id']),
+                copy_str(tr['transport_mode']),
+                copy_num(tr['distance_km']),
+                copy_num(tr['transit_time_hours']),
+                copy_num(tr['cost_usd']),
+                copy_num(tr['capacity_tons']),
+                copy_bool(tr['is_active']),
+                copy_str(tr.get('route_status', 'active')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('transport_routes_id_seq', {max(tr['id'] for tr in self.transport_routes)});")
         lines.append("")
 
         # Customers
-        lines.append("-- Customers")
+        lines.append("-- Customers ({:,} rows)".format(len(self.customers)))
+        lines.append("COPY customers (id, customer_code, name, customer_type, contact_email, shipping_address, city, state, country) FROM stdin;")
         for c in self.customers:
-            lines.append(
-                f"INSERT INTO customers (id, customer_code, name, customer_type, contact_email, shipping_address, city, state, country) "
-                f"VALUES ({c['id']}, {sql_str(c['customer_code'])}, {sql_str(c['name'])}, {sql_str(c['customer_type'])}, "
-                f"{sql_str(c.get('contact_email'))}, {sql_str(c.get('shipping_address'))}, {sql_str(c.get('city'))}, "
-                f"{sql_str(c.get('state'))}, {sql_str(c.get('country'))});"
-            )
+            lines.append("\t".join([
+                copy_num(c['id']),
+                copy_str(c['customer_code']),
+                copy_str(c['name']),
+                copy_str(c['customer_type']),
+                copy_str(c.get('contact_email')),
+                copy_str(c.get('shipping_address')),
+                copy_str(c.get('city')),
+                copy_str(c.get('state')),
+                copy_str(c.get('country')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('customers_id_seq', {max(c['id'] for c in self.customers)});")
         lines.append("")
 
         # Orders
-        lines.append("-- Orders")
+        lines.append("-- Orders ({:,} rows)".format(len(self.orders)))
+        lines.append("COPY orders (id, order_number, customer_id, order_date, required_date, shipped_date, status, shipping_facility_id, total_amount, shipping_cost) FROM stdin;")
         for o in self.orders:
-            lines.append(
-                f"INSERT INTO orders (id, order_number, customer_id, order_date, required_date, shipped_date, status, "
-                f"shipping_facility_id, total_amount, shipping_cost) "
-                f"VALUES ({o['id']}, {sql_str(o['order_number'])}, {sql_num(o.get('customer_id'))}, "
-                f"{sql_timestamp(o['order_date'])}, {sql_date(o.get('required_date'))}, {sql_timestamp(o.get('shipped_date'))}, "
-                f"{sql_str(o['status'])}, {sql_num(o.get('shipping_facility_id'))}, {sql_num(o['total_amount'])}, {sql_num(o.get('shipping_cost'))});"
-            )
+            lines.append("\t".join([
+                copy_num(o['id']),
+                copy_str(o['order_number']),
+                copy_num(o.get('customer_id')),
+                copy_timestamp(o['order_date']),
+                copy_date(o.get('required_date')),
+                copy_timestamp(o.get('shipped_date')),
+                copy_str(o['status']),
+                copy_num(o.get('shipping_facility_id')),
+                copy_num(o['total_amount']),
+                copy_num(o.get('shipping_cost')),
+            ]))
+        lines.append("\\.")
         lines.append(f"SELECT setval('orders_id_seq', {max(o['id'] for o in self.orders)});")
         lines.append("")
 
         # Order Items (composite key: order_id, line_number)
-        lines.append("-- Order Items (SAP-style composite key)")
+        lines.append("-- Order Items ({:,} rows)".format(len(self.order_items)))
+        lines.append("COPY order_items (order_id, line_number, product_id, quantity, unit_price, discount_percent) FROM stdin;")
         for oi in self.order_items:
-            lines.append(
-                f"INSERT INTO order_items (order_id, line_number, product_id, quantity, unit_price, discount_percent) "
-                f"VALUES ({oi['order_id']}, {oi['line_number']}, {oi['product_id']}, {oi['quantity']}, "
-                f"{sql_num(oi['unit_price'])}, {sql_num(oi.get('discount_percent', 0))});"
-            )
-        # No sequence for composite key table
+            lines.append("\t".join([
+                copy_num(oi['order_id']),
+                copy_num(oi['line_number']),
+                copy_num(oi['product_id']),
+                copy_num(oi['quantity']),
+                copy_num(oi['unit_price']),
+                copy_num(oi.get('discount_percent', 0)),
+            ]))
+        lines.append("\\.")
         lines.append("")
 
-        # NOTE: Shipments moved to after Returns due to FK dependencies (purchase_order_id, return_id)
-
         # Inventory
-        lines.append("-- Inventory")
+        lines.append("-- Inventory ({:,} rows)".format(len(self.inventory)))
+        lines.append("COPY inventory (id, facility_id, part_id, quantity_on_hand, quantity_reserved, quantity_on_order, reorder_point, last_counted_at) FROM stdin;")
         for inv in self.inventory:
-            lines.append(
-                f"INSERT INTO inventory (id, facility_id, part_id, quantity_on_hand, quantity_reserved, quantity_on_order, "
-                f"reorder_point, last_counted_at) "
-                f"VALUES ({inv['id']}, {inv['facility_id']}, {inv['part_id']}, {inv['quantity_on_hand']}, "
-                f"{inv['quantity_reserved']}, {inv['quantity_on_order']}, {sql_num(inv.get('reorder_point'))}, "
-                f"{sql_timestamp(inv.get('last_counted_at'))});"
-            )
+            lines.append("\t".join([
+                copy_num(inv['id']),
+                copy_num(inv['facility_id']),
+                copy_num(inv['part_id']),
+                copy_num(inv['quantity_on_hand']),
+                copy_num(inv['quantity_reserved']),
+                copy_num(inv['quantity_on_order']),
+                copy_num(inv.get('reorder_point')),
+                copy_timestamp(inv.get('last_counted_at')),
+            ]))
+        lines.append("\\.")
         if self.inventory:
             lines.append(f"SELECT setval('inventory_id_seq', {max(inv['id'] for inv in self.inventory)});")
         lines.append("")
 
         # Supplier Certifications
-        lines.append("-- Supplier Certifications")
+        lines.append("-- Supplier Certifications ({:,} rows)".format(len(self.supplier_certifications)))
+        lines.append("COPY supplier_certifications (id, supplier_id, certification_type, certification_number, issued_date, expiry_date, is_valid) FROM stdin;")
         for sc in self.supplier_certifications:
-            lines.append(
-                f"INSERT INTO supplier_certifications (id, supplier_id, certification_type, certification_number, "
-                f"issued_date, expiry_date, is_valid) "
-                f"VALUES ({sc['id']}, {sc['supplier_id']}, {sql_str(sc['certification_type'])}, "
-                f"{sql_str(sc.get('certification_number'))}, {sql_date(sc.get('issued_date'))}, "
-                f"{sql_date(sc.get('expiry_date'))}, {sql_bool(sc['is_valid'])});"
-            )
+            lines.append("\t".join([
+                copy_num(sc['id']),
+                copy_num(sc['supplier_id']),
+                copy_str(sc['certification_type']),
+                copy_str(sc.get('certification_number')),
+                copy_date(sc.get('issued_date')),
+                copy_date(sc.get('expiry_date')),
+                copy_bool(sc['is_valid']),
+            ]))
+        lines.append("\\.")
         if self.supplier_certifications:
             lines.append(f"SELECT setval('supplier_certifications_id_seq', {max(sc['id'] for sc in self.supplier_certifications)});")
         lines.append("")
 
         # Work Centers
-        lines.append("-- Work Centers")
+        lines.append("-- Work Centers ({:,} rows)".format(len(self.work_centers)))
+        lines.append("COPY work_centers (id, wc_code, name, facility_id, work_center_type, capacity_per_day, efficiency_rating, hourly_rate_usd, setup_time_mins, is_active) FROM stdin;")
         for wc in self.work_centers:
-            lines.append(
-                f"INSERT INTO work_centers (id, wc_code, name, facility_id, work_center_type, capacity_per_day, "
-                f"efficiency_rating, hourly_rate_usd, setup_time_mins, is_active) "
-                f"VALUES ({wc['id']}, {sql_str(wc['wc_code'])}, {sql_str(wc['name'])}, {wc['facility_id']}, "
-                f"{sql_str(wc['work_center_type'])}, {sql_num(wc.get('capacity_per_day'))}, "
-                f"{sql_num(wc.get('efficiency_rating'))}, {sql_num(wc.get('hourly_rate_usd'))}, "
-                f"{sql_num(wc.get('setup_time_mins'))}, {sql_bool(wc.get('is_active', True))});"
-            )
+            lines.append("\t".join([
+                copy_num(wc['id']),
+                copy_str(wc['wc_code']),
+                copy_str(wc['name']),
+                copy_num(wc['facility_id']),
+                copy_str(wc['work_center_type']),
+                copy_num(wc.get('capacity_per_day')),
+                copy_num(wc.get('efficiency_rating')),
+                copy_num(wc.get('hourly_rate_usd')),
+                copy_num(wc.get('setup_time_mins')),
+                copy_bool(wc.get('is_active', True)),
+            ]))
+        lines.append("\\.")
         if self.work_centers:
             lines.append(f"SELECT setval('work_centers_id_seq', {max(wc['id'] for wc in self.work_centers)});")
         lines.append("")
 
         # Production Routings
-        lines.append("-- Production Routings")
+        lines.append("-- Production Routings ({:,} rows)".format(len(self.production_routings)))
+        lines.append("COPY production_routings (id, product_id, step_sequence, operation_name, work_center_id, setup_time_mins, run_time_per_unit_mins, is_active, effective_from, effective_to) FROM stdin;")
         for pr in self.production_routings:
-            lines.append(
-                f"INSERT INTO production_routings (id, product_id, step_sequence, operation_name, work_center_id, "
-                f"setup_time_mins, run_time_per_unit_mins, is_active, effective_from, effective_to) "
-                f"VALUES ({pr['id']}, {pr['product_id']}, {pr['step_sequence']}, {sql_str(pr['operation_name'])}, "
-                f"{pr['work_center_id']}, {sql_num(pr.get('setup_time_mins'))}, {sql_num(pr['run_time_per_unit_mins'])}, "
-                f"{sql_bool(pr.get('is_active', True))}, {sql_date(pr.get('effective_from'))}, {sql_date(pr.get('effective_to'))});"
-            )
+            lines.append("\t".join([
+                copy_num(pr['id']),
+                copy_num(pr['product_id']),
+                copy_num(pr['step_sequence']),
+                copy_str(pr['operation_name']),
+                copy_num(pr['work_center_id']),
+                copy_num(pr.get('setup_time_mins')),
+                copy_num(pr['run_time_per_unit_mins']),
+                copy_bool(pr.get('is_active', True)),
+                copy_date(pr.get('effective_from')),
+                copy_date(pr.get('effective_to')),
+            ]))
+        lines.append("\\.")
         if self.production_routings:
             lines.append(f"SELECT setval('production_routings_id_seq', {max(pr['id'] for pr in self.production_routings)});")
         lines.append("")
 
         # Work Orders
-        lines.append("-- Work Orders")
+        lines.append("-- Work Orders ({:,} rows)".format(len(self.work_orders)))
+        lines.append("COPY work_orders (id, wo_number, product_id, facility_id, order_id, order_type, priority, quantity_planned, quantity_completed, quantity_scrapped, status, planned_start_date, planned_end_date, actual_start_date, actual_end_date) FROM stdin;")
         for wo in self.work_orders:
-            lines.append(
-                f"INSERT INTO work_orders (id, wo_number, product_id, facility_id, order_id, order_type, priority, "
-                f"quantity_planned, quantity_completed, quantity_scrapped, status, planned_start_date, planned_end_date, "
-                f"actual_start_date, actual_end_date) "
-                f"VALUES ({wo['id']}, {sql_str(wo['wo_number'])}, {wo['product_id']}, {wo['facility_id']}, "
-                f"{sql_num(wo.get('order_id'))}, {sql_str(wo['order_type'])}, {wo['priority']}, "
-                f"{wo['quantity_planned']}, {wo['quantity_completed']}, {wo['quantity_scrapped']}, "
-                f"{sql_str(wo['status'])}, {sql_date(wo.get('planned_start_date'))}, {sql_date(wo.get('planned_end_date'))}, "
-                f"{sql_timestamp(wo.get('actual_start_date'))}, {sql_timestamp(wo.get('actual_end_date'))});"
-            )
+            lines.append("\t".join([
+                copy_num(wo['id']),
+                copy_str(wo['wo_number']),
+                copy_num(wo['product_id']),
+                copy_num(wo['facility_id']),
+                copy_num(wo.get('order_id')),
+                copy_str(wo['order_type']),
+                copy_num(wo['priority']),
+                copy_num(wo['quantity_planned']),
+                copy_num(wo['quantity_completed']),
+                copy_num(wo['quantity_scrapped']),
+                copy_str(wo['status']),
+                copy_date(wo.get('planned_start_date')),
+                copy_date(wo.get('planned_end_date')),
+                copy_timestamp(wo.get('actual_start_date')),
+                copy_timestamp(wo.get('actual_end_date')),
+            ]))
+        lines.append("\\.")
         if self.work_orders:
             lines.append(f"SELECT setval('work_orders_id_seq', {max(wo['id'] for wo in self.work_orders)});")
         lines.append("")
 
         # Work Order Steps
-        lines.append("-- Work Order Steps")
+        lines.append("-- Work Order Steps ({:,} rows)".format(len(self.work_order_steps)))
+        lines.append("COPY work_order_steps (id, work_order_id, routing_step_id, step_sequence, work_center_id, status, quantity_in, quantity_out, quantity_scrapped, planned_start, actual_start, actual_end, labor_hours, machine_hours) FROM stdin;")
         for ws in self.work_order_steps:
-            lines.append(
-                f"INSERT INTO work_order_steps (id, work_order_id, routing_step_id, step_sequence, work_center_id, "
-                f"status, quantity_in, quantity_out, quantity_scrapped, planned_start, actual_start, actual_end, "
-                f"labor_hours, machine_hours) "
-                f"VALUES ({ws['id']}, {ws['work_order_id']}, {sql_num(ws.get('routing_step_id'))}, {ws['step_sequence']}, "
-                f"{ws['work_center_id']}, {sql_str(ws['status'])}, {sql_num(ws.get('quantity_in'))}, "
-                f"{sql_num(ws.get('quantity_out'))}, {sql_num(ws.get('quantity_scrapped', 0))}, "
-                f"{sql_timestamp(ws.get('planned_start'))}, {sql_timestamp(ws.get('actual_start'))}, "
-                f"{sql_timestamp(ws.get('actual_end'))}, {sql_num(ws.get('labor_hours'))}, {sql_num(ws.get('machine_hours'))});"
-            )
+            lines.append("\t".join([
+                copy_num(ws['id']),
+                copy_num(ws['work_order_id']),
+                copy_num(ws.get('routing_step_id')),
+                copy_num(ws['step_sequence']),
+                copy_num(ws['work_center_id']),
+                copy_str(ws['status']),
+                copy_num(ws.get('quantity_in')),
+                copy_num(ws.get('quantity_out')),
+                copy_num(ws.get('quantity_scrapped', 0)),
+                copy_timestamp(ws.get('planned_start')),
+                copy_timestamp(ws.get('actual_start')),
+                copy_timestamp(ws.get('actual_end')),
+                copy_num(ws.get('labor_hours')),
+                copy_num(ws.get('machine_hours')),
+            ]))
+        lines.append("\\.")
         if self.work_order_steps:
             lines.append(f"SELECT setval('work_order_steps_id_seq', {max(ws['id'] for ws in self.work_order_steps)});")
         lines.append("")
 
         # Material Transactions
-        lines.append("-- Material Transactions")
+        lines.append("-- Material Transactions ({:,} rows)".format(len(self.material_transactions)))
+        lines.append("COPY material_transactions (id, transaction_number, transaction_type, work_order_id, part_id, product_id, facility_id, quantity, unit_cost, reason_code, reference_number, created_at, created_by) FROM stdin;")
         for mt in self.material_transactions:
-            lines.append(
-                f"INSERT INTO material_transactions (id, transaction_number, transaction_type, work_order_id, part_id, "
-                f"product_id, facility_id, quantity, unit_cost, reason_code, reference_number, created_at, created_by) "
-                f"VALUES ({mt['id']}, {sql_str(mt['transaction_number'])}, {sql_str(mt['transaction_type'])}, "
-                f"{mt['work_order_id']}, {sql_num(mt.get('part_id'))}, {sql_num(mt.get('product_id'))}, "
-                f"{mt['facility_id']}, {mt['quantity']}, {sql_num(mt.get('unit_cost'))}, "
-                f"{sql_str(mt.get('reason_code'))}, {sql_str(mt.get('reference_number'))}, "
-                f"{sql_timestamp(mt.get('created_at'))}, {sql_str(mt.get('created_by'))});"
-            )
+            lines.append("\t".join([
+                copy_num(mt['id']),
+                copy_str(mt['transaction_number']),
+                copy_str(mt['transaction_type']),
+                copy_num(mt['work_order_id']),
+                copy_num(mt.get('part_id')),
+                copy_num(mt.get('product_id')),
+                copy_num(mt['facility_id']),
+                copy_num(mt['quantity']),
+                copy_num(mt.get('unit_cost')),
+                copy_str(mt.get('reason_code')),
+                copy_str(mt.get('reference_number')),
+                copy_timestamp(mt.get('created_at')),
+                copy_str(mt.get('created_by')),
+            ]))
+        lines.append("\\.")
         if self.material_transactions:
             lines.append(f"SELECT setval('material_transactions_id_seq', {max(mt['id'] for mt in self.material_transactions)});")
         lines.append("")
 
         # Demand Forecasts (PLAN domain)
-        lines.append("-- Demand Forecasts")
+        lines.append("-- Demand Forecasts ({:,} rows)".format(len(self.demand_forecasts)))
+        lines.append("COPY demand_forecasts (id, forecast_number, product_id, facility_id, forecast_date, forecast_quantity, forecast_type, confidence_level, seasonality_factor) FROM stdin;")
         for df in self.demand_forecasts:
-            lines.append(
-                f"INSERT INTO demand_forecasts (id, forecast_number, product_id, facility_id, forecast_date, "
-                f"forecast_quantity, forecast_type, confidence_level, seasonality_factor) "
-                f"VALUES ({df['id']}, {sql_str(df['forecast_number'])}, {df['product_id']}, {df['facility_id']}, "
-                f"{sql_date(df['forecast_date'])}, {df['forecast_quantity']}, {sql_str(df['forecast_type'])}, "
-                f"{sql_num(df.get('confidence_level'))}, {sql_num(df.get('seasonality_factor'))});"
-            )
+            lines.append("\t".join([
+                copy_num(df['id']),
+                copy_str(df['forecast_number']),
+                copy_num(df['product_id']),
+                copy_num(df['facility_id']),
+                copy_date(df['forecast_date']),
+                copy_num(df['forecast_quantity']),
+                copy_str(df['forecast_type']),
+                copy_num(df.get('confidence_level')),
+                copy_num(df.get('seasonality_factor')),
+            ]))
+        lines.append("\\.")
         if self.demand_forecasts:
             lines.append(f"SELECT setval('demand_forecasts_id_seq', {max(df['id'] for df in self.demand_forecasts)});")
         lines.append("")
 
         # Purchase Orders (SOURCE domain)
-        lines.append("-- Purchase Orders")
+        lines.append("-- Purchase Orders ({:,} rows)".format(len(self.purchase_orders)))
+        lines.append("COPY purchase_orders (id, po_number, supplier_id, facility_id, order_date, expected_date, received_date, status, total_amount) FROM stdin;")
         for po in self.purchase_orders:
-            lines.append(
-                f"INSERT INTO purchase_orders (id, po_number, supplier_id, facility_id, order_date, expected_date, "
-                f"received_date, status, total_amount) "
-                f"VALUES ({po['id']}, {sql_str(po['po_number'])}, {po['supplier_id']}, {po['facility_id']}, "
-                f"{sql_date(po['order_date'])}, {sql_date(po.get('expected_date'))}, {sql_date(po.get('received_date'))}, "
-                f"{sql_str(po['status'])}, {sql_num(po.get('total_amount'))});"
-            )
+            lines.append("\t".join([
+                copy_num(po['id']),
+                copy_str(po['po_number']),
+                copy_num(po['supplier_id']),
+                copy_num(po['facility_id']),
+                copy_date(po['order_date']),
+                copy_date(po.get('expected_date')),
+                copy_date(po.get('received_date')),
+                copy_str(po['status']),
+                copy_num(po.get('total_amount')),
+            ]))
+        lines.append("\\.")
         if self.purchase_orders:
             lines.append(f"SELECT setval('purchase_orders_id_seq', {max(po['id'] for po in self.purchase_orders)});")
         lines.append("")
 
         # Purchase Order Lines (composite key)
-        lines.append("-- Purchase Order Lines")
+        lines.append("-- Purchase Order Lines ({:,} rows)".format(len(self.purchase_order_lines)))
+        lines.append("COPY purchase_order_lines (purchase_order_id, line_number, part_id, quantity, unit_price, quantity_received, status) FROM stdin;")
         for pol in self.purchase_order_lines:
-            lines.append(
-                f"INSERT INTO purchase_order_lines (purchase_order_id, line_number, part_id, quantity, unit_price, "
-                f"quantity_received, status) "
-                f"VALUES ({pol['purchase_order_id']}, {pol['line_number']}, {pol['part_id']}, {pol['quantity']}, "
-                f"{sql_num(pol['unit_price'])}, {sql_num(pol.get('quantity_received', 0))}, {sql_str(pol['status'])});"
-            )
+            lines.append("\t".join([
+                copy_num(pol['purchase_order_id']),
+                copy_num(pol['line_number']),
+                copy_num(pol['part_id']),
+                copy_num(pol['quantity']),
+                copy_num(pol['unit_price']),
+                copy_num(pol.get('quantity_received', 0)),
+                copy_str(pol['status']),
+            ]))
+        lines.append("\\.")
         lines.append("")
 
         # Returns (RETURN domain)
-        lines.append("-- Returns")
+        lines.append("-- Returns ({:,} rows)".format(len(self.returns)))
+        lines.append("COPY returns (id, rma_number, order_id, customer_id, return_date, return_reason, status, refund_amount, refund_status) FROM stdin;")
         for r in self.returns:
-            lines.append(
-                f"INSERT INTO returns (id, rma_number, order_id, customer_id, return_date, return_reason, "
-                f"status, refund_amount, refund_status) "
-                f"VALUES ({r['id']}, {sql_str(r['rma_number'])}, {r['order_id']}, {r['customer_id']}, "
-                f"{sql_date(r['return_date'])}, {sql_str(r['return_reason'])}, {sql_str(r['status'])}, "
-                f"{sql_num(r.get('refund_amount'))}, {sql_str(r.get('refund_status'))});"
-            )
+            lines.append("\t".join([
+                copy_num(r['id']),
+                copy_str(r['rma_number']),
+                copy_num(r['order_id']),
+                copy_num(r['customer_id']),
+                copy_date(r['return_date']),
+                copy_str(r['return_reason']),
+                copy_str(r['status']),
+                copy_num(r.get('refund_amount')),
+                copy_str(r.get('refund_status')),
+            ]))
+        lines.append("\\.")
         if self.returns:
             lines.append(f"SELECT setval('returns_id_seq', {max(r['id'] for r in self.returns)});")
         lines.append("")
 
         # Return Items (composite key)
-        lines.append("-- Return Items")
+        lines.append("-- Return Items ({:,} rows)".format(len(self.return_items)))
+        lines.append("COPY return_items (return_id, line_number, order_id, order_line_number, quantity_returned, disposition) FROM stdin;")
         for ri in self.return_items:
-            lines.append(
-                f"INSERT INTO return_items (return_id, line_number, order_id, order_line_number, quantity_returned, disposition) "
-                f"VALUES ({ri['return_id']}, {ri['line_number']}, {ri['order_id']}, {ri['order_line_number']}, "
-                f"{ri['quantity_returned']}, {sql_str(ri['disposition'])});"
-            )
+            lines.append("\t".join([
+                copy_num(ri['return_id']),
+                copy_num(ri['line_number']),
+                copy_num(ri['order_id']),
+                copy_num(ri['order_line_number']),
+                copy_num(ri['quantity_returned']),
+                copy_str(ri['disposition']),
+            ]))
+        lines.append("\\.")
         lines.append("")
 
         # Shipments (after PO/Returns due to FK dependencies)
-        lines.append("-- Shipments")
+        lines.append("-- Shipments ({:,} rows)".format(len(self.shipments)))
+        lines.append("COPY shipments (id, shipment_number, order_id, purchase_order_id, return_id, origin_facility_id, destination_facility_id, transport_route_id, shipment_type, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) FROM stdin;")
         for sh in self.shipments:
-            lines.append(
-                f"INSERT INTO shipments (id, shipment_number, order_id, purchase_order_id, return_id, origin_facility_id, destination_facility_id, "
-                f"transport_route_id, shipment_type, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) "
-                f"VALUES ({sh['id']}, {sql_str(sh['shipment_number'])}, {sql_num(sh.get('order_id'))}, "
-                f"{sql_num(sh.get('purchase_order_id'))}, {sql_num(sh.get('return_id'))}, "
-                f"{sh['origin_facility_id']}, {sql_num(sh.get('destination_facility_id'))}, {sql_num(sh.get('transport_route_id'))}, "
-                f"{sql_str(sh.get('shipment_type', 'order_fulfillment'))}, "
-                f"{sql_str(sh.get('carrier'))}, {sql_str(sh.get('tracking_number'))}, {sql_str(sh['status'])}, "
-                f"{sql_timestamp(sh.get('shipped_at'))}, {sql_timestamp(sh.get('delivered_at'))}, "
-                f"{sql_num(sh.get('weight_kg'))}, {sql_num(sh.get('cost_usd'))});"
-            )
+            lines.append("\t".join([
+                copy_num(sh['id']),
+                copy_str(sh['shipment_number']),
+                copy_num(sh.get('order_id')),
+                copy_num(sh.get('purchase_order_id')),
+                copy_num(sh.get('return_id')),
+                copy_num(sh['origin_facility_id']),
+                copy_num(sh.get('destination_facility_id')),
+                copy_num(sh.get('transport_route_id')),
+                copy_str(sh.get('shipment_type', 'order_fulfillment')),
+                copy_str(sh.get('carrier')),
+                copy_str(sh.get('tracking_number')),
+                copy_str(sh['status']),
+                copy_timestamp(sh.get('shipped_at')),
+                copy_timestamp(sh.get('delivered_at')),
+                copy_num(sh.get('weight_kg')),
+                copy_num(sh.get('cost_usd')),
+            ]))
+        lines.append("\\.")
         if self.shipments:
             lines.append(f"SELECT setval('shipments_id_seq', {max(sh['id'] for sh in self.shipments)});")
         lines.append("")

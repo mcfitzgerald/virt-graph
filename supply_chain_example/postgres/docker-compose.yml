@@ -8,6 +8,17 @@ services:
       POSTGRES_DB: supply_chain
       POSTGRES_USER: virt_graph
       POSTGRES_PASSWORD: dev_password
+    # PostgreSQL tuning for bulk loading and graph-like queries
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=64MB
+      -c maintenance_work_mem=256MB
+      -c effective_cache_size=512MB
+      -c synchronous_commit=off
+      -c wal_level=minimal
+      -c max_wal_senders=0
+      -c checkpoint_completion_target=0.9
     ports:
       - "5432:5432"
     volumes:
@@ -19,6 +30,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Resource limits for consistent performance
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
 volumes:
   postgres_data:

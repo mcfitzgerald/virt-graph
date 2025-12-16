@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.16] - 2025-12-16
+
+### Changed
+
+- **PostgreSQL COPY format** - Data generator now uses COPY instead of INSERT:
+  - ~10x faster bulk loading (30-60s vs 5-10 min)
+  - ~6x smaller seed.sql file (~100MB vs 604MB)
+  - Added `copy_str()`, `copy_num()`, `copy_bool()`, `copy_date()`, `copy_timestamp()` helpers
+
+- **PostgreSQL tuning** - docker-compose.yml optimized for bulk loading:
+  - `shared_buffers=256MB`, `work_mem=64MB`, `maintenance_work_mem=256MB`
+  - `effective_cache_size=512MB`, `synchronous_commit=off`
+  - `wal_level=minimal`, `checkpoint_completion_target=0.9`
+  - 1GB memory limit for consistent performance
+
+### Technical
+
+- Preparing for "realistic data" improvements (Pareto distribution, scale-free network, deep BOM cycles, OEE benchmarks)
+
+---
+
 ## [0.9.15] - 2025-12-16
 
 ### Added
