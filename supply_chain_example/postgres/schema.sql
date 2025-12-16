@@ -164,7 +164,8 @@ CREATE TABLE facilities (
     id SERIAL PRIMARY KEY,
     facility_code VARCHAR(20) UNIQUE NOT NULL,
     name VARCHAR(200) NOT NULL,
-    facility_type VARCHAR(50) NOT NULL, -- warehouse, factory, distribution_center
+    facility_type VARCHAR(50) NOT NULL
+        CHECK (facility_type IN ('warehouse', 'factory', 'distribution_center', 'supplier_hub')),
     address VARCHAR(500),
     city VARCHAR(100),
     state VARCHAR(100),
@@ -292,11 +293,13 @@ CREATE TABLE shipments (
     id SERIAL PRIMARY KEY,
     shipment_number VARCHAR(30) UNIQUE NOT NULL,
     order_id INTEGER REFERENCES orders(id),
+    purchase_order_id INTEGER,  -- FK added via ALTER TABLE after purchase_orders is created
+    return_id INTEGER,          -- FK added via ALTER TABLE after returns is created
     origin_facility_id INTEGER NOT NULL REFERENCES facilities(id),
     destination_facility_id INTEGER REFERENCES facilities(id),
     transport_route_id INTEGER REFERENCES transport_routes(id),
     shipment_type VARCHAR(20) DEFAULT 'order_fulfillment'
-        CHECK (shipment_type IN ('order_fulfillment', 'transfer', 'replenishment')),
+        CHECK (shipment_type IN ('order_fulfillment', 'transfer', 'replenishment', 'procurement', 'return')),
     carrier VARCHAR(100),
     tracking_number VARCHAR(100),
     status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, in_transit, delivered, failed
@@ -309,6 +312,8 @@ CREATE TABLE shipments (
 );
 
 CREATE INDEX idx_shipments_order ON shipments(order_id);
+CREATE INDEX idx_shipments_po ON shipments(purchase_order_id);
+CREATE INDEX idx_shipments_return ON shipments(return_id);
 CREATE INDEX idx_shipments_origin ON shipments(origin_facility_id);
 CREATE INDEX idx_shipments_dest ON shipments(destination_facility_id);
 CREATE INDEX idx_shipments_status ON shipments(status);
@@ -445,6 +450,119 @@ CREATE INDEX idx_mtx_type ON material_transactions(transaction_type);
 CREATE INDEX idx_mtx_date ON material_transactions(created_at);
 
 -- ============================================================================
+-- PLAN DOMAIN (SCOR Model)
+-- ============================================================================
+
+-- Demand forecasts for S&OP planning
+CREATE TABLE demand_forecasts (
+    id SERIAL PRIMARY KEY,
+    forecast_number VARCHAR(30) UNIQUE NOT NULL,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    facility_id INTEGER NOT NULL REFERENCES facilities(id),
+    forecast_date DATE NOT NULL,
+    forecast_quantity INTEGER NOT NULL,
+    forecast_type VARCHAR(30) NOT NULL
+        CHECK (forecast_type IN ('statistical', 'manual', 'consensus', 'machine_learning')),
+    confidence_level DECIMAL(3, 2)
+        CHECK (confidence_level >= 0.00 AND confidence_level <= 1.00),
+    seasonality_factor DECIMAL(5, 2) DEFAULT 1.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT demand_forecasts_unique UNIQUE (product_id, facility_id, forecast_date)
+);
+
+CREATE INDEX idx_demand_forecasts_product ON demand_forecasts(product_id);
+CREATE INDEX idx_demand_forecasts_facility ON demand_forecasts(facility_id);
+CREATE INDEX idx_demand_forecasts_date ON demand_forecasts(forecast_date);
+CREATE INDEX idx_demand_forecasts_type ON demand_forecasts(forecast_type);
+
+-- ============================================================================
+-- SOURCE DOMAIN (SCOR Model)
+-- ============================================================================
+
+-- Purchase orders for parts procurement
+CREATE TABLE purchase_orders (
+    id SERIAL PRIMARY KEY,
+    po_number VARCHAR(30) UNIQUE NOT NULL,
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+    facility_id INTEGER NOT NULL REFERENCES facilities(id),
+    order_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    expected_date DATE,
+    received_date DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'submitted', 'confirmed', 'shipped', 'received', 'cancelled')),
+    total_amount DECIMAL(12, 2),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_purchase_orders_supplier ON purchase_orders(supplier_id);
+CREATE INDEX idx_purchase_orders_facility ON purchase_orders(facility_id);
+CREATE INDEX idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX idx_purchase_orders_date ON purchase_orders(order_date);
+
+-- Purchase order line items (composite primary key)
+CREATE TABLE purchase_order_lines (
+    purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+    line_number INTEGER NOT NULL,
+    part_id INTEGER NOT NULL REFERENCES parts(id),
+    quantity INTEGER NOT NULL,
+    unit_price DECIMAL(12, 2) NOT NULL,
+    quantity_received INTEGER DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'partial', 'received', 'cancelled')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (purchase_order_id, line_number)
+);
+
+CREATE INDEX idx_po_lines_part ON purchase_order_lines(part_id);
+
+-- ============================================================================
+-- RETURN DOMAIN (SCOR Model)
+-- ============================================================================
+
+-- Customer returns (RMAs)
+CREATE TABLE returns (
+    id SERIAL PRIMARY KEY,
+    rma_number VARCHAR(30) UNIQUE NOT NULL,
+    order_id INTEGER NOT NULL REFERENCES orders(id),
+    customer_id INTEGER NOT NULL REFERENCES customers(id),
+    return_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    return_reason VARCHAR(50) NOT NULL
+        CHECK (return_reason IN ('defective', 'damaged', 'wrong_item', 'not_as_described', 'changed_mind')),
+    status VARCHAR(20) NOT NULL DEFAULT 'requested'
+        CHECK (status IN ('requested', 'approved', 'received', 'processed', 'rejected')),
+    refund_amount DECIMAL(12, 2),
+    refund_status VARCHAR(20) DEFAULT 'pending'
+        CHECK (refund_status IN ('pending', 'processed', 'denied')),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_returns_order ON returns(order_id);
+CREATE INDEX idx_returns_customer ON returns(customer_id);
+CREATE INDEX idx_returns_status ON returns(status);
+CREATE INDEX idx_returns_reason ON returns(return_reason);
+
+-- Return line items (composite primary key)
+CREATE TABLE return_items (
+    return_id INTEGER NOT NULL REFERENCES returns(id),
+    line_number INTEGER NOT NULL,
+    order_id INTEGER NOT NULL,
+    order_line_number INTEGER NOT NULL,
+    quantity_returned INTEGER NOT NULL,
+    disposition VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (disposition IN ('pending', 'restock', 'refurbish', 'scrap')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (return_id, line_number),
+    FOREIGN KEY (order_id, order_line_number) REFERENCES order_items(order_id, line_number)
+);
+
+CREATE INDEX idx_return_items_order ON return_items(order_id, order_line_number);
+
+-- ============================================================================
 -- AUDIT / QUALITY DOMAIN
 -- ============================================================================
 
@@ -480,7 +598,18 @@ CREATE INDEX idx_audit_record ON audit_log(table_name, record_id);
 CREATE INDEX idx_audit_time ON audit_log(changed_at);
 
 -- ============================================================================
--- SUMMARY: 20 Tables
+-- DEFERRED FOREIGN KEYS
+-- ============================================================================
+-- These FKs reference tables defined later in the schema
+
+ALTER TABLE shipments ADD CONSTRAINT fk_shipments_purchase_order
+    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id);
+
+ALTER TABLE shipments ADD CONSTRAINT fk_shipments_return
+    FOREIGN KEY (return_id) REFERENCES returns(id);
+
+-- ============================================================================
+-- SUMMARY: 25 Tables
 -- ============================================================================
 -- SUPPLIER DOMAIN:
 --   1. suppliers
@@ -493,7 +622,7 @@ CREATE INDEX idx_audit_time ON audit_log(changed_at);
 --   6. products
 --   7. product_components
 -- FACILITIES DOMAIN:
---   8. facilities
+--   8. facilities (includes supplier_hub type)
 --   9. transport_routes (weighted edges)
 -- INVENTORY DOMAIN:
 --  10. inventory
@@ -502,15 +631,23 @@ CREATE INDEX idx_audit_time ON audit_log(changed_at);
 --  12. orders
 --  13. order_items (composite key)
 -- SHIPMENTS DOMAIN:
---  14. shipments
+--  14. shipments (supports procurement/return types)
 -- MANUFACTURING EXECUTION DOMAIN:
 --  15. work_centers
 --  16. production_routings
 --  17. work_orders
 --  18. work_order_steps
 --  19. material_transactions
+-- PLAN DOMAIN (SCOR Model):
+--  20. demand_forecasts
+-- SOURCE DOMAIN (SCOR Model):
+--  21. purchase_orders
+--  22. purchase_order_lines (composite key)
+-- RETURN DOMAIN (SCOR Model):
+--  23. returns
+--  24. return_items (composite key)
 -- AUDIT / QUALITY DOMAIN:
---  20. supplier_certifications
+--  25. supplier_certifications
 -- + audit_log (utility table)
 
 -- ============================================================================

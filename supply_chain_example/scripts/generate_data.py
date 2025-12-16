@@ -2,33 +2,41 @@
 """
 Generate synthetic supply chain data for Virtual Graph POC.
 
-Target data volumes (~1.6M rows across 20 tables):
+Target data volumes (~2.1M rows across 25 tables):
 
 EXISTING DOMAIN (~500K rows):
 - 1,000 suppliers (tiered: 100 T1, 300 T2, 600 T3)
 - 15,000 parts with BOM hierarchy (avg depth: 5 levels)
-- 100 facilities with transport network
+- 100+ facilities (100 base + supplier hubs)
 - 5,000 customers
 - 80,000 orders with 250,000 order items (composite key)
-- 50,000 shipments (70% order fulfillment, 20% transfer, 10% replenishment)
+- 50,000+ shipments (order fulfillment, transfer, replenishment, procurement, return)
 - 50,000 BOM entries with effectivity dates
 - 30,000 inventory records
 
-MANUFACTURING EXECUTION DOMAIN (~1.1M new rows):
+MANUFACTURING EXECUTION DOMAIN (~1.1M rows):
 - 150 work centers (3-5 per factory)
 - 2,500 production routings (3-5 steps per product)
 - 120,000 work orders (80% make-to-order, 20% make-to-stock)
 - 400,000 work order steps
 - 600,000 material transactions (issue, receipt, scrap)
 
+SCOR MODEL DOMAINS (~360K rows):
+- PLAN: 100,000 demand forecasts (seasonal patterns)
+- SOURCE: 50,000 purchase orders with ~150,000 lines
+- RETURN: 4,000 returns with ~12,000 return items
+
 This generates realistic "enterprise messiness":
-- Composite keys (order_items)
+- Composite keys (order_items, purchase_order_lines, return_items)
 - BOM effectivity dates (80% current, 15% superseded, 5% future)
-- Shipment type polymorphism
+- Shipment type polymorphism (5 types: fulfillment, transfer, replenishment, procurement, return)
+- Supplier hub facilities (virtual origins for procurement shipments)
 - Supplier relationship status (10% inactive/suspended)
 - Transport route status (5% seasonal/suspended)
 - Work order status (released, in_progress, quality_hold, completed, cancelled)
 - Material transaction types (issue_to_wo, receipt_from_wo, scrap, return_to_stock)
+- PO status (draft, submitted, confirmed, shipped, received, cancelled)
+- Return dispositions (restock, refurbish, scrap based on reason)
 - Scrap tracking with reason codes
 - Some nullable FKs
 - Realistic distributions
@@ -110,6 +118,12 @@ class SupplyChainGenerator:
         self.work_orders: list[dict] = []
         self.work_order_steps: list[dict] = []
         self.material_transactions: list[dict] = []
+        # SCOR Model domains (Plan/Source/Return)
+        self.demand_forecasts: list[dict] = []
+        self.purchase_orders: list[dict] = []
+        self.purchase_order_lines: list[dict] = []
+        self.returns: list[dict] = []
+        self.return_items: list[dict] = []
 
         # Track IDs for relationships
         self.supplier_ids_by_tier: dict[int, list[int]] = {1: [], 2: [], 3: []}
@@ -117,6 +131,8 @@ class SupplyChainGenerator:
         self.leaf_part_ids: list[int] = []  # Parts with no children (raw materials)
         self.top_part_ids: list[int] = []  # Parts that go into products
         self.factory_ids: list[int] = []  # Facilities that are factories (have work centers)
+        self.supplier_hub_facility_ids: dict[str, int] = {}  # country -> hub facility_id
+        self.dc_facility_ids: list[int] = []  # Distribution center facility IDs
 
     def generate_all(self):
         """Generate all data in dependency order."""
@@ -137,6 +153,10 @@ class SupplyChainGenerator:
 
         print("Generating facilities...")
         self.generate_facilities(100)
+
+        # Add supplier hub facilities (after facilities)
+        print("Generating supplier hub facilities...")
+        self.generate_supplier_hub_facilities()
 
         print("Generating transport routes...")
         self.generate_transport_routes()
@@ -171,6 +191,16 @@ class SupplyChainGenerator:
 
         print("Generating material transactions...")
         self.generate_material_transactions()
+
+        # SCOR Model domains (Plan/Source/Return)
+        print("Generating demand forecasts...")
+        self.generate_demand_forecasts(100000)
+
+        print("Generating purchase orders...")
+        self.generate_purchase_orders(50000)
+
+        print("Generating returns...")
+        self.generate_returns(4000)
 
     def generate_suppliers(self, count: int):
         """Generate tiered suppliers: 10% T1, 30% T2, 60% T3."""
@@ -708,6 +738,8 @@ class SupplyChainGenerator:
             })
             if ftype == "factory":
                 self.factory_ids.append(fac_id)
+            elif ftype == "distribution_center":
+                self.dc_facility_ids.append(fac_id)
 
         start_id = len(named_facilities) + 1
         us_states = ["CA", "TX", "NY", "FL", "IL", "PA", "OH", "GA", "NC", "MI"]
@@ -731,6 +763,8 @@ class SupplyChainGenerator:
             })
             if ftype == "factory":
                 self.factory_ids.append(fac_id)
+            elif ftype == "distribution_center":
+                self.dc_facility_ids.append(fac_id)
 
     def generate_transport_routes(self):
         """Generate transport routes between facilities (connected network)."""
@@ -1688,6 +1722,567 @@ class SupplyChainGenerator:
                 })
                 tx_id += 1
 
+    def generate_supplier_hub_facilities(self):
+        """
+        Create virtual supplier hub facilities - one per supplier country.
+
+        These hubs serve as origin points for procurement shipments,
+        solving the problem of PO shipments needing a facility origin.
+        """
+        # Get unique supplier countries
+        supplier_countries = set(s["country"] for s in self.suppliers if s["country"])
+
+        # Get next facility ID
+        next_id = max(f["id"] for f in self.facilities) + 1
+
+        for country in sorted(supplier_countries):
+            # Create country code (2-letter)
+            country_code = {
+                "USA": "US", "China": "CN", "Germany": "DE", "Japan": "JP",
+                "Mexico": "MX", "Canada": "CA", "UK": "GB", "Taiwan": "TW",
+                "South Korea": "KR", "India": "IN"
+            }.get(country, country[:2].upper())
+
+            hub = {
+                "id": next_id,
+                "facility_code": f"SUPHUB-{country_code}",
+                "name": f"{country} Supplier Hub",
+                "facility_type": "supplier_hub",
+                "city": None,
+                "state": None,
+                "country": country,
+                "latitude": None,
+                "longitude": None,
+                "capacity_units": None,
+                "is_active": True,
+            }
+            self.facilities.append(hub)
+            self.supplier_hub_facility_ids[country] = next_id
+            next_id += 1
+
+    def generate_demand_forecasts(self, count: int):
+        """
+        Generate demand forecasts for S&OP planning.
+
+        Uses sine wave seasonality with category-specific phase shifts:
+        - Electronics: peak Nov-Dec (phase = 11)
+        - Industrial: peak Q1 (phase = 1)
+        - Consumer: peak summer (phase = 7)
+        - Others: random phase
+        """
+        import math
+
+        forecast_id = 1
+        product_ids = [p["id"] for p in self.products]
+        dc_ids = self.dc_facility_ids if self.dc_facility_ids else [f["id"] for f in self.facilities][:10]
+
+        # Category phase shifts (month of peak demand)
+        category_phases = {
+            "Electronics": 11,  # Peak in November
+            "Industrial": 1,    # Peak in Q1
+            "Consumer": 7,      # Peak in summer
+            "Automotive": 3,    # Peak in spring
+            "Medical": 9,       # Peak in fall
+        }
+
+        # Forecast type distribution
+        def get_forecast_type():
+            r = random.random()
+            if r < 0.60:
+                return "statistical"
+            elif r < 0.75:
+                return "manual"
+            elif r < 0.90:
+                return "consensus"
+            else:
+                return "machine_learning"
+
+        # Named forecasts for testing
+        named_forecasts = [
+            ("FC-2024-001", 1, dc_ids[0] if dc_ids else 1, date(2024, 1, 1), 500, "statistical"),
+            ("FC-2024-002", 2, dc_ids[0] if dc_ids else 1, date(2024, 2, 1), 300, "consensus"),
+            ("FC-2024-003", 1, dc_ids[1] if len(dc_ids) > 1 else 1, date(2024, 1, 1), 200, "machine_learning"),
+        ]
+
+        for fc_num, prod_id, fac_id, fc_date, qty, fc_type in named_forecasts:
+            product = next((p for p in self.products if p["id"] == prod_id), None)
+            category = product.get("category", "Industrial") if product else "Industrial"
+            phase = category_phases.get(category, random.randint(1, 12))
+
+            # Calculate seasonality factor
+            month = fc_date.month
+            seasonality = 1.0 + 0.3 * math.sin(2 * math.pi * (month - phase) / 12)
+
+            self.demand_forecasts.append({
+                "id": forecast_id,
+                "forecast_number": fc_num,
+                "product_id": prod_id,
+                "facility_id": fac_id,
+                "forecast_date": fc_date,
+                "forecast_quantity": qty,
+                "forecast_type": fc_type,
+                "confidence_level": round(random.uniform(0.70, 0.95), 2),
+                "seasonality_factor": round(seasonality, 2),
+            })
+            forecast_id += 1
+
+        # Generate remaining forecasts
+        # 12 months of forecasts per product per DC (subset)
+        products_sample = random.sample(product_ids, min(200, len(product_ids)))
+        dcs_sample = random.sample(dc_ids, min(5, len(dc_ids)))
+
+        remaining = count - len(named_forecasts)
+        generated = 0
+
+        for prod_id in products_sample:
+            if generated >= remaining:
+                break
+
+            product = next((p for p in self.products if p["id"] == prod_id), None)
+            category = product.get("category", "Industrial") if product else "Industrial"
+            phase = category_phases.get(category, random.randint(1, 12))
+            base_qty = random.randint(50, 500)
+
+            for dc_id in dcs_sample:
+                if generated >= remaining:
+                    break
+
+                for month_offset in range(12):
+                    if generated >= remaining:
+                        break
+
+                    fc_date = date(2024, 1, 1) + timedelta(days=month_offset * 30)
+                    month = fc_date.month
+                    seasonality = 1.0 + 0.3 * math.sin(2 * math.pi * (month - phase) / 12)
+                    qty = int(base_qty * seasonality * random.uniform(0.9, 1.1))
+
+                    self.demand_forecasts.append({
+                        "id": forecast_id,
+                        "forecast_number": f"FC-{forecast_id:08d}",
+                        "product_id": prod_id,
+                        "facility_id": dc_id,
+                        "forecast_date": fc_date,
+                        "forecast_quantity": qty,
+                        "forecast_type": get_forecast_type(),
+                        "confidence_level": round(random.uniform(0.60, 0.98), 2),
+                        "seasonality_factor": round(seasonality, 2),
+                    })
+                    forecast_id += 1
+                    generated += 1
+
+    def generate_purchase_orders(self, count: int):
+        """
+        Generate purchase orders for parts procurement.
+
+        Links via part_suppliers table (approved suppliers for parts).
+        Creates 'procurement' shipments from supplier hubs.
+        """
+        po_id = 1
+        facility_ids = [f["id"] for f in self.facilities if f["facility_type"] != "supplier_hub"]
+
+        # Build approved supplier lookup from part_suppliers
+        approved_suppliers: dict[int, list[int]] = {}  # part_id -> [supplier_ids]
+        for ps in self.part_suppliers:
+            if ps.get("is_approved", True):
+                part_id = ps["part_id"]
+                if part_id not in approved_suppliers:
+                    approved_suppliers[part_id] = []
+                approved_suppliers[part_id].append(ps["supplier_id"])
+
+        # Status distribution
+        def get_po_status():
+            r = random.random()
+            if r < 0.05:
+                return "draft"
+            elif r < 0.10:
+                return "submitted"
+            elif r < 0.15:
+                return "confirmed"
+            elif r < 0.25:
+                return "shipped"
+            elif r < 0.95:
+                return "received"
+            else:
+                return "cancelled"
+
+        # Named POs for testing
+        named_pos = [
+            ("PO-2024-00001", 1, 1, date(2024, 1, 15), "received"),  # Supplier 1, Facility 1
+            ("PO-2024-00002", 2, 1, date(2024, 2, 1), "shipped"),    # Supplier 2, Facility 1
+            ("PO-2024-00003", 4, 2, date(2024, 3, 1), "confirmed"),  # Pacific Components, Facility 2
+        ]
+
+        shipment_id = max(s["id"] for s in self.shipments) + 1 if self.shipments else 1
+
+        for po_num, supplier_id, facility_id, order_date, status in named_pos:
+            supplier = next((s for s in self.suppliers if s["id"] == supplier_id), None)
+            lead_time = random.randint(14, 45)
+            expected_date = order_date + timedelta(days=lead_time)
+
+            received_date = None
+            if status == "received":
+                # Add variance: ±20-30%
+                variance = random.uniform(-0.3, 0.2)
+                actual_days = int(lead_time * (1 + variance))
+                received_date = order_date + timedelta(days=actual_days)
+
+            self.purchase_orders.append({
+                "id": po_id,
+                "po_number": po_num,
+                "supplier_id": supplier_id,
+                "facility_id": facility_id,
+                "order_date": order_date,
+                "expected_date": expected_date,
+                "received_date": received_date,
+                "status": status,
+                "total_amount": 0,  # Will calculate from lines
+            })
+
+            # Generate 1-5 PO lines
+            num_lines = random.randint(1, 5)
+            total = 0
+            parts_with_supplier = [p for p in self.parts if supplier_id in approved_suppliers.get(p["id"], [supplier_id])]
+            if not parts_with_supplier:
+                parts_with_supplier = random.sample(self.parts, min(10, len(self.parts)))
+
+            for line_num in range(1, num_lines + 1):
+                part = random.choice(parts_with_supplier)
+                qty = random.randint(100, 1000)
+                unit_price = part["unit_cost"] * random.uniform(0.9, 1.1)
+
+                line_status = "received" if status == "received" else "pending"
+                qty_received = qty if status == "received" else 0
+
+                self.purchase_order_lines.append({
+                    "purchase_order_id": po_id,
+                    "line_number": line_num,
+                    "part_id": part["id"],
+                    "quantity": qty,
+                    "unit_price": round(unit_price, 2),
+                    "quantity_received": qty_received,
+                    "status": line_status,
+                })
+                total += qty * unit_price
+
+            self.purchase_orders[-1]["total_amount"] = round(total, 2)
+
+            # Create procurement shipment for shipped/received POs
+            if status in ["shipped", "received"]:
+                supplier_country = supplier["country"] if supplier else "USA"
+                origin_hub = self.supplier_hub_facility_ids.get(supplier_country)
+                if not origin_hub:
+                    origin_hub = list(self.supplier_hub_facility_ids.values())[0] if self.supplier_hub_facility_ids else facility_id
+
+                ship_date = order_date + timedelta(days=random.randint(3, 10))
+                self.shipments.append({
+                    "id": shipment_id,
+                    "shipment_number": f"PROC-{shipment_id:08d}",
+                    "order_id": None,
+                    "purchase_order_id": po_id,
+                    "return_id": None,
+                    "origin_facility_id": origin_hub,
+                    "destination_facility_id": facility_id,
+                    "transport_route_id": None,
+                    "shipment_type": "procurement",
+                    "carrier": random.choice(["Ocean Freight", "Air Cargo", "Express Logistics"]),
+                    "tracking_number": fake.bothify("PROC??#########"),
+                    "status": "delivered" if status == "received" else "in_transit",
+                    "shipped_at": datetime.combine(ship_date, datetime.min.time()),
+                    "delivered_at": datetime.combine(received_date, datetime.min.time()) if received_date else None,
+                    "weight_kg": round(random.uniform(100, 5000), 2),
+                    "cost_usd": round(random.uniform(500, 5000), 2),
+                })
+                shipment_id += 1
+
+            po_id += 1
+
+        # Generate remaining POs
+        supplier_ids = [s["id"] for s in self.suppliers]
+        remaining = count - len(named_pos)
+
+        for _ in range(remaining):
+            supplier_id = random.choice(supplier_ids)
+            supplier = next((s for s in self.suppliers if s["id"] == supplier_id), None)
+            facility_id = random.choice(facility_ids)
+            order_date = fake.date_between(start_date="-2y", end_date="today")
+            status = get_po_status()
+
+            lead_time = random.randint(14, 60)
+            expected_date = order_date + timedelta(days=lead_time)
+
+            received_date = None
+            if status == "received":
+                variance = random.uniform(-0.3, 0.2)
+                actual_days = int(lead_time * (1 + variance))
+                received_date = order_date + timedelta(days=actual_days)
+
+            self.purchase_orders.append({
+                "id": po_id,
+                "po_number": f"PO-{po_id:08d}",
+                "supplier_id": supplier_id,
+                "facility_id": facility_id,
+                "order_date": order_date,
+                "expected_date": expected_date,
+                "received_date": received_date,
+                "status": status,
+                "total_amount": 0,
+            })
+
+            # Generate PO lines
+            num_lines = random.randint(1, 5)
+            total = 0
+            parts_with_supplier = [p for p in self.parts if supplier_id in approved_suppliers.get(p["id"], [supplier_id])]
+            if not parts_with_supplier:
+                parts_with_supplier = random.sample(self.parts, min(10, len(self.parts)))
+
+            for line_num in range(1, num_lines + 1):
+                part = random.choice(parts_with_supplier)
+                qty = random.randint(50, 500)
+                unit_price = part["unit_cost"] * random.uniform(0.85, 1.15)
+
+                if status == "received":
+                    line_status = "received"
+                    qty_received = qty
+                elif status == "cancelled":
+                    line_status = "cancelled"
+                    qty_received = 0
+                else:
+                    line_status = "pending"
+                    qty_received = 0
+
+                self.purchase_order_lines.append({
+                    "purchase_order_id": po_id,
+                    "line_number": line_num,
+                    "part_id": part["id"],
+                    "quantity": qty,
+                    "unit_price": round(unit_price, 2),
+                    "quantity_received": qty_received,
+                    "status": line_status,
+                })
+                total += qty * unit_price
+
+            self.purchase_orders[-1]["total_amount"] = round(total, 2)
+
+            # Create procurement shipment for shipped/received POs
+            if status in ["shipped", "received"]:
+                supplier_country = supplier["country"] if supplier else "USA"
+                origin_hub = self.supplier_hub_facility_ids.get(supplier_country)
+                if not origin_hub:
+                    origin_hub = list(self.supplier_hub_facility_ids.values())[0] if self.supplier_hub_facility_ids else facility_id
+
+                ship_date = order_date + timedelta(days=random.randint(3, 10))
+                self.shipments.append({
+                    "id": shipment_id,
+                    "shipment_number": f"PROC-{shipment_id:08d}",
+                    "order_id": None,
+                    "purchase_order_id": po_id,
+                    "return_id": None,
+                    "origin_facility_id": origin_hub,
+                    "destination_facility_id": facility_id,
+                    "transport_route_id": None,
+                    "shipment_type": "procurement",
+                    "carrier": random.choice(["Ocean Freight", "Air Cargo", "Express Logistics", "Ground Freight"]),
+                    "tracking_number": fake.bothify("PROC??#########"),
+                    "status": "delivered" if status == "received" else "in_transit",
+                    "shipped_at": datetime.combine(ship_date, datetime.min.time()),
+                    "delivered_at": datetime.combine(received_date, datetime.min.time()) if received_date else None,
+                    "weight_kg": round(random.uniform(50, 2000), 2),
+                    "cost_usd": round(random.uniform(200, 3000), 2),
+                })
+                shipment_id += 1
+
+            po_id += 1
+
+    def generate_returns(self, count: int):
+        """
+        Generate customer returns (RMAs).
+
+        Only from delivered orders (~5% return rate).
+        Creates 'return' shipments back to shipping facility.
+        """
+        return_id = 1
+
+        # Get delivered orders
+        delivered_orders = [o for o in self.orders if o["status"] == "delivered"]
+        if not delivered_orders:
+            print("Warning: No delivered orders found for returns")
+            return
+
+        # Reason distribution
+        reasons = [
+            ("defective", 0.35),
+            ("damaged", 0.20),
+            ("wrong_item", 0.15),
+            ("not_as_described", 0.15),
+            ("changed_mind", 0.15),
+        ]
+
+        def get_return_reason():
+            r = random.random()
+            cumulative = 0
+            for reason, prob in reasons:
+                cumulative += prob
+                if r < cumulative:
+                    return reason
+            return "defective"
+
+        # Disposition by reason
+        disposition_by_reason = {
+            "defective": [("scrap", 0.60), ("refurbish", 0.30), ("restock", 0.10)],
+            "damaged": [("scrap", 0.40), ("refurbish", 0.40), ("restock", 0.20)],
+            "wrong_item": [("restock", 0.90), ("refurbish", 0.10)],
+            "not_as_described": [("restock", 0.70), ("refurbish", 0.20), ("scrap", 0.10)],
+            "changed_mind": [("restock", 0.95), ("refurbish", 0.05)],
+        }
+
+        def get_disposition(reason: str):
+            dispositions = disposition_by_reason.get(reason, [("restock", 1.0)])
+            r = random.random()
+            cumulative = 0
+            for disp, prob in dispositions:
+                cumulative += prob
+                if r < cumulative:
+                    return disp
+            return "restock"
+
+        # Named returns for testing
+        named_returns = [
+            ("RMA-2024-001", delivered_orders[0]["id"], delivered_orders[0]["customer_id"], "defective"),
+            ("RMA-2024-002", delivered_orders[1]["id"] if len(delivered_orders) > 1 else delivered_orders[0]["id"],
+             delivered_orders[1]["customer_id"] if len(delivered_orders) > 1 else delivered_orders[0]["customer_id"],
+             "changed_mind"),
+        ]
+
+        shipment_id = max(s["id"] for s in self.shipments) + 1 if self.shipments else 1
+
+        for rma_num, order_id, customer_id, reason in named_returns:
+            order = next((o for o in self.orders if o["id"] == order_id), None)
+            order_items = [oi for oi in self.order_items if oi["order_id"] == order_id]
+
+            if not order or not order_items:
+                continue
+
+            return_date = order["shipped_date"].date() + timedelta(days=random.randint(5, 30)) if order.get("shipped_date") else date.today()
+
+            self.returns.append({
+                "id": return_id,
+                "rma_number": rma_num,
+                "order_id": order_id,
+                "customer_id": customer_id,
+                "return_date": return_date,
+                "return_reason": reason,
+                "status": random.choice(["received", "processed"]),
+                "refund_amount": round(order["total_amount"] * random.uniform(0.8, 1.0), 2),
+                "refund_status": "processed",
+            })
+
+            # Return 1-3 items from the order
+            num_items = min(random.randint(1, 3), len(order_items))
+            returned_items = random.sample(order_items, num_items)
+
+            for line_num, oi in enumerate(returned_items, 1):
+                qty_to_return = random.randint(1, oi["quantity"])
+                self.return_items.append({
+                    "return_id": return_id,
+                    "line_number": line_num,
+                    "order_id": oi["order_id"],
+                    "order_line_number": oi["line_number"],
+                    "quantity_returned": qty_to_return,
+                    "disposition": get_disposition(reason),
+                })
+
+            # Create return shipment
+            shipping_facility = order.get("shipping_facility_id", 1)
+            self.shipments.append({
+                "id": shipment_id,
+                "shipment_number": f"RET-{shipment_id:08d}",
+                "order_id": None,
+                "purchase_order_id": None,
+                "return_id": return_id,
+                "origin_facility_id": shipping_facility,  # Returns come back to shipping facility
+                "destination_facility_id": shipping_facility,
+                "transport_route_id": None,
+                "shipment_type": "return",
+                "carrier": random.choice(["Return Logistics", "Express Return", "Customer Drop-off"]),
+                "tracking_number": fake.bothify("RET??#########"),
+                "status": "delivered",
+                "shipped_at": datetime.combine(return_date, datetime.min.time()),
+                "delivered_at": datetime.combine(return_date + timedelta(days=random.randint(3, 10)), datetime.min.time()),
+                "weight_kg": round(random.uniform(1, 20), 2),
+                "cost_usd": round(random.uniform(10, 100), 2),
+            })
+            shipment_id += 1
+
+            return_id += 1
+
+        # Generate remaining returns (~5% of delivered orders)
+        remaining = count - len(named_returns)
+        returns_to_generate = min(remaining, int(len(delivered_orders) * 0.05))
+        orders_for_returns = random.sample(delivered_orders, min(returns_to_generate, len(delivered_orders)))
+
+        for order in orders_for_returns:
+            order_items = [oi for oi in self.order_items if oi["order_id"] == order["id"]]
+            if not order_items:
+                continue
+
+            reason = get_return_reason()
+            return_date = order["shipped_date"].date() + timedelta(days=random.randint(5, 45)) if order.get("shipped_date") else date.today()
+
+            status = random.choice(["requested", "approved", "received", "processed"])
+            refund_status = "processed" if status == "processed" else ("pending" if status != "rejected" else "denied")
+
+            self.returns.append({
+                "id": return_id,
+                "rma_number": f"RMA-{return_id:08d}",
+                "order_id": order["id"],
+                "customer_id": order["customer_id"],
+                "return_date": return_date,
+                "return_reason": reason,
+                "status": status,
+                "refund_amount": round(order["total_amount"] * random.uniform(0.5, 1.0), 2),
+                "refund_status": refund_status,
+            })
+
+            # Return 1-3 items
+            num_items = min(random.randint(1, 3), len(order_items))
+            returned_items = random.sample(order_items, num_items)
+
+            for line_num, oi in enumerate(returned_items, 1):
+                qty_to_return = random.randint(1, oi["quantity"])
+                self.return_items.append({
+                    "return_id": return_id,
+                    "line_number": line_num,
+                    "order_id": oi["order_id"],
+                    "order_line_number": oi["line_number"],
+                    "quantity_returned": qty_to_return,
+                    "disposition": get_disposition(reason) if status in ["received", "processed"] else "pending",
+                })
+
+            # Create return shipment for received/processed returns
+            if status in ["received", "processed"]:
+                shipping_facility = order.get("shipping_facility_id", 1)
+                self.shipments.append({
+                    "id": shipment_id,
+                    "shipment_number": f"RET-{shipment_id:08d}",
+                    "order_id": None,
+                    "purchase_order_id": None,
+                    "return_id": return_id,
+                    "origin_facility_id": shipping_facility,
+                    "destination_facility_id": shipping_facility,
+                    "transport_route_id": None,
+                    "shipment_type": "return",
+                    "carrier": random.choice(["Return Logistics", "Express Return", "Ground Return"]),
+                    "tracking_number": fake.bothify("RET??#########"),
+                    "status": "delivered",
+                    "shipped_at": datetime.combine(return_date, datetime.min.time()),
+                    "delivered_at": datetime.combine(return_date + timedelta(days=random.randint(2, 7)), datetime.min.time()),
+                    "weight_kg": round(random.uniform(0.5, 15), 2),
+                    "cost_usd": round(random.uniform(5, 75), 2),
+                })
+                shipment_id += 1
+
+            return_id += 1
+
     def to_sql(self) -> str:
         """Generate SQL INSERT statements."""
         lines = [
@@ -1844,22 +2439,7 @@ class SupplyChainGenerator:
         # No sequence for composite key table
         lines.append("")
 
-        # Shipments (with shipment_type)
-        lines.append("-- Shipments")
-        for sh in self.shipments:
-            lines.append(
-                f"INSERT INTO shipments (id, shipment_number, order_id, origin_facility_id, destination_facility_id, "
-                f"transport_route_id, shipment_type, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) "
-                f"VALUES ({sh['id']}, {sql_str(sh['shipment_number'])}, {sql_num(sh.get('order_id'))}, "
-                f"{sh['origin_facility_id']}, {sql_num(sh.get('destination_facility_id'))}, {sql_num(sh.get('transport_route_id'))}, "
-                f"{sql_str(sh.get('shipment_type', 'order_fulfillment'))}, "
-                f"{sql_str(sh.get('carrier'))}, {sql_str(sh.get('tracking_number'))}, {sql_str(sh['status'])}, "
-                f"{sql_timestamp(sh.get('shipped_at'))}, {sql_timestamp(sh.get('delivered_at'))}, "
-                f"{sql_num(sh.get('weight_kg'))}, {sql_num(sh.get('cost_usd'))});"
-            )
-        if self.shipments:
-            lines.append(f"SELECT setval('shipments_id_seq', {max(sh['id'] for sh in self.shipments)});")
-        lines.append("")
+        # NOTE: Shipments moved to after Returns due to FK dependencies (purchase_order_id, return_id)
 
         # Inventory
         lines.append("-- Inventory")
@@ -1968,6 +2548,87 @@ class SupplyChainGenerator:
             lines.append(f"SELECT setval('material_transactions_id_seq', {max(mt['id'] for mt in self.material_transactions)});")
         lines.append("")
 
+        # Demand Forecasts (PLAN domain)
+        lines.append("-- Demand Forecasts")
+        for df in self.demand_forecasts:
+            lines.append(
+                f"INSERT INTO demand_forecasts (id, forecast_number, product_id, facility_id, forecast_date, "
+                f"forecast_quantity, forecast_type, confidence_level, seasonality_factor) "
+                f"VALUES ({df['id']}, {sql_str(df['forecast_number'])}, {df['product_id']}, {df['facility_id']}, "
+                f"{sql_date(df['forecast_date'])}, {df['forecast_quantity']}, {sql_str(df['forecast_type'])}, "
+                f"{sql_num(df.get('confidence_level'))}, {sql_num(df.get('seasonality_factor'))});"
+            )
+        if self.demand_forecasts:
+            lines.append(f"SELECT setval('demand_forecasts_id_seq', {max(df['id'] for df in self.demand_forecasts)});")
+        lines.append("")
+
+        # Purchase Orders (SOURCE domain)
+        lines.append("-- Purchase Orders")
+        for po in self.purchase_orders:
+            lines.append(
+                f"INSERT INTO purchase_orders (id, po_number, supplier_id, facility_id, order_date, expected_date, "
+                f"received_date, status, total_amount) "
+                f"VALUES ({po['id']}, {sql_str(po['po_number'])}, {po['supplier_id']}, {po['facility_id']}, "
+                f"{sql_date(po['order_date'])}, {sql_date(po.get('expected_date'))}, {sql_date(po.get('received_date'))}, "
+                f"{sql_str(po['status'])}, {sql_num(po.get('total_amount'))});"
+            )
+        if self.purchase_orders:
+            lines.append(f"SELECT setval('purchase_orders_id_seq', {max(po['id'] for po in self.purchase_orders)});")
+        lines.append("")
+
+        # Purchase Order Lines (composite key)
+        lines.append("-- Purchase Order Lines")
+        for pol in self.purchase_order_lines:
+            lines.append(
+                f"INSERT INTO purchase_order_lines (purchase_order_id, line_number, part_id, quantity, unit_price, "
+                f"quantity_received, status) "
+                f"VALUES ({pol['purchase_order_id']}, {pol['line_number']}, {pol['part_id']}, {pol['quantity']}, "
+                f"{sql_num(pol['unit_price'])}, {sql_num(pol.get('quantity_received', 0))}, {sql_str(pol['status'])});"
+            )
+        lines.append("")
+
+        # Returns (RETURN domain)
+        lines.append("-- Returns")
+        for r in self.returns:
+            lines.append(
+                f"INSERT INTO returns (id, rma_number, order_id, customer_id, return_date, return_reason, "
+                f"status, refund_amount, refund_status) "
+                f"VALUES ({r['id']}, {sql_str(r['rma_number'])}, {r['order_id']}, {r['customer_id']}, "
+                f"{sql_date(r['return_date'])}, {sql_str(r['return_reason'])}, {sql_str(r['status'])}, "
+                f"{sql_num(r.get('refund_amount'))}, {sql_str(r.get('refund_status'))});"
+            )
+        if self.returns:
+            lines.append(f"SELECT setval('returns_id_seq', {max(r['id'] for r in self.returns)});")
+        lines.append("")
+
+        # Return Items (composite key)
+        lines.append("-- Return Items")
+        for ri in self.return_items:
+            lines.append(
+                f"INSERT INTO return_items (return_id, line_number, order_id, order_line_number, quantity_returned, disposition) "
+                f"VALUES ({ri['return_id']}, {ri['line_number']}, {ri['order_id']}, {ri['order_line_number']}, "
+                f"{ri['quantity_returned']}, {sql_str(ri['disposition'])});"
+            )
+        lines.append("")
+
+        # Shipments (after PO/Returns due to FK dependencies)
+        lines.append("-- Shipments")
+        for sh in self.shipments:
+            lines.append(
+                f"INSERT INTO shipments (id, shipment_number, order_id, purchase_order_id, return_id, origin_facility_id, destination_facility_id, "
+                f"transport_route_id, shipment_type, carrier, tracking_number, status, shipped_at, delivered_at, weight_kg, cost_usd) "
+                f"VALUES ({sh['id']}, {sql_str(sh['shipment_number'])}, {sql_num(sh.get('order_id'))}, "
+                f"{sql_num(sh.get('purchase_order_id'))}, {sql_num(sh.get('return_id'))}, "
+                f"{sh['origin_facility_id']}, {sql_num(sh.get('destination_facility_id'))}, {sql_num(sh.get('transport_route_id'))}, "
+                f"{sql_str(sh.get('shipment_type', 'order_fulfillment'))}, "
+                f"{sql_str(sh.get('carrier'))}, {sql_str(sh.get('tracking_number'))}, {sql_str(sh['status'])}, "
+                f"{sql_timestamp(sh.get('shipped_at'))}, {sql_timestamp(sh.get('delivered_at'))}, "
+                f"{sql_num(sh.get('weight_kg'))}, {sql_num(sh.get('cost_usd'))});"
+            )
+        if self.shipments:
+            lines.append(f"SELECT setval('shipments_id_seq', {max(sh['id'] for sh in self.shipments)});")
+        lines.append("")
+
         lines.append("COMMIT;")
         lines.append("")
 
@@ -1992,7 +2653,12 @@ class SupplyChainGenerator:
             len(self.production_routings) +
             len(self.work_orders) +
             len(self.work_order_steps) +
-            len(self.material_transactions)
+            len(self.material_transactions) +
+            len(self.demand_forecasts) +
+            len(self.purchase_orders) +
+            len(self.purchase_order_lines) +
+            len(self.returns) +
+            len(self.return_items)
         )
 
         lines.append(f"-- Total rows: {total_rows:,}")
@@ -2016,6 +2682,11 @@ class SupplyChainGenerator:
         lines.append(f"-- Work Orders: {len(self.work_orders):,}")
         lines.append(f"-- Work Order Steps: {len(self.work_order_steps):,}")
         lines.append(f"-- Material Transactions: {len(self.material_transactions):,}")
+        lines.append(f"-- Demand Forecasts: {len(self.demand_forecasts):,}")
+        lines.append(f"-- Purchase Orders: {len(self.purchase_orders):,}")
+        lines.append(f"-- Purchase Order Lines: {len(self.purchase_order_lines):,}")
+        lines.append(f"-- Returns: {len(self.returns):,}")
+        lines.append(f"-- Return Items: {len(self.return_items):,}")
 
         return "\n".join(lines)
 

@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.15] - 2025-12-16
+
+### Added
+
+- **SCOR Model Completion** - Plan/Source/Return domains with 5 new tables (~360K rows):
+  - **Plan Domain**: `demand_forecasts` (~100K rows) - S&OP planning with seasonal patterns
+  - **Source Domain**: `purchase_orders` + `purchase_order_lines` (~200K rows) - Parts procurement
+  - **Return Domain**: `returns` + `return_items` (~16K rows) - Customer RMAs with dispositions
+
+- **Supplier Hub Facilities** - Virtual facilities (one per supplier country) as procurement shipment origins
+
+- **Extended Shipment Types** - Added `procurement` and `return` types to shipments table
+
+- **Named entities for testing**:
+  - `FC-2024-001`, `FC-2024-002`, `FC-2024-003` - Named demand forecasts
+  - `PO-2024-00001`, `PO-2024-00002`, `PO-2024-00003` - Named purchase orders
+  - `RMA-2024-001`, `RMA-2024-002` - Named returns
+  - `SUPHUB-*` facilities - Supplier hubs by country code
+
+### Changed
+
+- **Schema**: 25 tables (was 20), facilities CHECK constraint includes `supplier_hub`
+- **Shipments**: Added `purchase_order_id` and `return_id` FK columns
+- **Data scale**: ~2.1M rows (was ~1.73M)
+
+### Technical
+
+- Demand forecasts use sine wave seasonality with category-specific phase shifts
+- PO status lifecycle: draft → submitted → confirmed → shipped → received
+- Return dispositions based on reason: defective→60% scrap, changed_mind→95% restock
+- Generator correctly orders INSERTs to respect FK dependencies
+
+---
+
 ## [0.9.14] - 2025-12-16
 
 ### Added
