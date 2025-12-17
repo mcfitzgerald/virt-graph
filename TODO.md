@@ -35,6 +35,22 @@
 
 ---
 
+## Realistic Data Patterns (v0.9.18)
+
+### Completed
+- [x] "Supplier from Hell" (Reliable Parts Co) - 50% late deliveries, BB rating, 45-90 day lead times
+- [x] Deep Aerospace BOM - 22-level hierarchy with recycling cycle (`AERO-TOP-01` → `PACK-BOX-A1` → `RECYC-CARD-A1` → `AERO-TOP-01`)
+- [x] Realistic OEE distribution - 10% poor (40-55%), 15% below avg (55-65%), 60% avg (60-72%), 15% world-class (80-92%)
+- [x] 3 named problem work centers: `WC-PROB-01`, `WC-PROB-02`, `WC-PROB-03`
+
+### Pending (from plan)
+- [ ] Perfect Order Metric - Make 18% of orders ship AFTER `required_date` (late shipments)
+- [ ] Temporal Route Flickering - 10% of transport routes are seasonal (active 3 months/year)
+- [ ] Lumpy Demand - Gaussian noise + 5% demand spikes + bottleneck product line
+- [ ] Validation Queries - SQL script to verify benchmarks after regeneration
+
+---
+
 # Future Ideas
 - linter for context slots in `virt_graph.yaml`
 - ESG handler

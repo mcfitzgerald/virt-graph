@@ -263,6 +263,15 @@ class SupplyChainGenerator:
         self.product_zipf_weights: np.ndarray | None = None  # Pre-computed Zipf weights for products
         self.supplier_connection_counts: dict[int, int] = {}  # Track connections for preferential attachment
 
+        # "Supplier from Hell" tracking (Phase 2.4)
+        self.supplier_from_hell_id: int | None = None  # T2 supplier with 50% late deliveries
+
+        # Aerospace BOM tracking (Phase 2.5)
+        self.aerospace_part_ids: list[int] = []  # Parts in 22-level aerospace hierarchy
+
+        # Problem work centers tracking (Phase 2.6)
+        self.problem_work_center_ids: list[int] = []  # Work centers with poor OEE (40-55%)
+
     def generate_all(self):
         """Generate all data in dependency order."""
         print("Generating suppliers...")
@@ -273,6 +282,9 @@ class SupplyChainGenerator:
 
         print("Generating parts with BOM hierarchy...")
         self.generate_parts_with_bom(15000)
+
+        print("Generating deep Aerospace BOM (22 levels)...")
+        self.generate_aerospace_bom()
 
         print("Generating part suppliers...")
         self.generate_part_suppliers()
@@ -343,18 +355,27 @@ class SupplyChainGenerator:
         ratings = ["AAA", "AA", "A", "BBB", "BB", "B"]
 
         # Some named suppliers for testing
+        # NOTE: "Reliable Parts Co" (id=9) is the "Supplier from Hell" - ironically named
+        # with BB rating, long lead times, and 50% late deliveries (see generate_purchase_orders)
         named_suppliers = [
-            ("Acme Corp", 1, "USA"),
-            ("GlobalTech Industries", 1, "China"),
-            ("Precision Parts Ltd", 1, "Germany"),
-            ("Pacific Components", 2, "Japan"),
-            ("Northern Materials", 2, "Canada"),
-            ("Apex Manufacturing", 2, "Mexico"),
-            ("Eastern Electronics", 3, "Taiwan"),
-            ("Delta Supplies", 3, "India"),
+            ("Acme Corp", 1, "USA", None),
+            ("GlobalTech Industries", 1, "China", None),
+            ("Precision Parts Ltd", 1, "Germany", None),
+            ("Pacific Components", 2, "Japan", None),
+            ("Northern Materials", 2, "Canada", None),
+            ("Apex Manufacturing", 2, "Mexico", None),
+            ("Eastern Electronics", 3, "Taiwan", None),
+            ("Delta Supplies", 3, "India", None),
+            ("Reliable Parts Co", 2, "USA", "BB"),  # Ironic name - "Supplier from Hell"
         ]
 
-        for name, tier, country in named_suppliers:
+        for name, tier, country, override_rating in named_suppliers:
+            # Determine credit rating: use override if provided, else tier-based
+            if override_rating:
+                credit_rating = override_rating
+            else:
+                credit_rating = random.choice(ratings[:3]) if tier == 1 else random.choice(ratings)
+
             self.suppliers.append({
                 "id": supplier_id,
                 "supplier_code": f"SUP{supplier_id:05d}",
@@ -363,12 +384,18 @@ class SupplyChainGenerator:
                 "country": country,
                 "city": fake.city(),
                 "contact_email": fake.company_email(),
-                "credit_rating": random.choice(ratings[:3]) if tier == 1 else random.choice(ratings),
+                "credit_rating": credit_rating,
                 "is_active": True,
                 "created_by": "system",
             })
             self.supplier_ids_by_tier[tier].append(supplier_id)
             tier_counts[tier] -= 1
+
+            # Track "Supplier from Hell" (Reliable Parts Co)
+            if name == "Reliable Parts Co":
+                self.supplier_from_hell_id = supplier_id
+                print(f"  → 'Supplier from Hell' = {name} (id={supplier_id}, rating={credit_rating})")
+
             supplier_id += 1
 
         # Generate remaining suppliers
@@ -815,6 +842,203 @@ class SupplyChainGenerator:
                     "effective_to": None,
                 })
                 bom_id += 1
+
+    def generate_aerospace_bom(self):
+        """
+        Generate deep Aerospace BOM hierarchy (22 levels) with recycling cycle.
+
+        Structure:
+        - 22-level deep hierarchy: AERO-L01 (raw) → AERO-L02 → ... → AERO-L22 (top assembly)
+        - 3 parts per level = ~66 aerospace parts
+        - True recycling cycle: AERO-L22 → PACK-BOX-A1 → RECYC-CARD-A1 → AERO-L22
+
+        The cycle tests SQL WITH RECURSIVE limits AND cycle detection.
+        Existing CTE handlers use `NOT ... = ANY(p.path)` to prevent re-visiting.
+        """
+        # Get next available IDs
+        next_part_id = max(p["id"] for p in self.parts) + 1
+        next_bom_id = max(b["id"] for b in self.bom) + 1
+
+        # Current effectivity for all aerospace parts
+        current_eff_from = date.today() - timedelta(days=365)
+
+        # Build 22 levels with 3 parts each
+        levels: dict[int, list[int]] = {}  # level_num -> [part_ids]
+
+        # Level 1 (raw materials for aerospace)
+        level1_parts = []
+        for i in range(3):
+            part_id = next_part_id
+            self.parts.append({
+                "id": part_id,
+                "part_number": f"AERO-RAW-{i+1:02d}",
+                "description": f"Aerospace Raw Material {i+1}",
+                "category": "Aerospace",
+                "unit_cost": round(random.uniform(50, 200), 2),
+                "weight_kg": round(random.uniform(0.1, 5.0), 3),
+                "lead_time_days": random.randint(30, 90),
+                "primary_supplier_id": random.choice(self.supplier_ids_by_tier[2]),
+                "is_critical": True,
+                "min_stock_level": 50,
+                "base_uom": "each",
+                "unit_weight_kg": round(random.uniform(0.1, 5.0), 6),
+                "unit_length_m": None,
+                "unit_volume_l": None,
+            })
+            level1_parts.append(part_id)
+            self.aerospace_part_ids.append(part_id)
+            self.leaf_part_ids.append(part_id)
+            next_part_id += 1
+        levels[1] = level1_parts
+
+        # Build levels 2-22 (each uses parts from previous level)
+        for level_num in range(2, 23):
+            level_parts = []
+            for i in range(3):
+                part_id = next_part_id
+
+                # Naming: levels 2-21 are sub-assemblies, level 22 is top assembly
+                if level_num == 22:
+                    part_number = f"AERO-TOP-{i+1:02d}"
+                    description = f"Aerospace Top Assembly {i+1}"
+                else:
+                    part_number = f"AERO-L{level_num:02d}-{i+1:02d}"
+                    description = f"Aerospace Level {level_num} Component {i+1}"
+
+                self.parts.append({
+                    "id": part_id,
+                    "part_number": part_number,
+                    "description": description,
+                    "category": "Aerospace",
+                    "unit_cost": round(random.uniform(100, 2000) * (1 + level_num * 0.1), 2),
+                    "weight_kg": round(random.uniform(1.0, 50.0), 3),
+                    "lead_time_days": random.randint(14, 60),
+                    "primary_supplier_id": random.choice(self.supplier_ids_by_tier[1]),
+                    "is_critical": True,
+                    "min_stock_level": 20,
+                    "base_uom": "each",
+                    "unit_weight_kg": round(random.uniform(1.0, 50.0), 6),
+                    "unit_length_m": None,
+                    "unit_volume_l": None,
+                })
+                level_parts.append(part_id)
+                self.aerospace_part_ids.append(part_id)
+
+                if level_num == 22:
+                    self.top_part_ids.append(part_id)
+
+                next_part_id += 1
+
+            levels[level_num] = level_parts
+
+            # Create BOM entries: each part in this level uses parts from previous level
+            prev_level_parts = levels[level_num - 1]
+            for parent_id in level_parts:
+                for seq, child_id in enumerate(prev_level_parts, 1):
+                    self.bom.append({
+                        "id": next_bom_id,
+                        "parent_part_id": parent_id,
+                        "child_part_id": child_id,
+                        "quantity": random.randint(1, 4),
+                        "unit": "each",
+                        "is_optional": False,
+                        "assembly_sequence": seq,
+                        "effective_from": current_eff_from,
+                        "effective_to": None,
+                    })
+                    next_bom_id += 1
+
+        # Add recycling cycle components: packing material and recycled cardboard
+        # PACK-BOX-A1: Packing material for aerospace assemblies
+        pack_box_id = next_part_id
+        self.parts.append({
+            "id": pack_box_id,
+            "part_number": "PACK-BOX-A1",
+            "description": "Aerospace Packing Box",
+            "category": "Packaging",
+            "unit_cost": round(random.uniform(5, 20), 2),
+            "weight_kg": round(random.uniform(0.5, 2.0), 3),
+            "lead_time_days": 7,
+            "primary_supplier_id": random.choice(self.supplier_ids_by_tier[3]),
+            "is_critical": False,
+            "min_stock_level": 500,
+            "base_uom": "each",
+            "unit_weight_kg": 1.0,
+            "unit_length_m": None,
+            "unit_volume_l": None,
+        })
+        self.aerospace_part_ids.append(pack_box_id)
+        next_part_id += 1
+
+        # RECYC-CARD-A1: Recycled cardboard (sourced from scraps)
+        recyc_card_id = next_part_id
+        self.parts.append({
+            "id": recyc_card_id,
+            "part_number": "RECYC-CARD-A1",
+            "description": "Recycled Aerospace Cardboard",
+            "category": "Raw Material",
+            "unit_cost": round(random.uniform(1, 5), 2),
+            "weight_kg": round(random.uniform(0.2, 1.0), 3),
+            "lead_time_days": 3,
+            "primary_supplier_id": random.choice(self.supplier_ids_by_tier[3]),
+            "is_critical": False,
+            "min_stock_level": 1000,
+            "base_uom": "kg",
+            "unit_weight_kg": 1.0,
+            "unit_length_m": None,
+            "unit_volume_l": None,
+        })
+        self.aerospace_part_ids.append(recyc_card_id)
+        self.leaf_part_ids.append(recyc_card_id)
+        next_part_id += 1
+
+        # Create the recycling cycle BOM entries:
+        # 1. AERO-TOP-01 uses PACK-BOX-A1 (packing material)
+        top_assembly_id = levels[22][0]  # First top assembly
+        self.bom.append({
+            "id": next_bom_id,
+            "parent_part_id": top_assembly_id,
+            "child_part_id": pack_box_id,
+            "quantity": 1,
+            "unit": "each",
+            "is_optional": False,
+            "assembly_sequence": 10,  # After other components
+            "effective_from": current_eff_from,
+            "effective_to": None,
+        })
+        next_bom_id += 1
+
+        # 2. PACK-BOX-A1 uses RECYC-CARD-A1 (recycled cardboard)
+        self.bom.append({
+            "id": next_bom_id,
+            "parent_part_id": pack_box_id,
+            "child_part_id": recyc_card_id,
+            "quantity": 5,
+            "unit": "kg",
+            "is_optional": False,
+            "assembly_sequence": 1,
+            "effective_from": current_eff_from,
+            "effective_to": None,
+        })
+        next_bom_id += 1
+
+        # 3. RECYC-CARD-A1 sourced from AERO-TOP-01 scraps (THE CYCLE!)
+        # This creates: AERO-TOP-01 → PACK-BOX-A1 → RECYC-CARD-A1 → AERO-TOP-01
+        self.bom.append({
+            "id": next_bom_id,
+            "parent_part_id": recyc_card_id,
+            "child_part_id": top_assembly_id,
+            "quantity": 1,
+            "unit": "each",
+            "is_optional": True,  # Optional: represents scrap/recycling source
+            "assembly_sequence": 1,
+            "effective_from": current_eff_from,
+            "effective_to": None,
+        })
+        next_bom_id += 1
+
+        print(f"  → Aerospace BOM: {len(self.aerospace_part_ids)} parts across 22 levels + recycling cycle")
+        print(f"  → Cycle: AERO-TOP-01 (id={top_assembly_id}) → PACK-BOX-A1 → RECYC-CARD-A1 → AERO-TOP-01")
 
     def generate_part_suppliers(self):
         """Generate alternate suppliers for parts."""
@@ -1410,8 +1634,37 @@ class SupplyChainGenerator:
                     cert_id += 1
 
     def generate_work_centers(self):
-        """Generate work centers at factory facilities."""
+        """
+        Generate work centers at factory facilities with realistic OEE distribution.
+
+        OEE (Overall Equipment Effectiveness) distribution based on 2024-2025 benchmarks:
+        - 10% poor performers (40-55% OEE) - "problem" work centers
+        - 15% below average (55-65%)
+        - 60% average (60-72%) - industry average is ~65%
+        - 15% world-class (80-92%)
+
+        Sources: Evocon OEE Report, ASCM SCOR-DS
+        """
         wc_id = 1
+
+        def get_realistic_oee() -> float:
+            """
+            Generate realistic OEE based on industry distribution.
+            Returns efficiency as decimal (0.40-0.92).
+            """
+            r = random.random()
+            if r < 0.10:
+                # 10% poor performers: 40-55%
+                return round(random.uniform(0.40, 0.55), 2)
+            elif r < 0.25:
+                # 15% below average: 55-65%
+                return round(random.uniform(0.55, 0.65), 2)
+            elif r < 0.85:
+                # 60% average: 60-72%
+                return round(random.uniform(0.60, 0.72), 2)
+            else:
+                # 15% world-class: 80-92%
+                return round(random.uniform(0.80, 0.92), 2)
 
         # Work center types and their naming patterns
         wc_types = {
@@ -1423,15 +1676,20 @@ class SupplyChainGenerator:
         }
 
         # Named work centers for testing (at named factories: NYC=3, Munich=5)
+        # These retain fixed efficiencies for deterministic testing
         named_wcs = [
-            ("WC-ASM-01", "Primary Assembly Line", 3, "assembly", 500, 0.92, 150.00),
-            ("WC-TEST-01", "Main Test Bench", 3, "testing", 200, 0.95, 120.00),
-            ("WC-PACK-01", "Packaging Line Alpha", 3, "packaging", 800, 0.88, 80.00),
-            ("WC-MUN-ASM", "Munich Assembly", 5, "assembly", 400, 0.90, 180.00),
-            ("WC-MUN-FAB", "Munich Fabrication", 5, "fabrication", 300, 0.85, 200.00),
+            ("WC-ASM-01", "Primary Assembly Line", 3, "assembly", 500, 0.92, 150.00, False),
+            ("WC-TEST-01", "Main Test Bench", 3, "testing", 200, 0.95, 120.00, False),
+            ("WC-PACK-01", "Packaging Line Alpha", 3, "packaging", 800, 0.88, 80.00, False),
+            ("WC-MUN-ASM", "Munich Assembly", 5, "assembly", 400, 0.90, 180.00, False),
+            ("WC-MUN-FAB", "Munich Fabrication", 5, "fabrication", 300, 0.85, 200.00, False),
+            # Problem work centers (explicitly poor OEE for benchmark queries)
+            ("WC-PROB-01", "Aging Assembly Line B", 3, "assembly", 200, 0.42, 180.00, True),
+            ("WC-PROB-02", "Worn Stamping Press", 5, "fabrication", 150, 0.48, 220.00, True),
+            ("WC-PROB-03", "Legacy Test Station", 3, "testing", 100, 0.51, 90.00, True),
         ]
 
-        for wc_code, name, fac_id, wc_type, capacity, efficiency, hourly_rate in named_wcs:
+        for wc_code, name, fac_id, wc_type, capacity, efficiency, hourly_rate, is_problem in named_wcs:
             self.work_centers.append({
                 "id": wc_id,
                 "wc_code": wc_code,
@@ -1444,9 +1702,14 @@ class SupplyChainGenerator:
                 "setup_time_mins": random.randint(15, 60),
                 "is_active": True,
             })
+
+            # Track problem work centers
+            if is_problem:
+                self.problem_work_center_ids.append(wc_id)
+
             wc_id += 1
 
-        # Generate 3-5 work centers per factory
+        # Generate 3-5 work centers per factory with realistic OEE distribution
         for fac_id in self.factory_ids:
             # Skip named factories (3=NYC, 5=Munich) - already have work centers
             if fac_id in [3, 5]:
@@ -1463,6 +1726,7 @@ class SupplyChainGenerator:
                 wc_type = random.choice(available_types)
                 used_types.add(wc_type)
 
+                efficiency = get_realistic_oee()
                 name_template = random.choice(wc_types[wc_type])
                 self.work_centers.append({
                     "id": wc_id,
@@ -1471,12 +1735,28 @@ class SupplyChainGenerator:
                     "facility_id": fac_id,
                     "work_center_type": wc_type,
                     "capacity_per_day": random.randint(100, 1000),
-                    "efficiency_rating": round(random.uniform(0.75, 0.98), 2),
+                    "efficiency_rating": efficiency,
                     "hourly_rate_usd": round(random.uniform(50, 250), 2),
                     "setup_time_mins": random.randint(10, 90),
                     "is_active": random.random() > 0.05,
                 })
+
+                # Track poor performers (OEE < 55%) from random generation
+                if efficiency < 0.55:
+                    self.problem_work_center_ids.append(wc_id)
+
                 wc_id += 1
+
+        # Report OEE distribution stats
+        efficiencies = [wc["efficiency_rating"] for wc in self.work_centers]
+        avg_oee = sum(efficiencies) / len(efficiencies)
+        poor = len([e for e in efficiencies if e < 0.55])
+        below_avg = len([e for e in efficiencies if 0.55 <= e < 0.65])
+        average = len([e for e in efficiencies if 0.60 <= e < 0.72])
+        world_class = len([e for e in efficiencies if e >= 0.80])
+        print(f"  → OEE distribution: avg={avg_oee:.0%}, poor={poor}, below_avg={below_avg}, "
+              f"avg_range={average}, world_class={world_class}")
+        print(f"  → Problem work centers: {len(self.problem_work_center_ids)} (OEE < 55%)")
 
     def generate_production_routings(self):
         """Generate production routings (process steps) for products."""
@@ -2222,6 +2502,10 @@ class SupplyChainGenerator:
         supplier_ids = [s["id"] for s in self.suppliers]
         remaining = count - len(named_pos)
 
+        # Track late deliveries for "Supplier from Hell"
+        sfh_total = 0
+        sfh_late = 0
+
         for _ in range(remaining):
             supplier_id = random.choice(supplier_ids)
             supplier = next((s for s in self.suppliers if s["id"] == supplier_id), None)
@@ -2229,12 +2513,31 @@ class SupplyChainGenerator:
             order_date = fake.date_between(start_date="-2y", end_date="today")
             status = get_po_status()
 
-            lead_time = random.randint(14, 60)
+            # "Supplier from Hell" has longer lead times (45-90 days vs 14-60 normal)
+            is_sfh = supplier_id == self.supplier_from_hell_id
+            if is_sfh:
+                lead_time = random.randint(45, 90)
+            else:
+                lead_time = random.randint(14, 60)
+
             expected_date = order_date + timedelta(days=lead_time)
 
             received_date = None
             if status == "received":
-                variance = random.uniform(-0.3, 0.2)
+                if is_sfh:
+                    sfh_total += 1
+                    # "Supplier from Hell": 50% late deliveries (positive variance)
+                    if random.random() < 0.50:
+                        # Late: 10-50% over expected lead time
+                        variance = random.uniform(0.10, 0.50)
+                        sfh_late += 1
+                    else:
+                        # On time or early: -30% to +5%
+                        variance = random.uniform(-0.30, 0.05)
+                else:
+                    # Normal suppliers: mostly on time (-30% to +20%)
+                    variance = random.uniform(-0.3, 0.2)
+
                 actual_days = int(lead_time * (1 + variance))
                 received_date = order_date + timedelta(days=actual_days)
 
@@ -2314,6 +2617,11 @@ class SupplyChainGenerator:
                 shipment_id += 1
 
             po_id += 1
+
+        # Report "Supplier from Hell" stats
+        if sfh_total > 0:
+            sfh_pct = sfh_late / sfh_total * 100
+            print(f"  → 'Supplier from Hell' late deliveries: {sfh_late}/{sfh_total} ({sfh_pct:.0f}%)")
 
     def generate_returns(self, count: int):
         """

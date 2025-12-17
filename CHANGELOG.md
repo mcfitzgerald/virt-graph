@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.18] - 2025-12-16
+
+### Added
+
+- **"Supplier from Hell"** - Realistic problem supplier for benchmark testing:
+  - "Reliable Parts Co" (ironic name) - T2 supplier with BB credit rating
+  - 50% late deliveries on received POs (vs ~10% for normal suppliers)
+  - Longer lead times: 45-90 days (vs 14-60 for normal suppliers)
+  - Tracks `supplier_from_hell_id` for validation queries
+  - Named entity for testing supplier performance analysis
+
+- **Deep Aerospace BOM** - 22-level hierarchy for stress testing:
+  - 68 aerospace parts: 3 per level × 22 levels + 2 packaging parts
+  - Named parts: `AERO-RAW-*`, `AERO-L02-*` through `AERO-TOP-*`
+  - True recycling cycle: `AERO-TOP-01` → `PACK-BOX-A1` → `RECYC-CARD-A1` → `AERO-TOP-01`
+  - Tests SQL WITH RECURSIVE limits and cycle detection
+  - Validates existing `NOT ... = ANY(p.path)` cycle prevention in CTE handlers
+  - Benchmark talking point: SQL requires explicit cycle management vs Neo4j automatic detection
+
+- **Realistic OEE Distribution** - Industry-accurate work center efficiency:
+  - 10% poor performers (40-55% OEE) - tracked as `problem_work_center_ids`
+  - 15% below average (55-65%)
+  - 60% average (60-72%) - industry average is ~65%
+  - 15% world-class (80-92%)
+  - 3 named problem work centers: `WC-PROB-01`, `WC-PROB-02`, `WC-PROB-03`
+  - Sources: Evocon OEE Report, ASCM SCOR-DS benchmarks
+
+### Changed
+
+- **Data Generator** (`generate_data.py`):
+  - Added `generate_aerospace_bom()` method for 22-level hierarchy
+  - `generate_suppliers()` now includes "Reliable Parts Co" with override rating
+  - `generate_purchase_orders()` applies 50% late variance to "Supplier from Hell"
+  - `generate_work_centers()` uses `get_realistic_oee()` function for distribution
+  - Added tracking fields: `supplier_from_hell_id`, `aerospace_part_ids`, `problem_work_center_ids`
+
+### Technical
+
+- Aerospace BOM adds ~200 BOM entries (3 children × 3 parents × 22 levels + cycle)
+- Named problem work centers have fixed OEE: 42%, 48%, 51%
+- "Supplier from Hell" POs: late deliveries use +10-50% variance (vs ±30/20% normal)
+
+---
+
 ## [0.9.17] - 2025-12-16
 
 ### Added
