@@ -241,12 +241,13 @@ class SupplyChainGenerator:
         self.work_orders: list[dict] = []
         self.work_order_steps: list[dict] = []
         self.material_transactions: list[dict] = []
-        # SCOR Model domains (Plan/Source/Return)
+        # SCOR Model domains (Plan/Source/Return/Orchestrate)
         self.demand_forecasts: list[dict] = []
         self.purchase_orders: list[dict] = []
         self.purchase_order_lines: list[dict] = []
         self.returns: list[dict] = []
         self.return_items: list[dict] = []
+        self.kpi_targets: list[dict] = []  # Orchestrate domain
 
         # Track IDs for relationships
         self.supplier_ids_by_tier: dict[int, list[int]] = {1: [], 2: [], 3: []}
@@ -342,6 +343,10 @@ class SupplyChainGenerator:
 
         print("Generating returns...")
         self.generate_returns(4000)
+
+        # SCOR Orchestrate domain
+        print("Generating KPI targets...")
+        self.generate_kpi_targets()
 
     def generate_suppliers(self, count: int):
         """Generate tiered suppliers: 10% T1, 30% T2, 60% T3."""
@@ -1187,22 +1192,43 @@ class SupplyChainGenerator:
                 self.dc_facility_ids.append(fac_id)
 
     def generate_transport_routes(self):
-        """Generate transport routes between facilities (connected network)."""
+        """
+        Generate transport routes between facilities (connected network).
+
+        Temporal Route Flickering:
+        - 10% of routes are "seasonal" (active only 3 months/year)
+        - Seasonal routes have is_active=True but route_status='seasonal'
+        - For time-aware path queries, check route_status='seasonal'
+        - Convention: seasonal routes active during summer (Jun-Aug) or winter (Dec-Feb)
+        """
         route_id = 1
         facility_ids = [f["id"] for f in self.facilities]
         modes = ["truck", "rail", "air", "sea"]
 
+        # Track seasonal routes for reporting
+        seasonal_route_count = 0
+        seasonal_months_groups = [
+            [6, 7, 8],      # Summer: Jun-Aug
+            [12, 1, 2],     # Winter: Dec-Feb
+            [3, 4, 5],      # Spring: Mar-May
+            [9, 10, 11],    # Fall: Sep-Nov
+        ]
+
         def get_route_status():
-            """~5% seasonal/suspended, 95% active."""
+            """10% seasonal, ~3% suspended/discontinued, 87% active."""
+            nonlocal seasonal_route_count
             r = random.random()
             if r < 0.02:
-                return False, "suspended"
-            elif r < 0.04:
-                return True, "seasonal"
-            elif r < 0.05:
-                return False, "discontinued"
+                return False, "suspended", None
+            elif r < 0.12:  # 10% seasonal (increased from 2%)
+                # Assign random seasonal months (one of the quarter groups)
+                months = random.choice(seasonal_months_groups)
+                seasonal_route_count += 1
+                return True, "seasonal", months
+            elif r < 0.13:
+                return False, "discontinued", None
             else:
-                return True, "active"
+                return True, "active", None
 
         # Named facility IDs (based on named_facilities order):
         # 1=Chicago Warehouse, 2=LA Distribution, 3=NYC Factory, 4=Shanghai Hub,
@@ -1263,7 +1289,7 @@ class SupplyChainGenerator:
             for origin, dest in [(from_id, to_id), (to_id, from_id)]:
                 mode = random.choice(modes)
                 if (origin, dest, mode) not in existing_routes:
-                    is_active, status = get_route_status()
+                    is_active, status, seasonal_months = get_route_status()
                     self.transport_routes.append({
                         "id": route_id,
                         "origin_facility_id": origin,
@@ -1275,6 +1301,7 @@ class SupplyChainGenerator:
                         "capacity_tons": round(random.uniform(10, 1000), 2),
                         "is_active": is_active,
                         "route_status": status,
+                        "seasonal_months": seasonal_months,  # Not persisted to DB, for validation
                     })
                     existing_routes.add((origin, dest, mode))
                     route_id += 1
@@ -1288,7 +1315,7 @@ class SupplyChainGenerator:
 
             if (from_id, to_id, mode) not in existing_routes:
                 existing_routes.add((from_id, to_id, mode))
-                is_active, status = get_route_status()
+                is_active, status, seasonal_months = get_route_status()
                 self.transport_routes.append({
                     "id": route_id,
                     "origin_facility_id": from_id,
@@ -1300,8 +1327,14 @@ class SupplyChainGenerator:
                     "capacity_tons": round(random.uniform(10, 1000), 2),
                     "is_active": is_active,
                     "route_status": status,
+                    "seasonal_months": seasonal_months,  # Not persisted to DB, for validation
                 })
                 route_id += 1
+
+        # Report seasonal route statistics
+        total_routes = len(self.transport_routes)
+        seasonal_pct = (seasonal_route_count / total_routes * 100) if total_routes > 0 else 0
+        print(f"  → Seasonal routes: {seasonal_route_count} ({seasonal_pct:.1f}% of {total_routes} routes)")
 
     def generate_customers(self, count: int):
         """Generate customers."""
@@ -1348,11 +1381,33 @@ class SupplyChainGenerator:
         Uses Zipf/Pareto distribution for product selection:
         - Top 20% of products receive ~80% of order volume
         - Creates realistic "bestseller" vs "long tail" pattern
+
+        Perfect Order Metric:
+        - 18% of shipped/delivered orders have shipped_date AFTER required_date
+        - This enables Perfect Order Rate calculation of ~82% (industry average)
         """
         statuses = ["pending", "confirmed", "shipped", "delivered", "cancelled"]
         facility_ids = [f["id"] for f in self.facilities]
         product_ids = [p["id"] for p in self.products]
         customer_ids = [c["id"] for c in self.customers]
+
+        # Perfect Order Metric: 18% of orders ship late (after required_date)
+        late_delivery_rate = 0.18
+
+        def calculate_shipped_date(order_date: datetime, required_date: date) -> datetime:
+            """
+            Calculate shipped_date with 18% late delivery rate.
+
+            - 82% of orders: ship 1-7 days after order (before required_date)
+            - 18% of orders: ship 1-14 days AFTER required_date (late)
+            """
+            if random.random() < late_delivery_rate:
+                # Late delivery: ship 1-14 days after required date
+                days_late = random.randint(1, 14)
+                return datetime.combine(required_date, datetime.min.time()) + timedelta(days=days_late)
+            else:
+                # On-time delivery: ship 1-7 days after order
+                return order_date + timedelta(days=random.randint(1, 7))
 
         # Pre-sample products for all order items using Zipf distribution
         # Estimate ~3 items per order on average (1-5 range)
@@ -1438,17 +1493,19 @@ class SupplyChainGenerator:
         for order_id in range(start_order_id, count + 1):
             order_date = fake.date_time_between(start_date="-2y", end_date="now")
             status = random.choice(statuses)
+            required_date = (order_date + timedelta(days=random.randint(7, 30))).date()
 
             shipped_date = None
             if status in ["shipped", "delivered"]:
-                shipped_date = order_date + timedelta(days=random.randint(1, 7))
+                # Use late delivery logic for Perfect Order Metric (~18% late)
+                shipped_date = calculate_shipped_date(order_date, required_date)
 
             self.orders.append({
                 "id": order_id,
                 "order_number": f"ORD-{order_id:08d}",
                 "customer_id": random.choice(customer_ids),
                 "order_date": order_date,
-                "required_date": (order_date + timedelta(days=random.randint(7, 30))).date(),
+                "required_date": required_date,
                 "shipped_date": shipped_date,
                 "status": status,
                 "shipping_facility_id": random.choice(facility_ids),
@@ -2271,6 +2328,11 @@ class SupplyChainGenerator:
         - Industrial: peak Q1 (phase = 1)
         - Consumer: peak summer (phase = 7)
         - Others: random phase
+
+        Lumpy Demand Patterns:
+        - Gaussian noise (σ = 15%) added to sine wave seasonality
+        - 5% chance of 2-3x demand spike per forecast period
+        - "Bottleneck" product line: Medical category has demand > typical capacity
         """
         import math
 
@@ -2278,14 +2340,22 @@ class SupplyChainGenerator:
         product_ids = [p["id"] for p in self.products]
         dc_ids = self.dc_facility_ids if self.dc_facility_ids else [f["id"] for f in self.facilities][:10]
 
+        # Track spike and bottleneck stats
+        spike_count = 0
+        bottleneck_forecasts = 0
+
         # Category phase shifts (month of peak demand)
         category_phases = {
             "Electronics": 11,  # Peak in November
             "Industrial": 1,    # Peak in Q1
             "Consumer": 7,      # Peak in summer
             "Automotive": 3,    # Peak in spring
-            "Medical": 9,       # Peak in fall
+            "Medical": 9,       # Peak in fall (also bottleneck category)
         }
+
+        # Bottleneck category: Medical has inflated base demand
+        bottleneck_category = "Medical"
+        bottleneck_demand_multiplier = 2.5  # 2.5x normal demand to exceed capacity
 
         # Forecast type distribution
         def get_forecast_type():
@@ -2345,6 +2415,11 @@ class SupplyChainGenerator:
             phase = category_phases.get(category, random.randint(1, 12))
             base_qty = random.randint(50, 500)
 
+            # Bottleneck: Medical category has inflated demand
+            is_bottleneck = (category == bottleneck_category)
+            if is_bottleneck:
+                base_qty = int(base_qty * bottleneck_demand_multiplier)
+
             for dc_id in dcs_sample:
                 if generated >= remaining:
                     break
@@ -2356,7 +2431,23 @@ class SupplyChainGenerator:
                     fc_date = date(2024, 1, 1) + timedelta(days=month_offset * 30)
                     month = fc_date.month
                     seasonality = 1.0 + 0.3 * math.sin(2 * math.pi * (month - phase) / 12)
-                    qty = int(base_qty * seasonality * random.uniform(0.9, 1.1))
+
+                    # Add Gaussian noise (σ = 15%) to seasonality
+                    noise_factor = 1.0 + np.random.normal(0, 0.15)
+                    noise_factor = max(0.5, min(1.5, noise_factor))  # Clamp to reasonable range
+
+                    # 5% chance of demand spike (2-3x multiplier)
+                    is_spike = random.random() < 0.05
+                    spike_multiplier = 1.0
+                    if is_spike:
+                        spike_multiplier = random.uniform(2.0, 3.0)
+                        spike_count += 1
+
+                    qty = int(base_qty * seasonality * noise_factor * spike_multiplier)
+                    qty = max(1, qty)  # Ensure at least 1
+
+                    if is_bottleneck:
+                        bottleneck_forecasts += 1
 
                     self.demand_forecasts.append({
                         "id": forecast_id,
@@ -2367,10 +2458,14 @@ class SupplyChainGenerator:
                         "forecast_quantity": qty,
                         "forecast_type": get_forecast_type(),
                         "confidence_level": round(random.uniform(0.60, 0.98), 2),
-                        "seasonality_factor": round(seasonality, 2),
+                        "seasonality_factor": round(seasonality * noise_factor, 2),
                     })
                     forecast_id += 1
                     generated += 1
+
+        # Report lumpy demand statistics
+        print(f"  → Demand spikes: {spike_count} ({spike_count / max(1, generated) * 100:.1f}% of forecasts)")
+        print(f"  → Bottleneck ({bottleneck_category}) forecasts: {bottleneck_forecasts}")
 
     def generate_purchase_orders(self, count: int):
         """
@@ -2812,6 +2907,113 @@ class SupplyChainGenerator:
                 shipment_id += 1
 
             return_id += 1
+
+    def generate_kpi_targets(self):
+        """
+        Generate KPI targets for SCOR Orchestrate domain.
+
+        Creates 14 standard supply chain KPIs with targets based on industry benchmarks:
+        - Delivery: OTD (95%), Perfect Order (85%), Fill Rate (98%)
+        - Quality: First Pass Yield (95%), Scrap Rate (<2%)
+        - Inventory: Turns (6), Days (60), Accuracy (99%)
+        - Production: OEE (85%), Utilization (80%)
+        - Cost: Freight per Unit, Total Cost Variance
+        """
+        kpi_id = 1
+        effective_from = date(2024, 1, 1)
+
+        # Standard KPI definitions with industry benchmarks
+        standard_kpis = [
+            # Delivery KPIs
+            ("On-Time Delivery", "delivery", 95.00, "percent", 92.00, 88.00),
+            ("Perfect Order Rate", "delivery", 85.00, "percent", 80.00, 75.00),
+            ("Order Fill Rate", "delivery", 98.00, "percent", 95.00, 90.00),
+            ("Lead Time", "delivery", 5.00, "days", 7.00, 10.00),
+
+            # Quality KPIs
+            ("First Pass Yield", "quality", 95.00, "percent", 92.00, 88.00),
+            ("Scrap Rate", "quality", 2.00, "percent", 3.00, 5.00),  # Lower is better
+            ("Defect Rate (DPMO)", "quality", 3400.00, "dpmo", 6210.00, 66807.00),  # 4σ target
+
+            # Inventory KPIs
+            ("Inventory Turns", "inventory", 6.00, "turns/year", 5.00, 4.00),
+            ("Days of Inventory", "inventory", 60.00, "days", 75.00, 90.00),  # Lower is better
+            ("Inventory Accuracy", "inventory", 99.00, "percent", 97.00, 95.00),
+
+            # Production KPIs
+            ("OEE (Overall Equipment Effectiveness)", "production", 85.00, "percent", 75.00, 60.00),
+            ("Capacity Utilization", "production", 80.00, "percent", 70.00, 60.00),
+            ("Schedule Adherence", "production", 95.00, "percent", 90.00, 85.00),
+
+            # Cost KPIs
+            ("Freight Cost per Unit", "cost", 2.50, "usd", 3.50, 5.00),  # Lower is better
+        ]
+
+        # Create global KPIs (no product/facility specific)
+        for kpi_name, category, target, unit, warn, critical in standard_kpis:
+            self.kpi_targets.append({
+                "id": kpi_id,
+                "kpi_name": kpi_name,
+                "kpi_category": category,
+                "target_value": target,
+                "target_unit": unit,
+                "threshold_warning": warn,
+                "threshold_critical": critical,
+                "effective_from": effective_from,
+                "effective_to": None,
+                "product_id": None,
+                "facility_id": None,
+            })
+            kpi_id += 1
+
+        # Add premium product-specific targets (tighter tolerances)
+        # Use first 3 named products as "premium" products
+        premium_product_ids = [1, 2, 3]  # Turbo Encabulator, Flux Capacitor, Standard Widget
+
+        premium_kpis = [
+            ("On-Time Delivery", "delivery", 98.00, "percent", 96.00, 94.00),
+            ("Perfect Order Rate", "delivery", 95.00, "percent", 92.00, 88.00),
+            ("First Pass Yield", "quality", 98.00, "percent", 96.00, 94.00),
+        ]
+
+        for prod_id in premium_product_ids:
+            for kpi_name, category, target, unit, warn, critical in premium_kpis:
+                self.kpi_targets.append({
+                    "id": kpi_id,
+                    "kpi_name": f"{kpi_name} (Premium)",
+                    "kpi_category": category,
+                    "target_value": target,
+                    "target_unit": unit,
+                    "threshold_warning": warn,
+                    "threshold_critical": critical,
+                    "effective_from": effective_from,
+                    "effective_to": None,
+                    "product_id": prod_id,
+                    "facility_id": None,
+                })
+                kpi_id += 1
+
+        # Add facility-specific OEE targets for problem work centers
+        # (tighter scrutiny for facilities with known issues)
+        if self.factory_ids:
+            for fac_id in self.factory_ids[:3]:  # First 3 factories
+                self.kpi_targets.append({
+                    "id": kpi_id,
+                    "kpi_name": "OEE (Facility Focus)",
+                    "kpi_category": "production",
+                    "target_value": 75.00,  # Lower target for known issues
+                    "target_unit": "percent",
+                    "threshold_warning": 65.00,
+                    "threshold_critical": 55.00,
+                    "effective_from": effective_from,
+                    "effective_to": None,
+                    "product_id": None,
+                    "facility_id": fac_id,
+                })
+                kpi_id += 1
+
+        print(f"  → Generated {len(self.kpi_targets)} KPI targets")
+        print(f"    - Global: {len(standard_kpis)}, Premium product: {len(premium_product_ids) * len(premium_kpis)}, Facility: {min(3, len(self.factory_ids))}")
 
     def to_sql(self) -> str:
         """Generate SQL using COPY format for fast bulk loading."""
@@ -3325,6 +3527,28 @@ class SupplyChainGenerator:
             lines.append(f"SELECT setval('shipments_id_seq', {max(sh['id'] for sh in self.shipments)});")
         lines.append("")
 
+        # KPI Targets (ORCHESTRATE domain)
+        lines.append("-- KPI Targets ({:,} rows)".format(len(self.kpi_targets)))
+        lines.append("COPY kpi_targets (id, kpi_name, kpi_category, target_value, target_unit, threshold_warning, threshold_critical, effective_from, effective_to, product_id, facility_id) FROM stdin;")
+        for kpi in self.kpi_targets:
+            lines.append("\t".join([
+                copy_num(kpi['id']),
+                copy_str(kpi['kpi_name']),
+                copy_str(kpi['kpi_category']),
+                copy_num(kpi['target_value']),
+                copy_str(kpi['target_unit']),
+                copy_num(kpi.get('threshold_warning')),
+                copy_num(kpi.get('threshold_critical')),
+                copy_date(kpi.get('effective_from')),
+                copy_date(kpi.get('effective_to')),
+                copy_num(kpi.get('product_id')),
+                copy_num(kpi.get('facility_id')),
+            ]))
+        lines.append("\\.")
+        if self.kpi_targets:
+            lines.append(f"SELECT setval('kpi_targets_id_seq', {max(kpi['id'] for kpi in self.kpi_targets)});")
+        lines.append("")
+
         lines.append("COMMIT;")
         lines.append("")
 
@@ -3354,7 +3578,8 @@ class SupplyChainGenerator:
             len(self.purchase_orders) +
             len(self.purchase_order_lines) +
             len(self.returns) +
-            len(self.return_items)
+            len(self.return_items) +
+            len(self.kpi_targets)
         )
 
         lines.append(f"-- Total rows: {total_rows:,}")
@@ -3383,6 +3608,7 @@ class SupplyChainGenerator:
         lines.append(f"-- Purchase Order Lines: {len(self.purchase_order_lines):,}")
         lines.append(f"-- Returns: {len(self.returns):,}")
         lines.append(f"-- Return Items: {len(self.return_items):,}")
+        lines.append(f"-- KPI Targets: {len(self.kpi_targets):,}")
 
         return "\n".join(lines)
 

@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.19] - 2025-12-16
+
+### Added
+
+- **Perfect Order Metric** - Realistic late delivery patterns for benchmarking:
+  - 18% of shipped/delivered orders have `shipped_date` AFTER `required_date`
+  - Enables Perfect Order Rate calculation of ~82% (industry average)
+  - On-time orders ship 1-7 days after order, late orders ship 1-14 days after required date
+  - Added `calculate_shipped_date()` helper function with late delivery logic
+
+- **Temporal Route Flickering** - Seasonal transport routes for time-aware queries:
+  - 10% of routes are "seasonal" (up from ~2%)
+  - Seasonal routes active only 3 months/year (quarterly: summer, winter, spring, fall)
+  - `route_status='seasonal'` with `is_active=True` for query filtering
+  - Enables time-aware path queries: "Find route from A to B on date X"
+  - Added seasonal route statistics reporting
+
+- **Lumpy Demand Patterns** - Realistic demand volatility:
+  - Gaussian noise (σ = 15%) added to sine wave seasonality
+  - 5% chance of 2-3x demand spike per forecast period
+  - Medical category designated as "bottleneck" with 2.5x demand multiplier
+  - Ensures demand > capacity for at least one product line
+  - Added spike and bottleneck statistics reporting
+
+- **KPI Targets Generation** - SCOR Orchestrate domain data:
+  - 14 standard supply chain KPIs with industry benchmark targets
+  - **Delivery**: OTD (95%), Perfect Order (85%), Fill Rate (98%), Lead Time (5 days)
+  - **Quality**: First Pass Yield (95%), Scrap Rate (<2%), Defect Rate (3400 DPMO)
+  - **Inventory**: Turns (6/year), Days (60), Accuracy (99%)
+  - **Production**: OEE (85%), Utilization (80%), Schedule Adherence (95%)
+  - **Cost**: Freight Cost per Unit ($2.50)
+  - Premium product-specific targets with tighter tolerances
+  - Facility-specific OEE targets for problem work centers
+
+### Changed
+
+- **Data Generator** (`generate_data.py`):
+  - `generate_orders()` uses late delivery logic for 18% imperfect orders
+  - `generate_transport_routes()` returns seasonal months info, 10% seasonal rate
+  - `generate_demand_forecasts()` adds Gaussian noise, spikes, and bottleneck category
+  - Added `generate_kpi_targets()` method for Orchestrate domain
+  - Added `self.kpi_targets` list to track KPI target data
+  - SQL output includes KPI targets COPY section
+
+### Technical
+
+- Late deliveries: 18% ship 1-14 days after `required_date`
+- Seasonal months tracked in Python dict (not persisted, for validation)
+- Noise factor clamped to [0.5, 1.5] range for reasonable variance
+- ~26 KPI targets generated: 14 global + 9 premium + 3 facility-specific
+
+---
+
 ## [0.9.18] - 2025-12-16
 
 ### Added
