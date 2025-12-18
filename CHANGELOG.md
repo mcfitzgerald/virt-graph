@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.26] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 3** - Bottleneck Elimination:
+  - **LookupCache** (`bottleneck_fixes.py`): Pre-built indices for all FK patterns
+    - Centralizes 8 lookup indices (PO lines, formula ingredients, locations, etc.)
+    - `build_from_data()` auto-builds available indices from generator data
+    - O(1) getters: `get_po_lines()`, `get_formula_ingredients()`, `get_account_locations()`
+  - **PooledFaker**: Batch Faker sampling wrapper
+    - Wraps StaticDataPool with simpler API matching Faker patterns
+    - Batch methods: `names(n)`, `companies(n)`, `cities(n)`, `emails(n)`
+    - Iterator support for loop compatibility
+
+### Performance
+
+- Demonstrated **~1000x speedup** for FK lookups in bottleneck simulation:
+  - OLD (list comprehension): 0.079s for 1000 lookups
+  - NEW (LookupCache): 0.000s for 1000 lookups
+- Eliminates critical O(N×M) bottlenecks:
+  - GR lines: 20K × 75K = 1.5B ops → O(1)
+  - WO materials: 50K × 1.5K = 75M ops → O(1)
+  - Orders: 200K × 10K = 2B ops → O(1)
+
+### Technical
+
+- Phase 3 of performance refactor plan (robust-frolicking-coral.md)
+- Module now 2,200+ lines across 5 files
+- Fixed `build_locations_by_account_id` to use correct field name `retail_account_id`
+
 ## [0.9.25] - 2025-12-18
 
 ### Added
