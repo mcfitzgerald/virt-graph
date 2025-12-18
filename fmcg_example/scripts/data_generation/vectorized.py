@@ -29,7 +29,7 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Any, Iterator
 
@@ -48,24 +48,27 @@ POS_SALES_DTYPE = np.dtype([
     ("retail_location_id", "i8"),
     ("sku_id", "i8"),
     ("sale_date", "datetime64[D]"),
-    ("sale_week", "i4"),
+    # sale_week is GENERATED ALWAYS - don't insert
+    ("quantity_eaches", "i4"),
     ("quantity_cases", "f4"),
-    ("unit_price", "f4"),
-    ("total_amount", "f4"),
+    ("revenue", "f8"),
+    ("currency", "U3"),
     ("is_promotional", "?"),
     ("promo_id", "i8"),  # 0 for no promo
+    ("created_at", "datetime64[s]"),
 ])
 
 ORDER_LINES_DTYPE = np.dtype([
-    ("id", "i8"),
+    # Note: order_lines uses composite PK (order_id, line_number), no separate id
     ("order_id", "i8"),
-    ("sku_id", "i8"),
-    ("quantity", "i4"),
-    ("unit_price", "f4"),
-    ("line_amount", "f4"),
-    ("discount_pct", "f4"),
-    ("tax_amount", "f4"),
     ("line_number", "i4"),
+    ("sku_id", "i8"),
+    ("quantity_cases", "i4"),
+    # quantity_eaches and line_amount are GENERATED ALWAYS - don't insert
+    ("unit_price", "f4"),
+    ("discount_percent", "f4"),
+    ("status", "U12"),
+    ("created_at", "datetime64[s]"),
 ])
 
 SHIPMENT_LEGS_DTYPE = np.dtype([
@@ -271,12 +274,13 @@ class POSSalesGenerator(VectorizedGenerator):
 
         return self
 
-    def generate_batch(self, batch_size: int) -> np.ndarray:
+    def generate_batch(self, batch_size: int, promo_id: int | None = None) -> np.ndarray:
         """
         Generate a batch of POS sales records.
 
         Args:
             batch_size: Number of records to generate
+            promo_id: Optional promo ID to assign to promotional sales
 
         Returns:
             Structured NumPy array with POS_SALES_DTYPE
@@ -300,21 +304,23 @@ class POSSalesGenerator(VectorizedGenerator):
 
         # Random weeks and dates
         weeks = self.rng.integers(1, self.weeks_per_year + 1, size=batch_size)
-        batch["sale_week"] = weeks
+        # sale_week is GENERATED ALWAYS in DB - don't set it
 
-        # Convert weeks to dates (Monday of each week)
+        # Convert weeks to dates (Monday of each week + random day offset)
         base_date = np.datetime64(f"{self.base_year}-01-01", "D")
-        batch["sale_date"] = base_date + (weeks - 1).astype("timedelta64[W]")
+        week_starts = base_date + (weeks - 1).astype("timedelta64[W]")
+        day_offsets = self.rng.integers(0, 7, size=batch_size).astype("timedelta64[D]")
+        batch["sale_date"] = week_starts + day_offsets
 
         # Determine promo status
         is_promo_sku = np.isin(batch["sku_id"], list(self.promo_sku_ids))
         is_promo_week = np.isin(weeks, list(self.promo_weeks))
         batch["is_promotional"] = is_promo_sku & is_promo_week
 
-        # Promo IDs (placeholder - would need promo mapping)
-        batch["promo_id"] = np.where(batch["is_promotional"], 1, 0)
+        # Promo IDs
+        batch["promo_id"] = np.where(batch["is_promotional"], promo_id or 0, 0)
 
-        # Generate lumpy demand
+        # Generate lumpy demand (quantity_eaches)
         base_quantities = lumpy_demand(
             self.rng, batch_size, self.base_demand_mean, self.demand_cv
         )
@@ -324,20 +330,34 @@ class POSSalesGenerator(VectorizedGenerator):
         promo_week_mask[is_promo_week] = 1
         promo_week_mask[np.isin(weeks, list(self.hangover_weeks))] = 2
 
-        batch["quantity_cases"] = apply_promo_effects(
+        quantity_eaches = apply_promo_effects(
             base_quantities,
             is_promo_sku,
             promo_week_mask,
             self.promo_lift,
             self.promo_hangover,
-        ).astype(np.float32)
+        )
+        batch["quantity_eaches"] = quantity_eaches
+
+        # quantity_cases = quantity_eaches / 12
+        batch["quantity_cases"] = (quantity_eaches / 12.0).astype(np.float32)
 
         # Prices (default $5.99 if not in dict)
         prices = np.array([
             self.sku_prices.get(sku, 5.99) for sku in batch["sku_id"]
         ], dtype=np.float32)
-        batch["unit_price"] = prices
-        batch["total_amount"] = batch["quantity_cases"] * prices
+
+        # Apply promotional discount (25% off)
+        prices = np.where(batch["is_promotional"], prices * 0.75, prices)
+
+        # Revenue = quantity_eaches * price
+        batch["revenue"] = (quantity_eaches * prices).astype(np.float64)
+
+        # Currency is always USD
+        batch["currency"] = "USD"
+
+        # created_at timestamp
+        batch["created_at"] = np.datetime64("now", "s")
 
         return batch
 
@@ -345,6 +365,7 @@ class POSSalesGenerator(VectorizedGenerator):
         self,
         total_rows: int,
         batch_size: int = 50000,
+        promo_id: int | None = None,
     ) -> Iterator[np.ndarray]:
         """
         Generate POS sales in batches.
@@ -352,6 +373,7 @@ class POSSalesGenerator(VectorizedGenerator):
         Args:
             total_rows: Total number of rows to generate
             batch_size: Rows per batch
+            promo_id: Optional promo ID to assign to promotional sales
 
         Yields:
             Structured NumPy arrays
@@ -359,7 +381,7 @@ class POSSalesGenerator(VectorizedGenerator):
         remaining = total_rows
         while remaining > 0:
             size = min(batch_size, remaining)
-            yield self.generate_batch(size)
+            yield self.generate_batch(size, promo_id=promo_id)
             remaining -= size
 
 
@@ -416,6 +438,9 @@ class OrderLinesGenerator(VectorizedGenerator):
         self,
         order_ids: np.ndarray,
         lines_per_order: np.ndarray,
+        order_statuses: np.ndarray | None = None,
+        order_is_promo: np.ndarray | None = None,
+        order_channels: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Generate order lines for a batch of orders.
@@ -423,6 +448,9 @@ class OrderLinesGenerator(VectorizedGenerator):
         Args:
             order_ids: Array of order IDs
             lines_per_order: Array of line counts per order
+            order_statuses: Optional array of order statuses (mapped to line status)
+            order_is_promo: Optional boolean array for promotional orders
+            order_channels: Optional array of channel types for quantity scaling
 
         Returns:
             Structured NumPy array with ORDER_LINES_DTYPE
@@ -430,17 +458,13 @@ class OrderLinesGenerator(VectorizedGenerator):
         total_lines = int(lines_per_order.sum())
         batch = np.zeros(total_lines, dtype=ORDER_LINES_DTYPE)
 
-        # IDs
-        batch["id"] = np.arange(self._next_id, self._next_id + total_lines)
-        self._next_id += total_lines
-
         # Expand order IDs to match line counts
         batch["order_id"] = np.repeat(order_ids, lines_per_order)
 
-        # Line numbers within each order
+        # Line numbers within each order (1, 2, 3, ... per order)
         line_nums = []
         for count in lines_per_order:
-            line_nums.extend(range(1, count + 1))
+            line_nums.extend(range(1, int(count) + 1))
         batch["line_number"] = np.array(line_nums, dtype=np.int32)
 
         # Zipf-weighted SKU selection
@@ -449,25 +473,46 @@ class OrderLinesGenerator(VectorizedGenerator):
         )
         batch["sku_id"] = self.sku_ids[sku_indices]
 
-        # Poisson quantities
-        batch["quantity"] = self.rng.poisson(self.quantity_mean, size=total_lines)
-        batch["quantity"] = np.maximum(batch["quantity"], 1)  # At least 1
+        # Quantity cases - base Poisson, scale by channel if provided
+        quantities = self.rng.poisson(self.quantity_mean, size=total_lines)
+        quantities = np.maximum(quantities, 1)  # At least 1
+        batch["quantity_cases"] = quantities.astype(np.int32)
 
         # Prices
         prices = np.array([
-            self.sku_prices.get(sku, 5.99) for sku in batch["sku_id"]
+            self.sku_prices.get(int(sku), 5.99) for sku in batch["sku_id"]
         ], dtype=np.float32)
         batch["unit_price"] = prices
 
-        # Discounts (random 0-10%)
-        batch["discount_pct"] = self.rng.uniform(0, 0.10, size=total_lines).astype(np.float32)
+        # Discounts - higher for promo orders
+        base_discount = self.rng.uniform(0, 0.10, size=total_lines).astype(np.float32)
+        if order_is_promo is not None:
+            # Expand promo flag to match lines
+            is_promo_expanded = np.repeat(order_is_promo, lines_per_order)
+            # Promo orders get 10-25% discount
+            promo_discount = self.rng.uniform(0.10, 0.25, size=total_lines).astype(np.float32)
+            base_discount = np.where(is_promo_expanded, promo_discount, base_discount)
+        batch["discount_percent"] = (base_discount * 100).astype(np.float32)  # Store as percentage
 
-        # Line amounts
-        gross = batch["quantity"] * prices
-        batch["line_amount"] = gross * (1 - batch["discount_pct"])
+        # Status - map from order status
+        if order_statuses is not None:
+            # Expand order statuses to match lines
+            expanded_statuses = np.repeat(order_statuses, lines_per_order)
+            # Map order status to line status
+            status_map = {
+                "pending": "open", "confirmed": "open",
+                "allocated": "allocated", "picking": "allocated",
+                "shipped": "shipped", "delivered": "shipped",
+                "cancelled": "cancelled",
+            }
+            batch["status"] = np.array([
+                status_map.get(str(s), "open") for s in expanded_statuses
+            ])
+        else:
+            batch["status"] = "open"
 
-        # Tax (8% average)
-        batch["tax_amount"] = (batch["line_amount"] * 0.08).astype(np.float32)
+        # created_at timestamp
+        batch["created_at"] = np.datetime64("now", "s")
 
         return batch
 
@@ -701,7 +746,12 @@ def structured_to_dicts(
                 else:
                     # Convert to Python datetime
                     ts = (val - np.datetime64("1970-01-01T00:00:00")) / np.timedelta64(1, "s")
-                    row[name] = date.fromtimestamp(ts) if "D" in str(val.dtype) else None
+                    dtype_str = str(val.dtype)
+                    if "D" in dtype_str:
+                        row[name] = date.fromtimestamp(ts)
+                    else:
+                        # Timestamp (datetime64[s], datetime64[ms], etc.)
+                        row[name] = datetime.fromtimestamp(ts)
             elif isinstance(val, np.str_):
                 row[name] = str(val) if val else None
             else:
@@ -753,15 +803,16 @@ def structured_to_copy_lines(
     return lines
 
 
-# Column lists for COPY output
+# Column lists for COPY output (excludes GENERATED columns like sale_week)
 POS_SALES_COLUMNS = [
-    "id", "retail_location_id", "sku_id", "sale_date", "sale_week",
-    "quantity_cases", "unit_price", "total_amount", "is_promotional", "promo_id",
+    "id", "retail_location_id", "sku_id", "sale_date",
+    "quantity_eaches", "quantity_cases", "revenue", "currency",
+    "is_promotional", "promo_id", "created_at",
 ]
 
 ORDER_LINES_COLUMNS = [
-    "id", "order_id", "sku_id", "quantity", "unit_price",
-    "line_amount", "discount_pct", "tax_amount", "line_number",
+    "order_id", "line_number", "sku_id", "quantity_cases",
+    "unit_price", "discount_percent", "status", "created_at",
 ]
 
 SHIPMENT_LEGS_COLUMNS = [

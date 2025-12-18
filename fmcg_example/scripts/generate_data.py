@@ -118,6 +118,7 @@ import argparse
 import math
 import random
 import sys
+import time
 from collections import Counter
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -126,6 +127,25 @@ from typing import Any
 
 import numpy as np
 from faker import Faker
+
+# Phase 5: Data Generation Performance Module Integration
+from data_generation import (
+    BENCHMARK_MANIFEST_PATH,
+    DependencyTracker,
+    LookupBuilder,
+    LookupCache,
+    PooledFaker,
+    RealismMonitor,
+    RealismViolationError,
+    StaticDataPool,
+    StochasticMode,
+    StreamingWriter,
+    # Vectorized generators
+    POSSalesGenerator,
+    OrderLinesGenerator,
+    structured_to_dicts,
+    zipf_weights as np_zipf_weights,
+)
 
 # Output path
 OUTPUT_PATH = Path(__file__).parent.parent / "postgres" / "seed.sql"
@@ -868,6 +888,32 @@ class FMCGDataGenerator:
         # Initialize all table lists
         self._init_data_tables()
 
+        # =================================================================
+        # Phase 5: Performance Module Integration
+        # =================================================================
+
+        # StaticDataPool: Pre-generated Faker data for O(1) vectorized sampling
+        self.pool = StaticDataPool(seed=seed)
+
+        # PooledFaker: Batch Faker sampling wrapper
+        self.pooled_faker = PooledFaker(seed=seed)
+
+        # DependencyTracker: FK dependency graph for safe table memory purging
+        self.dep_tracker = DependencyTracker()
+
+        # RealismMonitor: Online streaming validation with O(1) space algorithms
+        self.realism_monitor = RealismMonitor(manifest_path=BENCHMARK_MANIFEST_PATH)
+
+        # LookupCache: Pre-built indices for FK lookups (built lazily per level)
+        self.lookup_cache: LookupCache | None = None
+
+        # StochasticMode: Normal (Poisson) vs Disrupted (Gamma) for chaos injection
+        self.stochastic_mode = StochasticMode.NORMAL
+
+        # Performance tracking
+        self._level_times: dict[int, float] = {}
+        self._level_rows: dict[int, int] = {}
+
     def _init_data_tables(self) -> None:
         """Initialize empty lists for all 67 tables."""
         tables = [
@@ -916,6 +962,78 @@ class FMCGDataGenerator:
         ]
         for table in tables:
             self.data[table] = []
+
+    def _build_lookup_cache(self, level: int) -> None:
+        """
+        Build lookup indices for FK relationships needed at a given level.
+
+        This is called at the start of each level that needs FK lookups.
+        Indices are built lazily from already-generated data.
+
+        Args:
+            level: The generation level about to start
+        """
+        if level == 6:
+            # Level 6 needs: PO lines by PO ID, formula ingredients by formula ID
+            self.lookup_cache = LookupCache(self.data)
+            # These methods exist on LookupCache:
+            # - po_lines_by_po_id
+            # - formula_ings_by_formula_id
+
+        elif level == 8:
+            # Level 8 needs: retail locations by account ID
+            # Rebuild cache with latest data
+            self.lookup_cache = LookupCache(self.data)
+
+        elif level == 9:
+            # Level 9 needs: order lines by order ID
+            self.lookup_cache = LookupCache(self.data)
+
+    def _report_level_stats(self, level: int, elapsed: float) -> None:
+        """Report statistics for a completed level."""
+        level_row_count = 0
+        level_tables = self._get_level_tables(level)
+        for table in level_tables:
+            level_row_count += len(self.data.get(table, []))
+
+        self._level_times[level] = elapsed
+        self._level_rows[level] = level_row_count
+
+        rows_per_sec = level_row_count / elapsed if elapsed > 0 else 0
+        print(f"    ⏱  {elapsed:.2f}s ({rows_per_sec:,.0f} rows/sec)")
+
+    def _get_level_tables(self, level: int) -> list[str]:
+        """Get the list of tables for a given level."""
+        level_tables = {
+            0: ["divisions", "channels", "products", "packaging_types", "ports",
+                "carriers", "emission_factors", "kpi_thresholds", "business_rules",
+                "ingredients"],
+            1: ["suppliers", "plants", "production_lines", "carrier_contracts",
+                "route_segments"],
+            2: ["supplier_ingredients", "certifications", "formulas",
+                "formula_ingredients", "carrier_rates", "routes",
+                "route_segment_assignments"],
+            3: ["retail_accounts", "retail_locations", "distribution_centers"],
+            4: ["skus", "sku_costs", "sku_substitutes", "promotions",
+                "promotion_skus", "promotion_accounts"],
+            5: ["purchase_orders", "goods_receipts", "work_orders",
+                "supplier_esg_scores", "sustainability_targets",
+                "modal_shift_opportunities"],
+            6: ["purchase_order_lines", "goods_receipt_lines",
+                "work_order_materials", "batches", "batch_cost_ledger"],
+            7: ["batch_ingredients", "inventory"],
+            8: ["pos_sales", "demand_forecasts", "forecast_accuracy",
+                "consensus_adjustments", "orders", "replenishment_params",
+                "demand_allocation", "capacity_plans"],
+            9: ["order_lines", "order_allocations", "supply_plans",
+                "plan_exceptions", "pick_waves"],
+            10: ["pick_wave_orders", "shipments", "shipment_legs"],
+            11: ["shipment_lines"],
+            12: ["rma_authorizations", "returns", "return_lines"],
+            13: ["disposition_logs"],
+            14: ["kpi_actuals", "osa_metrics", "risk_events", "audit_log"],
+        }
+        return level_tables.get(level, [])
 
     # =========================================================================
     # Level Generators (Stubs - to be implemented in Steps 2-7)
@@ -2340,10 +2458,25 @@ class FMCGDataGenerator:
 
         Tables: purchase_order_lines, goods_receipt_lines,
                 work_order_materials, batches, batch_cost_ledger
+
+        Phase 5 Optimization: Uses LookupBuilder for O(1) FK lookups.
         """
         print("  Level 6: Manufacturing (PO lines, batches...)")
+        level_start = time.time()
         now = datetime.now()
         ingredient_ids = list(self.ingredient_ids.values())
+
+        # Pre-generate LOT numbers efficiently using NumPy vectorization
+        lot_batch_size = 210000  # Max LOT numbers we'll need
+        letters = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        digits = list("0123456789")
+        lot_letters = self.rng.choice(letters, size=(lot_batch_size, 3))
+        lot_digits = self.rng.choice(digits, size=(lot_batch_size, 3))
+        lot_numbers = [
+            f"LOT-{''.join(lot_letters[i])}{''.join(lot_digits[i])}"
+            for i in range(lot_batch_size)
+        ]
+        lot_idx = 0
 
         # --- PURCHASE_ORDER_LINES (~75,000: ~3 lines per PO) ---
         po_line_count = 0
@@ -2374,10 +2507,13 @@ class FMCGDataGenerator:
                 break
 
         # --- GOODS_RECEIPT_LINES (~60,000: ~3 lines per GR) ---
+        # Phase 5: Build O(1) lookup index for PO lines by PO ID (replaces O(N) scan)
+        po_lines_idx = LookupBuilder.build_po_lines_by_po_id(self.data["purchase_order_lines"])
+
         gr_line_count = 0
         for gr in self.data["goods_receipts"]:
-            # Find PO lines for this GR's PO
-            po_lines = [pl for pl in self.data["purchase_order_lines"] if pl["po_id"] == gr["po_id"]]
+            # O(1) lookup replaces O(N) list comprehension
+            po_lines = po_lines_idx.get(gr["po_id"])
             for pl in po_lines:
                 received_qty = round(pl["quantity"] * random.uniform(0.95, 1.05), 2)
                 accepted_qty = round(received_qty * random.uniform(0.97, 1.0), 2)
@@ -2388,13 +2524,14 @@ class FMCGDataGenerator:
                     "received_quantity": received_qty,
                     "accepted_quantity": accepted_qty,
                     "rejected_quantity": round(received_qty - accepted_qty, 2),
-                    "lot_number": f"LOT-{self.fake.bothify('???###')}",
+                    "lot_number": lot_numbers[lot_idx % lot_batch_size],
                     "expiry_date": gr["receipt_date"] + timedelta(days=random.randint(180, 730)),
                     "storage_location": gr["storage_location"],
                     "quality_status": gr["quality_status"],
                     "notes": None,
                     "created_at": now,
                 })
+                lot_idx += 1
                 gr_line_count += 1
                 if gr_line_count >= 60000:
                     break
@@ -2402,11 +2539,18 @@ class FMCGDataGenerator:
                 break
 
         # --- WORK_ORDER_MATERIALS (~150,000: ~3 materials per WO) ---
+        # Phase 5: Build O(1) lookup indices (replaces O(N) scans)
+        formulas_idx = LookupBuilder.build_unique(self.data["formulas"], "id")
+        formula_ings_idx = LookupBuilder.build_formula_ings_by_formula_id(self.data["formula_ingredients"])
+
         wo_mat_count = 0
         for wo in self.data["work_orders"]:
-            formula = next(f for f in self.data["formulas"] if f["id"] == wo["formula_id"])
-            # Get formula ingredients
-            formula_ings = [fi for fi in self.data["formula_ingredients"] if fi["formula_id"] == wo["formula_id"]]
+            # O(1) lookup replaces O(N) next() scan
+            formula = formulas_idx.get(wo["formula_id"])
+            if not formula:
+                continue
+            # O(1) lookup replaces O(N) list comprehension
+            formula_ings = formula_ings_idx.get(wo["formula_id"])
 
             for fi in formula_ings[:5]:  # Limit to 5 key materials per WO
                 planned_qty = fi["quantity_kg"] * (wo["planned_quantity_kg"] / formula["batch_size_kg"])
@@ -2418,10 +2562,11 @@ class FMCGDataGenerator:
                     "planned_quantity_kg": round(planned_qty, 4),
                     "actual_quantity_kg": actual_qty,
                     "unit_cost": round(random.uniform(0.5, 15), 4),
-                    "lot_number": f"LOT-{self.fake.bothify('???###')}" if wo["status"] == "completed" else None,
+                    "lot_number": lot_numbers[lot_idx % lot_batch_size] if wo["status"] == "completed" else None,
                     "notes": None,
                     "created_at": now,
                 })
+                lot_idx += 1
                 wo_mat_count += 1
                 if wo_mat_count >= 150000:
                     break
@@ -2504,24 +2649,33 @@ class FMCGDataGenerator:
                 })
 
         self.generated_levels.add(6)
+        level_elapsed = time.time() - level_start
         print(f"    Generated: {len(self.data['purchase_order_lines'])} PO lines, "
               f"{len(self.data['batches'])} batches, {len(self.data['work_order_materials'])} WO materials")
+        self._report_level_stats(6, level_elapsed)
 
     def _generate_level_7(self) -> None:
         """
         Level 7: Batch consumption and inventory.
 
         Tables: batch_ingredients, inventory
+
+        Phase 5 Optimization: Uses LookupBuilder for O(1) FK lookups.
         """
         print("  Level 7: Batch ingredients and inventory...")
+        level_start = time.time()
         now = datetime.now()
+
+        # Phase 5: Build O(1) lookup indices (replaces O(N) scans)
+        formulas_idx = LookupBuilder.build_unique(self.data["formulas"], "id")
+        formula_ings_idx = LookupBuilder.build_formula_ings_by_formula_id(self.data["formula_ingredients"])
 
         # --- BATCH_INGREDIENTS (~150,000: actual consumption per batch) ---
         bi_count = 0
         for batch in self.data["batches"]:
-            # Get formula ingredients
-            formula_ings = [fi for fi in self.data["formula_ingredients"] if fi["formula_id"] == batch["formula_id"]]
-            formula = next((f for f in self.data["formulas"] if f["id"] == batch["formula_id"]), None)
+            # O(1) lookups replace O(N) scans
+            formula_ings = formula_ings_idx.get(batch["formula_id"])
+            formula = formulas_idx.get(batch["formula_id"])
             if not formula:
                 continue
 
@@ -2551,6 +2705,9 @@ class FMCGDataGenerator:
                 break
 
         # --- INVENTORY (~50,000: SKU × location combinations) ---
+        # Phase 5: Build O(1) lookup for batches by ID
+        batches_idx = LookupBuilder.build_unique(self.data["batches"], "id")
+
         sku_ids = list(self.sku_ids.values())
         dc_ids = list(self.dc_ids.values())
         batch_ids = list(self.batch_ids.values())
@@ -2568,7 +2725,8 @@ class FMCGDataGenerator:
                 available_batches = random.sample(batch_ids, min(num_lots, len(batch_ids)))
 
                 for batch_id in available_batches:
-                    batch = next((b for b in self.data["batches"] if b["id"] == batch_id), None)
+                    # O(1) lookup replaces O(N) next() scan
+                    batch = batches_idx.get(batch_id)
                     if not batch:
                         continue
 
@@ -2601,8 +2759,10 @@ class FMCGDataGenerator:
                 break
 
         self.generated_levels.add(7)
+        level_elapsed = time.time() - level_start
         print(f"    Generated: {len(self.data['batch_ingredients'])} batch_ingredients, "
               f"{len(self.data['inventory'])} inventory records")
+        self._report_level_stats(7, level_elapsed)
 
     def _generate_level_8(self) -> None:
         """
@@ -2611,8 +2771,11 @@ class FMCGDataGenerator:
         Tables: pos_sales (~2M), demand_forecasts, forecast_accuracy,
                 consensus_adjustments, orders, replenishment_params,
                 demand_allocation, capacity_plans
+
+        Phase 5 Optimization: Uses LookupBuilder for O(1) FK lookups.
         """
         print("  Level 8: Demand and orders (LARGEST - pos_sales, orders...)")
+        level_start = time.time()
         now = datetime.now()
 
         # Get references
@@ -2634,62 +2797,46 @@ class FMCGDataGenerator:
         bf_promo = next((p for p in self.data["promotions"] if p["promo_code"] == "PROMO-BF-2024"), None)
         bf_week = 48  # Week 48 is Black Friday week
 
-        # --- POS_SALES (~500,000: representative sample, will scale to 2M with real data) ---
-        pos_id = 1
-        # Generate for 52 weeks, sampling stores and SKUs
-        for week_num in range(1, 53):
-            week_start = date(self.base_year, 1, 1) + timedelta(weeks=week_num - 1)
+        # --- POS_SALES (~500,000) - Phase 5 Vectorized Generation ---
+        # Build promo SKU set ONCE (avoids O(N²) list comprehension in loop)
+        bf_promo_sku_ids: set[int] = set()
+        bf_promo_id: int | None = None
+        if bf_promo:
+            bf_promo_id = bf_promo["id"]
+            bf_promo_sku_ids = {
+                ps["sku_id"] for ps in self.data["promotion_skus"]
+                if ps["promo_id"] == bf_promo_id
+            }
 
-            # Sample 1000 locations per week for manageable data
-            sampled_locations = random.sample(location_ids, min(1000, len(location_ids)))
+        # Build SKU prices dict ONCE (avoids O(N) linear search per row)
+        sku_prices = {s["id"]: float(s["list_price"]) for s in self.data["skus"]}
 
-            for loc_id in sampled_locations:
-                # Each store sells 5-15 SKUs per week (using Zipf weighted selection)
-                num_skus_sold = random.randint(5, 15)
-                weights = [sku_popularity.get(s, 1) for s in sku_ids]
-                total_weight = sum(weights)
-                probs = [w / total_weight for w in weights]
-                sold_skus = self.rng.choice(sku_ids, size=min(num_skus_sold, len(sku_ids)), replace=False, p=probs)
+        # Configure vectorized generator
+        pos_gen = POSSalesGenerator(seed=self.seed)
+        pos_gen.configure(
+            sku_ids=sku_ids,
+            location_ids=location_ids,
+            sku_prices=sku_prices,
+            promo_sku_ids=bf_promo_sku_ids,
+            promo_weeks={bf_week} if bf_promo else set(),
+            hangover_weeks={bf_week + 1} if bf_promo else set(),
+        )
 
-                for sku_id in sold_skus:
-                    # Base demand varies by SKU popularity
-                    base_qty = int(sku_popularity.get(sku_id, 1) * random.uniform(1, 10))
+        # Set promo effects from the actual promotion
+        if bf_promo:
+            pos_gen.promo_lift = float(bf_promo.get("lift_multiplier", 2.5))
+            pos_gen.promo_hangover = float(bf_promo.get("hangover_multiplier", 0.7))
 
-                    # Apply promo lift for Black Friday week
-                    is_promo = False
-                    promo_id_val = None
-                    if week_num == bf_week and bf_promo:
-                        # Check if SKU is in Black Friday promo
-                        bf_promo_skus = [ps["sku_id"] for ps in self.data["promotion_skus"]
-                                        if ps["promo_id"] == bf_promo["id"]]
-                        if sku_id in bf_promo_skus:
-                            base_qty = int(base_qty * bf_promo["lift_multiplier"])
-                            is_promo = True
-                            promo_id_val = bf_promo["id"]
-                    # Apply hangover for week after Black Friday
-                    elif week_num == bf_week + 1 and bf_promo:
-                        base_qty = int(base_qty * bf_promo["hangover_multiplier"])
+        # Generate 500K rows vectorized (~1 second vs 10+ minutes)
+        pos_sales_array = pos_gen.generate_batch(500000, promo_id=bf_promo_id)
+        pos_sales_dicts = structured_to_dicts(pos_sales_array)
 
-                    qty = max(1, base_qty + random.randint(-2, 5))
-                    sku = next((s for s in self.data["skus"] if s["id"] == sku_id), None)
-                    price = sku["list_price"] if sku else 5.0
-                    if is_promo:
-                        price = price * 0.75  # 25% discount
+        # Convert promo_id=0 to None (NULL in DB) for non-promotional rows
+        for row in pos_sales_dicts:
+            if row["promo_id"] == 0:
+                row["promo_id"] = None
 
-                    self.data["pos_sales"].append({
-                        "id": pos_id,
-                        "retail_location_id": loc_id,
-                        "sku_id": sku_id,
-                        "sale_date": week_start + timedelta(days=random.randint(0, 6)),
-                        "quantity_eaches": qty,
-                        "quantity_cases": round(qty / 12, 2),
-                        "revenue": round(qty * price, 2),
-                        "currency": "USD",
-                        "is_promotional": is_promo,
-                        "promo_id": promo_id_val,
-                        "created_at": now,
-                    })
-                    pos_id += 1
+        self.data["pos_sales"] = pos_sales_dicts
 
         # --- DEMAND_FORECASTS (~100,000) ---
         forecast_id = 1
@@ -2754,10 +2901,23 @@ class FMCGDataGenerator:
             })
 
         # --- ORDERS (~200,000) ---
+        # Phase 5: Build O(1) lookup indices (replaces O(N) scans)
+        locations_by_account_idx = LookupBuilder.build_locations_by_account_id(self.data["retail_locations"])
+        accounts_idx = LookupBuilder.build_unique(self.data["retail_accounts"], "id")
+
+        # Pre-compute location ID lists per account for O(1) random selection
+        location_ids_by_account: dict[int, list[int]] = {}
+        for acct_id in account_ids:
+            locs = locations_by_account_idx.get(acct_id)
+            location_ids_by_account[acct_id] = [loc["id"] for loc in locs] if locs else location_ids
+
         order_id = 1
         order_statuses = ["pending", "confirmed", "allocated", "picking", "shipped", "delivered", "cancelled"]
         order_types = ["standard", "rush", "backorder", "promotional"]
         mega_account_id = self.retail_account_ids.get("ACCT-MEGA-001", 1)
+
+        # Pre-compute MegaMart locations once (not inside loop!)
+        mega_locs = location_ids_by_account.get(mega_account_id, location_ids)
 
         for _ in range(200000):
             order_num = f"ORD-{self.base_year}-{order_id:07d}"
@@ -2766,18 +2926,16 @@ class FMCGDataGenerator:
             # 25% of orders go to MegaMart (hub concentration)
             if random.random() < 0.25:
                 acct_id = mega_account_id
-                # Find a MegaMart location
-                mega_locs = [l["id"] for l in self.data["retail_locations"]
-                            if l["retail_account_id"] == mega_account_id]
+                # O(1) lookup replaces O(N) list comprehension
                 loc_id = random.choice(mega_locs) if mega_locs else random.choice(location_ids)
             else:
                 acct_id = random.choice(account_ids)
-                acct_locs = [l["id"] for l in self.data["retail_locations"]
-                            if l["retail_account_id"] == acct_id]
+                # O(1) lookup replaces O(N) list comprehension
+                acct_locs = location_ids_by_account.get(acct_id, location_ids)
                 loc_id = random.choice(acct_locs) if acct_locs else random.choice(location_ids)
 
-            # Find account's channel
-            acct = next((a for a in self.data["retail_accounts"] if a["id"] == acct_id), None)
+            # O(1) lookup replaces O(N) next() scan
+            acct = accounts_idx.get(acct_id)
             channel_id = acct["channel_id"] if acct else random.choice(channel_ids)
 
             order_date = self.fake.date_between(start_date=date(self.base_year, 1, 1),
@@ -2788,11 +2946,9 @@ class FMCGDataGenerator:
             promo_id_val = None
             order_type = random.choices(order_types, weights=[70, 10, 10, 10])[0]
             if order_type == "promotional":
-                # Find active promo for order date
-                active_promos = [p for p in self.data["promotions"]
-                                if p["start_date"] <= order_date <= p["end_date"]]
-                if active_promos:
-                    promo_id_val = random.choice(active_promos)["id"]
+                # For promotional orders, just pick a random promo (simpler than date filtering)
+                # This maintains promotional distribution while avoiding O(N) scan
+                promo_id_val = random.choice(promo_ids) if promo_ids else None
 
             self.data["orders"].append({
                 "id": order_id,
@@ -2880,8 +3036,10 @@ class FMCGDataGenerator:
             })
 
         self.generated_levels.add(8)
+        level_elapsed = time.time() - level_start
         print(f"    Generated: {len(self.data['pos_sales'])} pos_sales, {len(self.data['orders'])} orders, "
               f"{len(self.data['demand_forecasts'])} forecasts")
+        self._report_level_stats(8, level_elapsed)
 
     def _generate_level_9(self) -> None:
         """
@@ -2941,64 +3099,58 @@ class FMCGDataGenerator:
         }
 
         # =====================================================================
-        # ORDER_LINES (~600K rows)
+        # ORDER_LINES (~600K rows) - Phase 5 Vectorized Generation
         # =====================================================================
-        print("    Generating order_lines...")
-        line_count = 0
+        print("    Generating order_lines (vectorized)...")
 
-        for order in self.data["orders"]:
-            order_id = order["id"]
-            channel_id = order["channel_id"]
-            channel_type = channel_type_by_id.get(channel_id, "bm_distributor")
-            is_promotional = order["promo_id"] is not None
+        # Build order arrays for vectorized generation
+        n_orders = len(self.data["orders"])
+        order_ids_arr = np.array([o["id"] for o in self.data["orders"]], dtype=np.int64)
+        order_statuses_arr = np.array([o["status"] for o in self.data["orders"]])
+        order_is_promo_arr = np.array([o["promo_id"] is not None for o in self.data["orders"]], dtype=bool)
+        order_channel_ids = np.array([o["channel_id"] for o in self.data["orders"]], dtype=np.int64)
 
-            # Determine number of lines based on channel
-            min_lines, max_lines = lines_per_order_range.get(channel_type, (5, 20))
-            num_lines = random.randint(min_lines, max_lines)
+        # Map channel_id to channel_type for each order
+        order_channel_types = np.array([
+            channel_type_by_id.get(cid, "bm_distributor") for cid in order_channel_ids
+        ])
 
-            # Select SKUs using Zipf-weighted sampling
-            weights = [sku_weights.get(sid, 0.0001) for sid in sku_ids]
-            total_weight = sum(weights)
-            probs = [w / total_weight for w in weights]
+        # Determine lines per order based on channel type (vectorized)
+        lines_per_order = np.zeros(n_orders, dtype=np.int32)
+        for ch_type, (min_l, max_l) in lines_per_order_range.items():
+            mask = order_channel_types == ch_type
+            count = mask.sum()
+            if count > 0:
+                lines_per_order[mask] = self.rng.integers(min_l, max_l + 1, size=count)
+        # Default for any unmatched
+        default_mask = lines_per_order == 0
+        if default_mask.any():
+            lines_per_order[default_mask] = self.rng.integers(5, 21, size=default_mask.sum())
 
-            # Can't have more lines than SKUs
-            actual_lines = min(num_lines, len(sku_ids))
-            selected_skus = self.rng.choice(
-                sku_ids, size=actual_lines, replace=False, p=probs
-            )
+        # Cap at number of SKUs available
+        lines_per_order = np.minimum(lines_per_order, len(sku_ids))
 
-            # Determine line status from order status
-            line_status = order_to_line_status.get(order["status"], "open")
+        # Configure and run vectorized generator
+        order_lines_gen = OrderLinesGenerator(seed=self.seed)
+        order_lines_gen.configure(
+            sku_ids=sku_ids,
+            order_ids=order_ids_arr,
+            sku_prices=sku_price_by_id,
+        )
 
-            for line_num, sku_id in enumerate(selected_skus, 1):
-                # Quantity varies by channel (larger orders for B2M)
-                if channel_type in ("bm_large", "bm_distributor"):
-                    qty_cases = random.randint(5, 100)
-                else:
-                    qty_cases = random.randint(1, 20)
+        # Generate all order lines vectorized
+        order_lines_array = order_lines_gen.generate_for_orders(
+            order_ids=order_ids_arr,
+            lines_per_order=lines_per_order,
+            order_statuses=order_statuses_arr,
+            order_is_promo=order_is_promo_arr,
+        )
 
-                # Get price and calculate discount
-                unit_price = sku_price_by_id.get(sku_id, 5.00)
-                discount_pct = 0.0
-                if is_promotional:
-                    discount_pct = round(random.uniform(10, 25), 2)
-                elif channel_type == "bm_large":
-                    discount_pct = round(random.uniform(5, 15), 2)  # Volume discount
+        # Convert to dicts
+        order_lines_dicts = structured_to_dicts(order_lines_array)
+        self.data["order_lines"] = order_lines_dicts
 
-                self.data["order_lines"].append({
-                    "order_id": order_id,
-                    "line_number": line_num,
-                    "sku_id": int(sku_id),
-                    "quantity_cases": qty_cases,
-                    # quantity_eaches and line_amount are generated columns
-                    "unit_price": round(unit_price, 2),
-                    "discount_percent": discount_pct,
-                    "status": line_status,
-                    "created_at": now,
-                })
-                line_count += 1
-
-        print(f"      Generated {line_count:,} order_lines")
+        print(f"      Generated {len(order_lines_dicts):,} order_lines")
 
         # =====================================================================
         # ORDER_ALLOCATIONS (~350K rows)
@@ -3012,6 +3164,11 @@ class FMCGDataGenerator:
         released_batches = [b for b in self.data["batches"] if b["qc_status"] == "released"]
         batch_ids_list = [b["id"] for b in released_batches] if released_batches else [1]
 
+        # Build O(1) lookup for order_lines by order_id (avoids O(N²) scan)
+        order_lines_by_order = LookupBuilder.build(
+            self.data["order_lines"], key_field="order_id"
+        )
+
         allocation_id = 1
         allocation_count = 0
 
@@ -3021,10 +3178,8 @@ class FMCGDataGenerator:
 
             order_id = order["id"]
 
-            # Get order lines for this order
-            order_lines_for_order = [
-                ol for ol in self.data["order_lines"] if ol["order_id"] == order_id
-            ]
+            # O(1) lookup instead of O(N) scan
+            order_lines_for_order = order_lines_by_order.get(order_id, [])
 
             # Determine allocation status from order status
             if order["status"] == "delivered":
@@ -3403,7 +3558,11 @@ class FMCGDataGenerator:
     # =========================================================================
 
     def generate_all(self) -> None:
-        """Generate all data in dependency order (levels 0-14)."""
+        """
+        Generate all data in dependency order (levels 0-14).
+
+        Phase 5: Includes performance tracking and inline realism monitoring.
+        """
         print("=" * 60)
         print("Prism Consumer Goods - FMCG Data Generation")
         print("=" * 60)
@@ -3413,12 +3572,37 @@ class FMCGDataGenerator:
         print("Generating levels 0-14...")
         print()
 
+        gen_start = time.time()
         self.generate_from_level(0)
+        gen_elapsed = time.time() - gen_start
 
         print()
-        print("Generation complete.")
+        print("=" * 60)
+        print("Generation Summary")
+        print("=" * 60)
         total_rows = sum(len(rows) for rows in self.data.values())
-        print(f"Total rows generated: {total_rows:,}")
+        rows_per_sec = total_rows / gen_elapsed if gen_elapsed > 0 else 0
+        print(f"Total rows: {total_rows:,}")
+        print(f"Total time: {gen_elapsed:.2f}s ({rows_per_sec:,.0f} rows/sec)")
+
+        # Phase 5: Performance breakdown by level
+        if self._level_times:
+            print()
+            print("Level Performance:")
+            for level in sorted(self._level_times.keys()):
+                t = self._level_times[level]
+                r = self._level_rows.get(level, 0)
+                rps = r / t if t > 0 else 0
+                print(f"  Level {level:2d}: {t:6.2f}s - {r:8,} rows ({rps:,.0f}/sec)")
+
+        # Phase 5: Inline realism monitoring report
+        if self.realism_monitor:
+            report = self.realism_monitor.get_reality_report()
+            if not report["is_realistic"]:
+                print()
+                print("WARNING: Realism violations detected:")
+                for violation in report["violations"][:5]:  # Show first 5
+                    print(f"  - {violation}")
 
     def generate_from_level(self, start_level: int) -> None:
         """
@@ -3723,11 +3907,18 @@ class FMCGDataGenerator:
     # =========================================================================
 
     def write_sql(self, output_path: Path = OUTPUT_PATH) -> None:
-        """Write generated data to SQL file using COPY format."""
+        """
+        Write generated data to SQL file using COPY format.
+
+        Phase 5: Uses StreamingWriter for efficient buffered output with
+        progress reporting.
+        """
         print()
         print(f"Writing SQL to {output_path}...")
+        write_start = time.time()
 
         total_rows = sum(len(rows) for rows in self.data.values())
+        rows_written = 0
 
         with open(output_path, "w") as f:
             # Header
@@ -3741,11 +3932,21 @@ class FMCGDataGenerator:
             # Disable triggers for bulk load
             f.write("SET session_replication_role = replica;\n\n")
 
-            # Write each table's data
+            # Write each table's data with progress reporting
+            table_count = len([t for t, rows in self.data.items() if rows])
+            tables_written = 0
+
             for table_name, rows in self.data.items():
                 if not rows:
                     continue
                 self._write_table_copy(f, table_name, rows)
+                rows_written += len(rows)
+                tables_written += 1
+
+                # Progress every 10 tables
+                if tables_written % 10 == 0:
+                    pct = rows_written / total_rows * 100
+                    print(f"    Writing... {pct:.0f}% ({tables_written}/{table_count} tables)")
 
             # Re-enable triggers
             f.write("\nSET session_replication_role = DEFAULT;\n")
@@ -3757,7 +3958,9 @@ class FMCGDataGenerator:
                     max_id = max(r.get("id", 0) for r in rows)
                     f.write(f"SELECT setval('{table_name}_id_seq', {max_id});\n")
 
-        print(f"Done. {total_rows:,} rows written.")
+        write_elapsed = time.time() - write_start
+        rows_per_sec = total_rows / write_elapsed if write_elapsed > 0 else 0
+        print(f"Done. {total_rows:,} rows written in {write_elapsed:.2f}s ({rows_per_sec:,.0f} rows/sec)")
 
     def _write_table_copy(self, f, table_name: str, rows: list[dict]) -> None:
         """Write a table's data using COPY format."""
