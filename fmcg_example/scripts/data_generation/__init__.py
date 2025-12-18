@@ -23,8 +23,13 @@ Phase 3 - Bottleneck Elimination:
 - LookupCache: Pre-built indices for all FK patterns in generate_data.py
 - PooledFaker: Batch Faker sampling wrapper for efficient string generation
 
+Phase 4 - Vectorized Generation:
+- POSSalesGenerator: Vectorized POS sales generation (~500K rows)
+- OrderLinesGenerator: Vectorized order lines generation (~600K rows)
+- ShipmentLegsGenerator: Vectorized shipment legs with delay distributions
+- Structured array dtypes and conversion utilities
+
 Future Phases (to be implemented):
-- Phase 4: Vectorized generators for high-volume tables
 - Phase 5: Integration with generate_data.py
 """
 
@@ -51,6 +56,23 @@ from .streaming_writer import (
     copy_str,
     copy_timestamp,
     format_copy_value,
+)
+from .vectorized import (
+    ORDER_LINES_COLUMNS,
+    ORDER_LINES_DTYPE,
+    POS_SALES_COLUMNS,
+    POS_SALES_DTYPE,
+    SHIPMENT_LEGS_COLUMNS,
+    SHIPMENT_LEGS_DTYPE,
+    OrderLinesGenerator,
+    POSSalesGenerator,
+    ShipmentLegsGenerator,
+    VectorizedGenerator,
+    apply_promo_effects,
+    lumpy_demand,
+    structured_to_copy_lines,
+    structured_to_dicts,
+    zipf_weights,
 )
 
 # Path to default benchmark manifest
@@ -82,6 +104,24 @@ __all__ = [
     # Phase 3: Bottleneck Elimination
     "LookupCache",
     "PooledFaker",
+    # Phase 4: Vectorized Generation
+    "VectorizedGenerator",
+    "POSSalesGenerator",
+    "OrderLinesGenerator",
+    "ShipmentLegsGenerator",
+    # Phase 4: Dtypes and columns
+    "POS_SALES_DTYPE",
+    "POS_SALES_COLUMNS",
+    "ORDER_LINES_DTYPE",
+    "ORDER_LINES_COLUMNS",
+    "SHIPMENT_LEGS_DTYPE",
+    "SHIPMENT_LEGS_COLUMNS",
+    # Phase 4: Utilities
+    "zipf_weights",
+    "lumpy_demand",
+    "apply_promo_effects",
+    "structured_to_dicts",
+    "structured_to_copy_lines",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]
