@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.28] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 5** - Integration:
+  - **POSSalesGenerator integration** (Level 8): Replaced 500K-iteration Python loop
+    - Vectorized NumPy generation: ~0.1s at 5M rows/sec
+    - Dict conversion: ~6s at 82K rows/sec
+    - Total: ~6s vs 10+ minutes before (100x speedup)
+  - **OrderLinesGenerator integration** (Level 9): Replaced order lines loop
+    - Updated `ORDER_LINES_DTYPE` to match DB schema (composite PK, no generated columns)
+    - Handles channel-based line counts, order status mapping, promo discounts
+    - 14.7M order lines generated in ~2s NumPy + ~90s dict conversion
+  - **LookupBuilder for order_allocations**: O(1) order_lines lookup
+    - Eliminated O(N²) scan (200K orders × 600K lines = 120B ops)
+  - **Schema alignment**: Fixed dtype/columns to match `pos_sales` and `order_lines` tables
+    - Removed GENERATED columns (sale_week, quantity_eaches, line_amount)
+    - Added missing columns (currency, created_at, status)
+
+### Performance
+
+- **Level 8**: 10+ minutes → ~10 seconds (POS sales + orders + forecasts)
+- **Level 9**: O(N²) → O(N) for order_allocations lookup
+- **Full generation**: Levels 0-9 complete in ~153 seconds
+
+### Technical
+
+- Phase 5 of performance refactor plan (robust-frolicking-coral.md → purrfect-painting-crescent.md)
+- Level 10-14 remain TODO stubs (ShipmentLegsGenerator ready for future integration)
+
 ## [0.9.27] - 2025-12-18
 
 ### Added
