@@ -78,8 +78,8 @@ fmcg_example/
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Directory Structure | ✅ Scaffold Complete |
-| 2 | Schema (~60 tables) | 📋 TODO |
+| 1 | Directory Structure | ✅ Complete |
+| 2 | Schema (67 tables + 8 views) | ✅ Complete |
 | 3 | Ontology (LinkML + VG) | 📋 TODO |
 | 4 | Data Generator (~4M rows) | 📋 TODO |
 | 5 | Beast Mode Tests | 📋 TODO |
