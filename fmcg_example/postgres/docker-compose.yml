@@ -1,0 +1,39 @@
+# Prism Consumer Goods - PostgreSQL Container
+#
+# Spec: magical-launching-forest.md Phase 2
+# Purpose: PostgreSQL database for FMCG supply chain example
+#
+# Usage:
+#   docker-compose up -d        # Start container
+#   docker-compose down         # Stop container
+#   docker-compose down -v      # Stop and remove volumes (full reset)
+#
+# Connection:
+#   Host: localhost
+#   Port: 5433 (different from supply_chain_example which uses 5432)
+#   Database: prism_fmcg
+#   User: virt_graph
+#   Password: dev_password
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: prism-fmcg-postgres
+    environment:
+      POSTGRES_DB: prism_fmcg
+      POSTGRES_USER: virt_graph
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5433:5432"  # Map to 5433 to avoid conflict with supply_chain_example
+    volumes:
+      - prism_fmcg_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U virt_graph -d prism_fmcg"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  prism_fmcg_data:

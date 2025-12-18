@@ -1,0 +1,554 @@
+# ============================================================================
+# Prism Consumer Goods (PCG) - FMCG Supply Chain Ontology
+# ============================================================================
+#
+# Spec: magical-launching-forest.md Phase 3
+#
+# Entity Classes (TBox): ~35 classes across SCOR-DS domains
+# Relationship Classes (RBox): ~40 relationships with operation type mappings
+#
+# Validation:
+#   Layer 1: poetry run linkml-lint --validate-only fmcg_example/ontology/prism_fmcg.yaml
+#   Layer 2: OntologyAccessor("fmcg_example/ontology/prism_fmcg.yaml", validate=True)
+#
+# Implementation Status: SCAFFOLD
+# TODO: Implement full class and relationship definitions in Phase 3
+
+id: https://virt-graph.dev/schemas/prism_fmcg
+name: prism_fmcg
+version: "0.1.0"
+description: >-
+  FMCG supply chain domain ontology for Virtual Graph.
+  Models Prism Consumer Goods - a Colgate-Palmolive-inspired surrogate
+  demonstrating "Formula-to-Shelf" pipeline with high-velocity, massive-volume
+  patterns across global divisions.
+
+  Key Differentiator vs supply_chain_example:
+    - Horizontal fan-out (1 Batch -> 50,000 retail nodes) vs deep BOM recursion
+    - Full SCOR-DS coverage: Plan/Source/Transform/Order/Fulfill/Return/Orchestrate
+    - Desmet Triangle integration: Service, Cost, Cash on every edge
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  vg: https://virt-graph.dev/
+
+imports:
+  - linkml:types
+
+default_range: string
+
+annotations:
+  vg:database_type: postgresql
+  vg:database_version: "15"
+  vg:connection_string: "postgresql://virt_graph:dev_password@localhost:5433/prism_fmcg"
+
+# =============================================================================
+# CLASSES (TBox) - Organized by SCOR-DS Domain
+# =============================================================================
+#
+# Total: ~35 entity classes
+# See schema.sql for detailed attribute definitions
+#
+# Modeling Patterns (from spec Section 3):
+#   3.1 Dual Modeling (Rich Link): Some concepts are both Node AND Edge
+#   3.2 Deep Hierarchy (Flattened Edges): Shortcut edges for aggregation
+#   3.3 Equivalency (Substitutes): Direct edge + cluster node patterns
+#   3.4 Composite Keys: order_lines, shipment_lines, formula_ingredients
+#   3.5 UoM Normalization: SQL views for unit conversion
+#   3.6 Hyper-edges (Event Reification): Shipment as node + shortcut edges
+#   3.7 Temporal Bounds: carrier_contracts, promotions, seasonal routes
+# =============================================================================
+
+classes:
+
+  # ===========================================================================
+  # DOMAIN A: SOURCE (Procurement & Inbound)
+  # ===========================================================================
+
+  # TODO: Ingredient - Raw chemicals with CAS numbers, purity, storage
+  # Annotations: vg:table=ingredients, vg:primary_key=id
+  # Named entities: ING-PALM-001, ING-SORB-001, ING-PEPP-001
+
+  # TODO: Supplier - Global supplier network (Tier 1/2/3)
+  # Annotations: vg:table=suppliers, vg:primary_key=id
+  # Named entities: SUP-PALM-MY-001 (single-source Palm Oil)
+
+  # TODO: SupplierIngredient - M:M with lead times, MOQs, costs
+  # Annotations: vg:table=supplier_ingredients, composite key
+
+  # TODO: Certification - ISO, GMP, Halal, Kosher, RSPO
+  # Annotations: vg:table=certifications, vg:primary_key=id
+
+  # TODO: PurchaseOrder - POs to suppliers
+  # Annotations: vg:table=purchase_orders, vg:primary_key=id
+
+  # TODO: PurchaseOrderLine - PO line items
+  # Annotations: vg:table=purchase_order_lines, composite key
+
+  # TODO: GoodsReceipt - Receipt of goods from suppliers
+  # Annotations: vg:table=goods_receipts, vg:primary_key=id
+
+  # TODO: GoodsReceiptLine - Actual received qty, lot numbers
+  # Annotations: vg:table=goods_receipt_lines, composite key
+
+  # ===========================================================================
+  # DOMAIN B: TRANSFORM (Manufacturing)
+  # ===========================================================================
+
+  # TODO: Plant - 7 manufacturing facilities globally
+  # Annotations: vg:table=plants, vg:primary_key=id
+
+  # TODO: ProductionLine - Manufacturing line capacity
+  # Annotations: vg:table=production_lines, vg:primary_key=id
+
+  # TODO: Formula - Recipe/BOM definitions with yield parameters
+  # Annotations: vg:table=formulas, vg:primary_key=id
+
+  # TODO: FormulaIngredient - Composition with sequence, quantities
+  # Annotations: vg:table=formula_ingredients, composite key [formula_id, ingredient_id, sequence]
+
+  # TODO: WorkOrder - Scheduled production (links Plan to Transform)
+  # Annotations: vg:table=work_orders, vg:primary_key=id
+
+  # TODO: WorkOrderMaterial - Planned material consumption
+  # Annotations: vg:table=work_order_materials, composite key
+
+  # TODO: Batch - Production lots with QC status, expiry
+  # Annotations: vg:table=batches, vg:primary_key=id
+  # Named entities: B-2024-RECALL-001 (contaminated batch for recall testing)
+
+  # TODO: BatchIngredient - Actual consumption for mass balance
+  # Annotations: vg:table=batch_ingredients, composite key
+
+  # TODO: BatchCostLedger - Material, labor, energy, overhead costs
+  # Annotations: vg:table=batch_cost_ledger, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN C: PRODUCT (SKU Master)
+  # ===========================================================================
+
+  # TODO: Product - Product families (PrismWhite, ClearWave, AquaPure)
+  # Annotations: vg:table=products, vg:primary_key=id
+
+  # TODO: PackagingType - Tubes, bottles, sizes, regional variants
+  # Annotations: vg:table=packaging_types, vg:primary_key=id
+
+  # TODO: SKU - The explosion point (~2,000 SKUs)
+  # Annotations: vg:table=skus, vg:primary_key=id
+
+  # TODO: SKUCost - Standard costs by type
+  # Annotations: vg:table=sku_costs, vg:primary_key=id
+
+  # TODO: SKUSubstitute - Substitute/equivalent SKUs (symmetric)
+  # Annotations: vg:table=sku_substitutes, composite key
+  # Pattern: Direct edge + SubstituteGroup cluster (Section 3.3)
+
+  # ===========================================================================
+  # DOMAIN D: ORDER (Demand Signal)
+  # ===========================================================================
+
+  # TODO: Channel - 4 channel types (B&M Large, B&M Dist, Ecom, DTC)
+  # Annotations: vg:table=channels, vg:primary_key=id
+
+  # TODO: Promotion - Trade promos with lift multipliers
+  # Annotations: vg:table=promotions, vg:primary_key=id
+  # Named entities: PROMO-BF-2024 (Black Friday, bullwhip effect)
+  # Pattern: Dual modeling - Node (trade spend) + Edge (demand lift)
+
+  # TODO: Order - Customer orders (~200K)
+  # Annotations: vg:table=orders, vg:primary_key=id
+
+  # TODO: OrderLine - Line items with SKU, qty, price
+  # Annotations: vg:table=order_lines, composite key [order_id, line_number]
+
+  # TODO: OrderAllocation - ATP/allocation of inventory to orders
+  # Annotations: vg:table=order_allocations, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN E: FULFILL (Outbound)
+  # ===========================================================================
+
+  # TODO: Division - 5 global divisions (NAM, LATAM, APAC, EUR, AFR-EUR)
+  # Annotations: vg:table=divisions, vg:primary_key=id
+
+  # TODO: DistributionCenter - ~25 DCs globally
+  # Annotations: vg:table=distribution_centers, vg:primary_key=id
+  # Named entities: DC-NAM-CHI-001 (bottleneck DC Chicago)
+
+  # TODO: Port - Ocean/air freight nodes for multi-leg routing
+  # Annotations: vg:table=ports, vg:primary_key=id
+
+  # TODO: RetailAccount - Archetype-based accounts (~100)
+  # Annotations: vg:table=retail_accounts, vg:primary_key=id
+  # Named entities: ACCT-MEGA-001 (MegaMart, 4,500 stores, 25% of orders)
+
+  # TODO: RetailLocation - Individual stores (~10,000)
+  # Annotations: vg:table=retail_locations, vg:primary_key=id
+  # Pattern: Flattened hierarchy edges (Section 3.2)
+
+  # TODO: Shipment - Physical movements (~180K)
+  # Annotations: vg:table=shipments, vg:primary_key=id
+  # Pattern: Hyper-edge reification (Section 3.6) - Node + shortcut edges
+
+  # TODO: ShipmentLine - Items with batch numbers for lot tracking (~540K)
+  # Annotations: vg:table=shipment_lines, composite key [shipment_id, line_number]
+  # Includes batch_fraction for batch splitting (Section 4.5.1)
+
+  # TODO: Inventory - Stock by location with aging buckets
+  # Annotations: vg:table=inventory, composite key
+
+  # TODO: PickWave - Picking/packing execution (optional detail)
+  # Annotations: vg:table=pick_waves, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN E2: LOGISTICS (Transport Network)
+  # ===========================================================================
+
+  # TODO: Carrier - Carrier profiles with sustainability ratings
+  # Annotations: vg:table=carriers, vg:primary_key=id
+
+  # TODO: CarrierContract - Rate agreements with date effectivity
+  # Annotations: vg:table=carrier_contracts, vg:primary_key=id
+  # Pattern: Dual modeling - Node (contract lifecycle) + Edge (rate lookups)
+  # Pattern: Temporal bounds (Section 3.7)
+
+  # TODO: CarrierRate - Rate tables by mode, weight break, lane
+  # Annotations: vg:table=carrier_rates, composite key
+
+  # TODO: RouteSegment - Atomic legs: origin -> destination
+  # Annotations: vg:table=route_segments, vg:primary_key=id
+  # Named entities: LANE-SH-LA-001 (seasonal Shanghai->LA)
+
+  # TODO: Route - Composed routes (Plant -> Port -> Ocean -> DC)
+  # Annotations: vg:table=routes, vg:primary_key=id
+
+  # TODO: RouteSegmentAssignment - Links routes to segments in sequence
+  # Annotations: vg:table=route_segment_assignments, composite key
+
+  # TODO: ShipmentLeg - Actual execution: which segments used per shipment
+  # Annotations: vg:table=shipment_legs, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN E3: ESG/SUSTAINABILITY
+  # ===========================================================================
+
+  # TODO: EmissionFactor - CO2/km by mode, fuel type, carrier
+  # Annotations: vg:table=emission_factors, vg:primary_key=id
+
+  # TODO: ShipmentEmission - Calculated CO2 per shipment (Scope 3)
+  # Annotations: vg:table=shipment_emissions, vg:primary_key=id
+
+  # TODO: SupplierESGScore - EcoVadis, CDP, ISO14001, SBTi commitment
+  # Annotations: vg:table=supplier_esg_scores, vg:primary_key=id
+
+  # TODO: SustainabilityTarget - Division/account-level carbon targets
+  # Annotations: vg:table=sustainability_targets, vg:primary_key=id
+
+  # TODO: ModalShiftOpportunity - Identified truck->rail opportunities
+  # Annotations: vg:table=modal_shift_opportunities, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN F: PLAN (Demand & Supply Planning)
+  # ===========================================================================
+
+  # TODO: POSSale - Point-of-sale signals at store/SKU level
+  # Annotations: vg:table=pos_sales, composite key
+
+  # TODO: DemandForecast - Statistical/ML forecasts by SKU/location
+  # Annotations: vg:table=demand_forecasts, composite key
+
+  # TODO: ForecastAccuracy - MAPE, bias tracking by SKU/account
+  # Annotations: vg:table=forecast_accuracy, vg:primary_key=id
+
+  # TODO: ConsensusAdjustment - S&OP overrides to statistical forecast
+  # Annotations: vg:table=consensus_adjustments, vg:primary_key=id
+
+  # TODO: ReplenishmentParam - Safety stock, reorder points, review cycles
+  # Annotations: vg:table=replenishment_params, composite key
+
+  # TODO: DemandAllocation - Forecasted demand allocated down network
+  # Annotations: vg:table=demand_allocation, composite key
+
+  # TODO: CapacityPlan - Available capacity by plant/line/period
+  # Annotations: vg:table=capacity_plans, composite key
+
+  # TODO: SupplyPlan - Planned production/procurement to meet demand
+  # Annotations: vg:table=supply_plans, composite key
+
+  # TODO: PlanException - Gap identification when demand > capacity
+  # Annotations: vg:table=plan_exceptions, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN G: RETURN (Regenerate)
+  # ===========================================================================
+
+  # TODO: Return - Return events
+  # Annotations: vg:table=returns, vg:primary_key=id
+
+  # TODO: ReturnLine - Return items with condition assessment
+  # Annotations: vg:table=return_lines, composite key
+
+  # TODO: DispositionLog - Restock, scrap, regenerate, donate decisions
+  # Annotations: vg:table=disposition_logs, vg:primary_key=id
+
+  # TODO: RMAAuthorization - Return Merchandise Authorization workflow
+  # Annotations: vg:table=rma_authorizations, vg:primary_key=id
+
+  # ===========================================================================
+  # DOMAIN H: ORCHESTRATE (Hub)
+  # ===========================================================================
+
+  # TODO: KPIThreshold - Desmet Triangle targets (Service, Cost, Cash)
+  # Annotations: vg:table=kpi_thresholds, vg:primary_key=id
+
+  # TODO: KPIActual - Calculated KPI values vs thresholds
+  # Annotations: vg:table=kpi_actuals, vg:primary_key=id
+
+  # TODO: OSAMetric - On-shelf availability (~500K measurements)
+  # Annotations: vg:table=osa_metrics, composite key
+
+  # TODO: BusinessRule - Policy management (min order qty, allocation priority)
+  # Annotations: vg:table=business_rules, vg:primary_key=id
+
+  # TODO: RiskEvent - Risk registry (supplier disruption, quality hold)
+  # Annotations: vg:table=risk_events, vg:primary_key=id
+
+  # TODO: AuditLog - Change tracking for governance
+  # Annotations: vg:table=audit_log, vg:primary_key=id
+
+  # ===========================================================================
+  # PLACEHOLDER - Required for valid LinkML until classes are implemented
+  # ===========================================================================
+
+  Placeholder:
+    description: "Placeholder class - remove when implementing actual classes"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: _placeholder
+      vg:primary_key: id
+    attributes:
+      id:
+        range: integer
+        required: true
+
+# =============================================================================
+# SLOTS (RBox) - Relationships
+# =============================================================================
+#
+# Total: ~40 relationships with operation type mappings
+#
+# Key Relationships by Handler:
+#   traverse(): recall_trace, batch_to_location, order_genealogy
+#   path_aggregate(): landed_cost, carbon_footprint, demand_propagation
+#   shortest_path(): freight_route, multi_leg_cost
+#   centrality(): dc_importance, supplier_criticality
+#   connected_components(): supplier_clusters, distribution_islands
+#   resilience_analysis(): spof_detection, dc_failure_impact
+#
+# TODO: Implement all relationships in Phase 3
+# =============================================================================
+
+slots:
+
+  # ===========================================================================
+  # SOURCE Domain Relationships
+  # ===========================================================================
+
+  # TODO: supplies_ingredient - Supplier -> Ingredient
+  # Operation types: direct_join, recursive_traversal (tiered suppliers)
+
+  # TODO: has_certification - Supplier -> Certification
+  # Operation types: direct_join
+
+  # TODO: orders_from - PurchaseOrder -> Supplier
+  # Operation types: direct_join
+
+  # TODO: receives_ingredient - GoodsReceipt -> Ingredient (via lot)
+  # Operation types: direct_join, path_aggregation
+
+  # ===========================================================================
+  # TRANSFORM Domain Relationships
+  # ===========================================================================
+
+  # TODO: produces_at - Formula -> Plant
+  # Operation types: direct_join
+
+  # TODO: contains_ingredient - Formula -> Ingredient (with quantity)
+  # Operation types: direct_join, hierarchical_aggregation (BOM explosion lite)
+
+  # TODO: executes_formula - Batch -> Formula
+  # Operation types: direct_join, recursive_traversal
+
+  # TODO: consumes_lot - Batch -> GoodsReceiptLine (lot traceability)
+  # Operation types: recursive_traversal (recall trace backward)
+
+  # ===========================================================================
+  # PRODUCT Domain Relationships
+  # ===========================================================================
+
+  # TODO: belongs_to_product - SKU -> Product
+  # Operation types: direct_join
+
+  # TODO: has_packaging - SKU -> PackagingType
+  # Operation types: direct_join
+
+  # TODO: substitutes_for - SKU -> SKU (symmetric)
+  # Operation types: direct_join, connected_components
+
+  # ===========================================================================
+  # ORDER Domain Relationships
+  # ===========================================================================
+
+  # TODO: placed_by_channel - Order -> Channel
+  # Operation types: direct_join
+
+  # TODO: applies_promo - Order -> Promotion
+  # Operation types: direct_join, temporal_traversal
+
+  # TODO: contains_sku - OrderLine -> SKU
+  # Operation types: direct_join
+
+  # ===========================================================================
+  # FULFILL Domain Relationships
+  # ===========================================================================
+
+  # TODO: in_division - RetailAccount -> Division
+  # Operation types: direct_join
+
+  # TODO: location_of_account - RetailLocation -> RetailAccount
+  # Operation types: direct_join
+
+  # TODO: location_in_division - RetailLocation -> Division (flattened shortcut)
+  # Operation types: direct_join, hierarchical_aggregation
+  # Edge table: v_location_divisions (SQL view)
+
+  # TODO: ships_to - Shipment -> RetailLocation
+  # Operation types: direct_join
+
+  # TODO: ships_from_dc - Shipment -> DistributionCenter
+  # Operation types: direct_join
+
+  # TODO: contains_batch - ShipmentLine -> Batch
+  # Operation types: direct_join, recursive_traversal (recall trace forward)
+
+  # TODO: batch_shipped_to - Batch -> RetailLocation (shortcut edge)
+  # Operation types: recursive_traversal
+  # Edge table: v_batch_destinations (SQL view, bypasses Shipment node)
+  # Context: Use for recall tracing when carrier details not needed
+
+  # ===========================================================================
+  # LOGISTICS Domain Relationships
+  # ===========================================================================
+
+  # TODO: operates_segment - Carrier -> RouteSegment
+  # Operation types: direct_join
+
+  # TODO: serves_lane - Carrier -> RouteSegment (via CarrierContract, shortcut)
+  # Operation types: direct_join, temporal_traversal
+  # Edge attributes: freight_rate, effective_from
+  # Pattern: Dual modeling (Section 3.1)
+
+  # TODO: segment_in_route - RouteSegment -> Route (ordered)
+  # Operation types: direct_join, path_aggregation
+
+  # TODO: connects_origin - RouteSegment -> (Plant|Port|DC)
+  # Operation types: direct_join, shortest_path
+  # Weight columns: distance_km, transit_hours, cost_usd, co2_kg
+
+  # TODO: connects_destination - RouteSegment -> (Port|DC|RetailLocation)
+  # Operation types: direct_join, shortest_path
+
+  # ===========================================================================
+  # ESG Domain Relationships
+  # ===========================================================================
+
+  # TODO: emits_for_shipment - ShipmentEmission -> Shipment
+  # Operation types: direct_join, path_aggregation
+
+  # TODO: has_esg_score - Supplier -> SupplierESGScore
+  # Operation types: direct_join
+
+  # TODO: targets_account - SustainabilityTarget -> RetailAccount
+  # Operation types: direct_join
+
+  # ===========================================================================
+  # PLAN Domain Relationships
+  # ===========================================================================
+
+  # TODO: forecasts_for - DemandForecast -> (SKU, RetailLocation)
+  # Operation types: direct_join
+
+  # TODO: consumes_forecast - SupplyPlan -> DemandForecast
+  # Operation types: direct_join, path_aggregation (demand propagation)
+
+  # TODO: produces_for_plan - WorkOrder -> SupplyPlan
+  # Operation types: direct_join
+
+  # TODO: has_capacity - ProductionLine -> CapacityPlan
+  # Operation types: direct_join
+
+  # ===========================================================================
+  # RETURN Domain Relationships
+  # ===========================================================================
+
+  # TODO: returns_to - Return -> DistributionCenter
+  # Operation types: direct_join
+
+  # TODO: disposes_as - ReturnLine -> DispositionLog
+  # Operation types: direct_join
+
+  # TODO: regenerates_to - DispositionLog -> Batch
+  # Operation types: direct_join, recursive_traversal
+
+  # ===========================================================================
+  # ORCHESTRATE Domain Relationships
+  # ===========================================================================
+
+  # TODO: measures_kpi - KPIActual -> KPIThreshold
+  # Operation types: direct_join
+
+  # TODO: triggers_risk - RiskEvent -> (Supplier|DistributionCenter|Carrier)
+  # Operation types: direct_join, resilience_analysis
+
+  # TODO: enforces_rule - BusinessRule -> (Channel|RetailAccount)
+  # Operation types: direct_join
+
+  # ===========================================================================
+  # BEAST MODE QUERY RELATIONSHIPS (Cross-Domain)
+  # ===========================================================================
+
+  # TODO: recall_trace - Batch -> RetailLocation (transitive closure)
+  # Operation types: recursive_traversal
+  # Target: <5 seconds for 1 batch -> 47,500 affected orders
+
+  # TODO: landed_cost_path - Plant -> RetailLocation (full cost aggregation)
+  # Operation types: path_aggregation
+  # Weight columns: material_cost, freight_cost, handling_cost, overhead
+
+  # TODO: spof_analysis - Ingredient -> Supplier (single-source detection)
+  # Operation types: resilience_analysis
+  # Context: Find all ingredients with exactly 1 qualified supplier
+
+  # ===========================================================================
+  # PLACEHOLDER - Required for valid LinkML
+  # ===========================================================================
+
+  placeholder_slot:
+    description: "Placeholder slot - remove when implementing actual relationships"
+    range: Placeholder
+
+# =============================================================================
+# VIEWS (SQL Layer)
+# =============================================================================
+#
+# These SQL views are referenced by shortcut edges and UoM normalization:
+#
+# v_location_divisions     - Flattened RetailLocation -> Division
+# v_batch_destinations     - Shortcut Batch -> RetailLocation
+# v_transport_normalized   - UoM normalized route segments
+# v_weights_normalized     - UoM normalized weights to kg
+# v_inventory_normalized   - UoM normalized inventory to eaches
+#
+# See schema.sql for view definitions
+# =============================================================================
