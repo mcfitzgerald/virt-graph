@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.25] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 2** - Streaming Validation Architecture:
+  - **StreamingWriter** (`streaming_writer.py`): Memory-efficient PostgreSQL COPY output
+    - Buffered writes with configurable flush threshold (default 10MB)
+    - Automatic sequence reset statements
+    - Context manager support for safe cleanup
+  - **DependencyTracker**: FK-aware memory management for safe table purging
+    - Tracks 67-table dependency graph for FMCG schema
+    - `can_purge()` prevents premature memory release
+  - **RealismMonitor** (`realism_monitor.py`): Online streaming validation
+    - **WelfordAccumulator**: O(1) space mean/variance (lead time, yield loss)
+    - **FrequencySketch**: Pareto validation (top 20% SKUs = 80% volume)
+    - **CardinalityEstimator**: Unique store tracking for recall trace
+    - **DegreeMonitor**: Hub concentration (MegaMart 25% of orders)
+    - Fail-fast mode with `RealismViolationError`
+  - **StochasticMode**: Enum for normal (Poisson) vs disrupted (Gamma) distributions
+  - **benchmark_manifest.json**: Ground truth profiles for Prism Consumer Goods
+    - Benchmarks for all 15 levels (network, SKUs, production, demand, logistics, returns, KPIs)
+    - Named entity targets (MegaMart, Chicago DC, recall batch, SPOF suppliers)
+    - Quirk definitions (bullwhip, phantom inventory, port congestion)
+    - Risk event library (contamination, port strike, cyber outage)
+
+### Technical
+
+- Phase 2 of performance refactor plan (robust-frolicking-coral.md)
+- Module now 1,500+ lines across 4 files
+- All online algorithms validated against NumPy reference implementations
+
 ## [0.9.24] - 2025-12-18
 
 ### Added
