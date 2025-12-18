@@ -297,11 +297,11 @@ class LookupBuilder:
         retail_locations: list[dict[str, Any]],
     ) -> LookupIndex[int, dict[str, Any]]:
         """
-        Build index of retail locations by account ID.
+        Build index of retail locations by retail_account_id.
 
         Used in Level 8 (orders) to find stores for an account.
         """
-        return cls.build(retail_locations, "account_id")
+        return cls.build(retail_locations, "retail_account_id")
 
     @classmethod
     def build_order_lines_by_order_id(

@@ -19,14 +19,18 @@ Phase 2 - Streaming Validation Architecture:
 - CardinalityEstimator: Unique element counting
 - DegreeMonitor: Network hub concentration tracking
 
+Phase 3 - Bottleneck Elimination:
+- LookupCache: Pre-built indices for all FK patterns in generate_data.py
+- PooledFaker: Batch Faker sampling wrapper for efficient string generation
+
 Future Phases (to be implemented):
-- Phase 3: Bottleneck elimination with lookup integration
 - Phase 4: Vectorized generators for high-volume tables
 - Phase 5: Integration with generate_data.py
 """
 
 from pathlib import Path
 
+from .bottleneck_fixes import LookupCache, PooledFaker
 from .lookup_builder import LookupBuilder, LookupIndex
 from .realism_monitor import (
     CardinalityEstimator,
@@ -63,18 +67,21 @@ __all__ = [
     "RealismMonitor",
     "RealismViolationError",
     "StochasticMode",
-    # Online algorithms
+    # Phase 2: Online algorithms
     "WelfordAccumulator",
     "FrequencySketch",
     "CardinalityEstimator",
     "DegreeMonitor",
-    # COPY format helpers
+    # Phase 2: COPY format helpers
     "copy_str",
     "copy_num",
     "copy_bool",
     "copy_date",
     "copy_timestamp",
     "format_copy_value",
+    # Phase 3: Bottleneck Elimination
+    "LookupCache",
+    "PooledFaker",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]
