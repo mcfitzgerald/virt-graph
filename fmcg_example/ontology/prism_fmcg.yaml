@@ -4,19 +4,25 @@
 #
 # Spec: magical-launching-forest.md Phase 3
 #
-# Entity Classes (TBox): ~35 classes across SCOR-DS domains
-# Relationship Classes (RBox): ~40 relationships with operation type mappings
+# Entity Classes (TBox): 67 tables across SCOR-DS domains
+# Relationship Classes (RBox): ~50 relationships with operation type mappings
 #
 # Validation:
 #   Layer 1: poetry run linkml-lint --validate-only fmcg_example/ontology/prism_fmcg.yaml
 #   Layer 2: OntologyAccessor("fmcg_example/ontology/prism_fmcg.yaml", validate=True)
 #
-# Implementation Status: SCAFFOLD
-# TODO: Implement full class and relationship definitions in Phase 3
+# Modeling Patterns (from spec Section 3):
+#   3.1 Dual Modeling (Rich Link): CarrierContract, Promotion as Node + Edge
+#   3.2 Deep Hierarchy (Flattened Edges): v_location_divisions shortcut
+#   3.3 Equivalency (Substitutes): SKU -> SKU direct + cluster pattern
+#   3.4 Composite Keys: order_lines, shipment_lines, formula_ingredients
+#   3.5 UoM Normalization: v_transport_normalized SQL view
+#   3.6 Hyper-edges (Event Reification): Shipment node + v_batch_destinations shortcut
+#   3.7 Temporal Bounds: carrier_contracts, promotions with effective dates
 
 id: https://virt-graph.dev/schemas/prism_fmcg
 name: prism_fmcg
-version: "0.1.0"
+version: "0.9.21"
 description: >-
   FMCG supply chain domain ontology for Virtual Graph.
   Models Prism Consumer Goods - a Colgate-Palmolive-inspired surrogate
@@ -43,310 +49,2196 @@ annotations:
   vg:connection_string: "postgresql://virt_graph:dev_password@localhost:5433/prism_fmcg"
 
 # =============================================================================
-# CLASSES (TBox) - Organized by SCOR-DS Domain
-# =============================================================================
-#
-# Total: ~35 entity classes
-# See schema.sql for detailed attribute definitions
-#
-# Modeling Patterns (from spec Section 3):
-#   3.1 Dual Modeling (Rich Link): Some concepts are both Node AND Edge
-#   3.2 Deep Hierarchy (Flattened Edges): Shortcut edges for aggregation
-#   3.3 Equivalency (Substitutes): Direct edge + cluster node patterns
-#   3.4 Composite Keys: order_lines, shipment_lines, formula_ingredients
-#   3.5 UoM Normalization: SQL views for unit conversion
-#   3.6 Hyper-edges (Event Reification): Shipment as node + shortcut edges
-#   3.7 Temporal Bounds: carrier_contracts, promotions, seasonal routes
+# CLASSES (TBox) - 67 Entity Classes by SCOR-DS Domain
 # =============================================================================
 
 classes:
 
   # ===========================================================================
-  # DOMAIN A: SOURCE (Procurement & Inbound)
+  # DOMAIN A: SOURCE (Procurement & Inbound) - 8 tables
   # ===========================================================================
 
-  # TODO: Ingredient - Raw chemicals with CAS numbers, purity, storage
-  # Annotations: vg:table=ingredients, vg:primary_key=id
-  # Named entities: ING-PALM-001, ING-SORB-001, ING-PEPP-001
-
-  # TODO: Supplier - Global supplier network (Tier 1/2/3)
-  # Annotations: vg:table=suppliers, vg:primary_key=id
-  # Named entities: SUP-PALM-MY-001 (single-source Palm Oil)
-
-  # TODO: SupplierIngredient - M:M with lead times, MOQs, costs
-  # Annotations: vg:table=supplier_ingredients, composite key
-
-  # TODO: Certification - ISO, GMP, Halal, Kosher, RSPO
-  # Annotations: vg:table=certifications, vg:primary_key=id
-
-  # TODO: PurchaseOrder - POs to suppliers
-  # Annotations: vg:table=purchase_orders, vg:primary_key=id
-
-  # TODO: PurchaseOrderLine - PO line items
-  # Annotations: vg:table=purchase_order_lines, composite key
-
-  # TODO: GoodsReceipt - Receipt of goods from suppliers
-  # Annotations: vg:table=goods_receipts, vg:primary_key=id
-
-  # TODO: GoodsReceiptLine - Actual received qty, lot numbers
-  # Annotations: vg:table=goods_receipt_lines, composite key
-
-  # ===========================================================================
-  # DOMAIN B: TRANSFORM (Manufacturing)
-  # ===========================================================================
-
-  # TODO: Plant - 7 manufacturing facilities globally
-  # Annotations: vg:table=plants, vg:primary_key=id
-
-  # TODO: ProductionLine - Manufacturing line capacity
-  # Annotations: vg:table=production_lines, vg:primary_key=id
-
-  # TODO: Formula - Recipe/BOM definitions with yield parameters
-  # Annotations: vg:table=formulas, vg:primary_key=id
-
-  # TODO: FormulaIngredient - Composition with sequence, quantities
-  # Annotations: vg:table=formula_ingredients, composite key [formula_id, ingredient_id, sequence]
-
-  # TODO: WorkOrder - Scheduled production (links Plan to Transform)
-  # Annotations: vg:table=work_orders, vg:primary_key=id
-
-  # TODO: WorkOrderMaterial - Planned material consumption
-  # Annotations: vg:table=work_order_materials, composite key
-
-  # TODO: Batch - Production lots with QC status, expiry
-  # Annotations: vg:table=batches, vg:primary_key=id
-  # Named entities: B-2024-RECALL-001 (contaminated batch for recall testing)
-
-  # TODO: BatchIngredient - Actual consumption for mass balance
-  # Annotations: vg:table=batch_ingredients, composite key
-
-  # TODO: BatchCostLedger - Material, labor, energy, overhead costs
-  # Annotations: vg:table=batch_cost_ledger, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN C: PRODUCT (SKU Master)
-  # ===========================================================================
-
-  # TODO: Product - Product families (PrismWhite, ClearWave, AquaPure)
-  # Annotations: vg:table=products, vg:primary_key=id
-
-  # TODO: PackagingType - Tubes, bottles, sizes, regional variants
-  # Annotations: vg:table=packaging_types, vg:primary_key=id
-
-  # TODO: SKU - The explosion point (~2,000 SKUs)
-  # Annotations: vg:table=skus, vg:primary_key=id
-
-  # TODO: SKUCost - Standard costs by type
-  # Annotations: vg:table=sku_costs, vg:primary_key=id
-
-  # TODO: SKUSubstitute - Substitute/equivalent SKUs (symmetric)
-  # Annotations: vg:table=sku_substitutes, composite key
-  # Pattern: Direct edge + SubstituteGroup cluster (Section 3.3)
-
-  # ===========================================================================
-  # DOMAIN D: ORDER (Demand Signal)
-  # ===========================================================================
-
-  # TODO: Channel - 4 channel types (B&M Large, B&M Dist, Ecom, DTC)
-  # Annotations: vg:table=channels, vg:primary_key=id
-
-  # TODO: Promotion - Trade promos with lift multipliers
-  # Annotations: vg:table=promotions, vg:primary_key=id
-  # Named entities: PROMO-BF-2024 (Black Friday, bullwhip effect)
-  # Pattern: Dual modeling - Node (trade spend) + Edge (demand lift)
-
-  # TODO: Order - Customer orders (~200K)
-  # Annotations: vg:table=orders, vg:primary_key=id
-
-  # TODO: OrderLine - Line items with SKU, qty, price
-  # Annotations: vg:table=order_lines, composite key [order_id, line_number]
-
-  # TODO: OrderAllocation - ATP/allocation of inventory to orders
-  # Annotations: vg:table=order_allocations, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN E: FULFILL (Outbound)
-  # ===========================================================================
-
-  # TODO: Division - 5 global divisions (NAM, LATAM, APAC, EUR, AFR-EUR)
-  # Annotations: vg:table=divisions, vg:primary_key=id
-
-  # TODO: DistributionCenter - ~25 DCs globally
-  # Annotations: vg:table=distribution_centers, vg:primary_key=id
-  # Named entities: DC-NAM-CHI-001 (bottleneck DC Chicago)
-
-  # TODO: Port - Ocean/air freight nodes for multi-leg routing
-  # Annotations: vg:table=ports, vg:primary_key=id
-
-  # TODO: RetailAccount - Archetype-based accounts (~100)
-  # Annotations: vg:table=retail_accounts, vg:primary_key=id
-  # Named entities: ACCT-MEGA-001 (MegaMart, 4,500 stores, 25% of orders)
-
-  # TODO: RetailLocation - Individual stores (~10,000)
-  # Annotations: vg:table=retail_locations, vg:primary_key=id
-  # Pattern: Flattened hierarchy edges (Section 3.2)
-
-  # TODO: Shipment - Physical movements (~180K)
-  # Annotations: vg:table=shipments, vg:primary_key=id
-  # Pattern: Hyper-edge reification (Section 3.6) - Node + shortcut edges
-
-  # TODO: ShipmentLine - Items with batch numbers for lot tracking (~540K)
-  # Annotations: vg:table=shipment_lines, composite key [shipment_id, line_number]
-  # Includes batch_fraction for batch splitting (Section 4.5.1)
-
-  # TODO: Inventory - Stock by location with aging buckets
-  # Annotations: vg:table=inventory, composite key
-
-  # TODO: PickWave - Picking/packing execution (optional detail)
-  # Annotations: vg:table=pick_waves, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN E2: LOGISTICS (Transport Network)
-  # ===========================================================================
-
-  # TODO: Carrier - Carrier profiles with sustainability ratings
-  # Annotations: vg:table=carriers, vg:primary_key=id
-
-  # TODO: CarrierContract - Rate agreements with date effectivity
-  # Annotations: vg:table=carrier_contracts, vg:primary_key=id
-  # Pattern: Dual modeling - Node (contract lifecycle) + Edge (rate lookups)
-  # Pattern: Temporal bounds (Section 3.7)
-
-  # TODO: CarrierRate - Rate tables by mode, weight break, lane
-  # Annotations: vg:table=carrier_rates, composite key
-
-  # TODO: RouteSegment - Atomic legs: origin -> destination
-  # Annotations: vg:table=route_segments, vg:primary_key=id
-  # Named entities: LANE-SH-LA-001 (seasonal Shanghai->LA)
-
-  # TODO: Route - Composed routes (Plant -> Port -> Ocean -> DC)
-  # Annotations: vg:table=routes, vg:primary_key=id
-
-  # TODO: RouteSegmentAssignment - Links routes to segments in sequence
-  # Annotations: vg:table=route_segment_assignments, composite key
-
-  # TODO: ShipmentLeg - Actual execution: which segments used per shipment
-  # Annotations: vg:table=shipment_legs, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN E3: ESG/SUSTAINABILITY
-  # ===========================================================================
-
-  # TODO: EmissionFactor - CO2/km by mode, fuel type, carrier
-  # Annotations: vg:table=emission_factors, vg:primary_key=id
-
-  # TODO: ShipmentEmission - Calculated CO2 per shipment (Scope 3)
-  # Annotations: vg:table=shipment_emissions, vg:primary_key=id
-
-  # TODO: SupplierESGScore - EcoVadis, CDP, ISO14001, SBTi commitment
-  # Annotations: vg:table=supplier_esg_scores, vg:primary_key=id
-
-  # TODO: SustainabilityTarget - Division/account-level carbon targets
-  # Annotations: vg:table=sustainability_targets, vg:primary_key=id
-
-  # TODO: ModalShiftOpportunity - Identified truck->rail opportunities
-  # Annotations: vg:table=modal_shift_opportunities, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN F: PLAN (Demand & Supply Planning)
-  # ===========================================================================
-
-  # TODO: POSSale - Point-of-sale signals at store/SKU level
-  # Annotations: vg:table=pos_sales, composite key
-
-  # TODO: DemandForecast - Statistical/ML forecasts by SKU/location
-  # Annotations: vg:table=demand_forecasts, composite key
-
-  # TODO: ForecastAccuracy - MAPE, bias tracking by SKU/account
-  # Annotations: vg:table=forecast_accuracy, vg:primary_key=id
-
-  # TODO: ConsensusAdjustment - S&OP overrides to statistical forecast
-  # Annotations: vg:table=consensus_adjustments, vg:primary_key=id
-
-  # TODO: ReplenishmentParam - Safety stock, reorder points, review cycles
-  # Annotations: vg:table=replenishment_params, composite key
-
-  # TODO: DemandAllocation - Forecasted demand allocated down network
-  # Annotations: vg:table=demand_allocation, composite key
-
-  # TODO: CapacityPlan - Available capacity by plant/line/period
-  # Annotations: vg:table=capacity_plans, composite key
-
-  # TODO: SupplyPlan - Planned production/procurement to meet demand
-  # Annotations: vg:table=supply_plans, composite key
-
-  # TODO: PlanException - Gap identification when demand > capacity
-  # Annotations: vg:table=plan_exceptions, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN G: RETURN (Regenerate)
-  # ===========================================================================
-
-  # TODO: Return - Return events
-  # Annotations: vg:table=returns, vg:primary_key=id
-
-  # TODO: ReturnLine - Return items with condition assessment
-  # Annotations: vg:table=return_lines, composite key
-
-  # TODO: DispositionLog - Restock, scrap, regenerate, donate decisions
-  # Annotations: vg:table=disposition_logs, vg:primary_key=id
-
-  # TODO: RMAAuthorization - Return Merchandise Authorization workflow
-  # Annotations: vg:table=rma_authorizations, vg:primary_key=id
-
-  # ===========================================================================
-  # DOMAIN H: ORCHESTRATE (Hub)
-  # ===========================================================================
-
-  # TODO: KPIThreshold - Desmet Triangle targets (Service, Cost, Cash)
-  # Annotations: vg:table=kpi_thresholds, vg:primary_key=id
-
-  # TODO: KPIActual - Calculated KPI values vs thresholds
-  # Annotations: vg:table=kpi_actuals, vg:primary_key=id
-
-  # TODO: OSAMetric - On-shelf availability (~500K measurements)
-  # Annotations: vg:table=osa_metrics, composite key
-
-  # TODO: BusinessRule - Policy management (min order qty, allocation priority)
-  # Annotations: vg:table=business_rules, vg:primary_key=id
-
-  # TODO: RiskEvent - Risk registry (supplier disruption, quality hold)
-  # Annotations: vg:table=risk_events, vg:primary_key=id
-
-  # TODO: AuditLog - Change tracking for governance
-  # Annotations: vg:table=audit_log, vg:primary_key=id
-
-  # ===========================================================================
-  # PLACEHOLDER - Required for valid LinkML until classes are implemented
-  # ===========================================================================
-
-  Placeholder:
-    description: "Placeholder class - remove when implementing actual classes"
+  Ingredient:
+    description: >-
+      Raw chemicals with CAS numbers, purity requirements, and storage conditions.
+      Named entities: ING-PALM-001 (single-source Palm Oil), ING-SORB-001 (Sorbitol,
+      goes into ALL toothpaste), ING-PEPP-001 (Peppermint Oil, seasonal).
     instantiates:
       - vg:SQLMappedClass
     annotations:
-      vg:table: _placeholder
+      vg:table: ingredients
       vg:primary_key: id
+      vg:identifier: ingredient_code
+      vg:row_count: 200
+      vg:context: >-
+        {
+          "definition": "Raw material input to manufacturing formulas",
+          "business_logic": "Ingredients tracked by CAS number for regulatory compliance",
+          "llm_prompt_hint": "For recall trace, start here and traverse to batches via formula_ingredients",
+          "examples": ["Find all SKUs using Palm Oil", "Which ingredients are single-sourced?"]
+        }
     attributes:
       id:
         range: integer
         required: true
+      ingredient_code:
+        range: string
+      name:
+        range: string
+      cas_number:
+        range: string
+      category:
+        range: string
+      is_active:
+        range: boolean
+
+  Supplier:
+    description: >-
+      Global supplier network organized by tier (1/2/3). Tier 1 = direct strategic,
+      Tier 2 = qualified alternates, Tier 3 = spot market.
+      Named entity: SUP-PALM-MY-001 (single-source Palm Oil from Malaysia).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: supplier_code
+      vg:soft_delete_column: null
+      vg:row_count: 150
+      vg:context: >-
+        {
+          "definition": "External party providing ingredients to PCG plants",
+          "business_logic": "qualification_status must be 'qualified' for active sourcing",
+          "llm_prompt_hint": "For SPOF analysis, find suppliers where COUNT(ingredients) = 1",
+          "examples": ["Find single-source suppliers", "Which suppliers have expired certifications?"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      supplier_code:
+        range: string
+      name:
+        range: string
+      tier:
+        range: integer
+      country:
+        range: string
+      region:
+        range: string
+      qualification_status:
+        range: string
+      is_active:
+        range: boolean
+
+  SupplierIngredient:
+    description: >-
+      Junction table linking suppliers to ingredients they can supply.
+      Contains lead times, MOQs, costs, and delivery performance metrics.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: supplier_ingredients
+      vg:primary_key: id
+      vg:row_count: 500
+      vg:context: >-
+        {
+          "definition": "Approved supplier-ingredient sourcing relationship",
+          "business_logic": "is_preferred indicates primary source; is_approved required for orders",
+          "llm_prompt_hint": "Use for cost comparisons and lead time analysis between suppliers"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      supplier_id:
+        range: integer
+      ingredient_id:
+        range: integer
+      unit_cost:
+        range: float
+      lead_time_days:
+        range: integer
+      is_preferred:
+        range: boolean
+      is_approved:
+        range: boolean
+
+  Certification:
+    description: >-
+      Supplier certifications: ISO9001, ISO14001, GMP, Halal, Kosher, RSPO, FSC.
+      Used for compliance checks and ESG scoring.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: certifications
+      vg:primary_key: id
+      vg:row_count: 400
+    attributes:
+      id:
+        range: integer
+        required: true
+      supplier_id:
+        range: integer
+      certification_type:
+        range: string
+      expiry_date:
+        range: date
+      is_valid:
+        range: boolean
+
+  PurchaseOrder:
+    description: >-
+      Purchase orders to suppliers for ingredient procurement.
+      Links SOURCE to TRANSFORM via plant_id.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: purchase_orders
+      vg:primary_key: id
+      vg:identifier: po_number
+      vg:row_count: 5000
+    attributes:
+      id:
+        range: integer
+        required: true
+      po_number:
+        range: string
+      supplier_id:
+        range: integer
+      plant_id:
+        range: integer
+      status:
+        range: string
+
+  PurchaseOrderLine:
+    description: >-
+      Line items on purchase orders specifying ingredient, quantity, and price.
+      Composite primary key: (po_id, line_number).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: purchase_order_lines
+      vg:primary_key: '["po_id", "line_number"]'
+      vg:row_count: 15000
+    attributes:
+      po_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      ingredient_id:
+        range: integer
+      quantity:
+        range: float
+      unit_price:
+        range: float
+
+  GoodsReceipt:
+    description: >-
+      Receipt of goods from suppliers, closing the SOURCE procurement loop.
+      Links to PO and captures actual received quantities.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: goods_receipts
+      vg:primary_key: id
+      vg:identifier: gr_number
+      vg:row_count: 4500
+    attributes:
+      id:
+        range: integer
+        required: true
+      gr_number:
+        range: string
+      po_id:
+        range: integer
+      plant_id:
+        range: integer
+      status:
+        range: string
+
+  GoodsReceiptLine:
+    description: >-
+      Line-level receipt detail with lot numbers for traceability.
+      Critical for recall trace - links supplier lot to internal batch.
+      Composite PK: (gr_id, line_number).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: goods_receipt_lines
+      vg:primary_key: '["gr_id", "line_number"]'
+      vg:row_count: 14000
+      vg:context: >-
+        {
+          "definition": "Received ingredient lot with quality status",
+          "business_logic": "lot_number links to batch_ingredients for recall tracing",
+          "llm_prompt_hint": "For upstream recall trace, join to batch_ingredients via lot_number"
+        }
+    attributes:
+      gr_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      ingredient_id:
+        range: integer
+      lot_number:
+        range: string
+      quality_status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN B: TRANSFORM (Manufacturing) - 9 tables
+  # ===========================================================================
+
+  Plant:
+    description: >-
+      7 manufacturing facilities globally across 5 divisions.
+      Plants have production lines and produce batches.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: plants
+      vg:primary_key: id
+      vg:identifier: plant_code
+      vg:row_count: 7
+    attributes:
+      id:
+        range: integer
+        required: true
+      plant_code:
+        range: string
+      name:
+        range: string
+      division_id:
+        range: integer
+      country:
+        range: string
+      capacity_tons_per_day:
+        range: float
+
+  ProductionLine:
+    description: >-
+      Manufacturing lines within plants with specific capabilities.
+      Line types: mixing, filling, packaging, labeling.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: production_lines
+      vg:primary_key: id
+      vg:identifier: line_code
+      vg:row_count: 35
+    attributes:
+      id:
+        range: integer
+        required: true
+      line_code:
+        range: string
+      plant_id:
+        range: integer
+      line_type:
+        range: string
+      product_family:
+        range: string
+      capacity_units_per_hour:
+        range: integer
+
+  Formula:
+    description: >-
+      Recipe/BOM definitions for products. Specifies ingredients and their quantities.
+      FMCG formulas are shallow (5-15 ingredients) vs aerospace deep BOMs.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: formulas
+      vg:primary_key: id
+      vg:identifier: formula_code
+      vg:row_count: 100
+      vg:context: >-
+        {
+          "definition": "Manufacturing recipe specifying ingredient composition",
+          "business_logic": "Formulas versioned; only status='approved' can be produced",
+          "llm_prompt_hint": "For ingredient impact, traverse formula_ingredients to find affected products"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      formula_code:
+        range: string
+      product_id:
+        range: integer
+      batch_size_kg:
+        range: float
+      status:
+        range: string
+
+  FormulaIngredient:
+    description: >-
+      Composition detail: which ingredients in which quantities per formula.
+      Composite PK: (formula_id, ingredient_id, sequence).
+      BOM explosion lite - typically 5-15 ingredients per formula.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: formula_ingredients
+      vg:primary_key: '["formula_id", "ingredient_id", "sequence"]'
+      vg:row_count: 800
+      vg:context: >-
+        {
+          "definition": "Ingredient requirement in formula with sequence and quantity",
+          "business_logic": "sequence determines processing order; quantity_percent for proportions",
+          "llm_prompt_hint": "Use hierarchical_aggregation for quantity explosion (like BOM)"
+        }
+    attributes:
+      formula_id:
+        range: integer
+        required: true
+      ingredient_id:
+        range: integer
+        required: true
+      sequence:
+        range: integer
+        required: true
+      quantity_kg:
+        range: float
+      quantity_percent:
+        range: float
+
+  WorkOrder:
+    description: >-
+      Scheduled production linking PLAN to TRANSFORM.
+      Created from supply_plans, produces batches.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: work_orders
+      vg:primary_key: id
+      vg:identifier: wo_number
+      vg:row_count: 10000
+    attributes:
+      id:
+        range: integer
+        required: true
+      wo_number:
+        range: string
+      formula_id:
+        range: integer
+      plant_id:
+        range: integer
+      production_line_id:
+        range: integer
+      planned_quantity_kg:
+        range: float
+      status:
+        range: string
+
+  WorkOrderMaterial:
+    description: >-
+      Planned material consumption per work order.
+      Composite PK: (wo_id, line_number).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: work_order_materials
+      vg:primary_key: '["wo_id", "line_number"]'
+      vg:row_count: 80000
+    attributes:
+      wo_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      ingredient_id:
+        range: integer
+      planned_quantity_kg:
+        range: float
+      lot_number:
+        range: string
+
+  Batch:
+    description: >-
+      Production lot - the key traceability node.
+      Named entity: B-2024-RECALL-001 for recall testing.
+      One batch -> many SKUs -> many shipments -> many retail locations.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: batches
+      vg:primary_key: id
+      vg:identifier: batch_number
+      vg:row_count: 50000
+      vg:context: >-
+        {
+          "definition": "Production lot with QC status and expiry tracking",
+          "business_logic": "is_contaminated=true triggers recall; qc_status must be 'approved' to ship",
+          "llm_prompt_hint": "Key node for recall trace - use recursive_traversal to find affected stores",
+          "examples": ["Trace contaminated batch to all stores", "Find batches expiring in 15 days"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      batch_number:
+        range: string
+      wo_id:
+        range: integer
+      formula_id:
+        range: integer
+      plant_id:
+        range: integer
+      production_date:
+        range: date
+      expiry_date:
+        range: date
+      qc_status:
+        range: string
+      is_contaminated:
+        range: boolean
+
+  BatchIngredient:
+    description: >-
+      Actual ingredient consumption per batch for mass balance.
+      lot_number links back to goods_receipt_lines for upstream tracing.
+      Composite PK: (batch_id, ingredient_id, sequence).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: batch_ingredients
+      vg:primary_key: '["batch_id", "ingredient_id", "sequence"]'
+      vg:row_count: 400000
+      vg:context: >-
+        {
+          "definition": "Actual material consumption with lot traceability",
+          "llm_prompt_hint": "For upstream recall, trace lot_number back to goods_receipt_lines"
+        }
+    attributes:
+      batch_id:
+        range: integer
+        required: true
+      ingredient_id:
+        range: integer
+        required: true
+      sequence:
+        range: integer
+        required: true
+      actual_quantity_kg:
+        range: float
+      lot_number:
+        range: string
+
+  BatchCostLedger:
+    description: >-
+      Cost breakdown per batch: material, labor, energy, overhead.
+      Used for landed cost calculations.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: batch_cost_ledger
+      vg:primary_key: id
+      vg:row_count: 250000
+      vg:context: >-
+        {
+          "definition": "Production cost components for margin analysis",
+          "llm_prompt_hint": "Aggregate by cost_type for cost breakdown; sum for total batch cost"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      batch_id:
+        range: integer
+      cost_type:
+        range: string
+      cost_amount:
+        range: float
+
+  # ===========================================================================
+  # DOMAIN C: PRODUCT (SKU Master) - 5 tables
+  # ===========================================================================
+
+  Product:
+    description: >-
+      Product families: PrismWhite (oral care), ClearWave (home care), AquaPure (personal care).
+      Products explode into ~2,000 SKUs via packaging variants and regions.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: products
+      vg:primary_key: id
+      vg:identifier: product_code
+      vg:row_count: 30
+    attributes:
+      id:
+        range: integer
+        required: true
+      product_code:
+        range: string
+      name:
+        range: string
+      brand:
+        range: string
+      category:
+        range: string
+      is_active:
+        range: boolean
+
+  PackagingType:
+    description: >-
+      Container specifications: tubes, bottles, pouches with size variants.
+      Drives SKU explosion (6oz tube, 8oz tube, 1L bottle, etc.).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: packaging_types
+      vg:primary_key: id
+      vg:identifier: packaging_code
+      vg:row_count: 50
+    attributes:
+      id:
+        range: integer
+        required: true
+      packaging_code:
+        range: string
+      container_type:
+        range: string
+      size_value:
+        range: float
+      size_unit:
+        range: string
+      units_per_case:
+        range: integer
+
+  SKU:
+    description: >-
+      Stock Keeping Unit - the explosion point (~2,000 SKUs).
+      Combines product + packaging + region + language.
+      Key hub for order_lines and shipment_lines.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: skus
+      vg:primary_key: id
+      vg:identifier: sku_code
+      vg:row_count: 2000
+      vg:context: >-
+        {
+          "definition": "Sellable unit combining product, packaging, and regional attributes",
+          "business_logic": "region and language determine market availability",
+          "llm_prompt_hint": "High fan-out node - connects to orders, shipments, inventory",
+          "examples": ["Top 20 SKUs by volume", "Find SKUs available in APAC region"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      sku_code:
+        range: string
+      name:
+        range: string
+      product_id:
+        range: integer
+      packaging_id:
+        range: integer
+      formula_id:
+        range: integer
+      region:
+        range: string
+      list_price:
+        range: float
+      is_active:
+        range: boolean
+
+  SKUCost:
+    description: >-
+      Standard costs by type (material, labor, overhead, packaging, freight, landed).
+      Time-effective for cost rollups.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: sku_costs
+      vg:primary_key: id
+      vg:row_count: 12000
+      vg:context: >-
+        {
+          "definition": "Standard cost component with effectivity dates",
+          "llm_prompt_hint": "Sum by cost_type for total; use effective dates for valid costs"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      cost_type:
+        range: string
+      cost_amount:
+        range: float
+      effective_from:
+        range: date
+      effective_to:
+        range: date
+
+  SKUSubstitute:
+    description: >-
+      Substitute/equivalent SKU relationships (symmetric).
+      Types: size_variant, regional_variant, promotional, emergency.
+      Pattern 3.3: Direct edge + cluster node for equivalency.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: sku_substitutes
+      vg:primary_key: id
+      vg:row_count: 3000
+      vg:context: >-
+        {
+          "definition": "Interchangeable SKU relationship for allocation and fulfillment",
+          "business_logic": "is_bidirectional=true means symmetric relationship",
+          "llm_prompt_hint": "Use connected_components to find substitution clusters"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      substitute_sku_id:
+        range: integer
+      substitute_type:
+        range: string
+      priority:
+        range: integer
+      is_bidirectional:
+        range: boolean
+
+  # ===========================================================================
+  # DOMAIN D: ORDER (Demand Signal) - 7 tables
+  # ===========================================================================
+
+  Channel:
+    description: >-
+      4 channel types: B&M Large (40%), B&M Distributor (30%), E-commerce (20%), DTC (10%).
+      Determines fulfillment patterns and margin profiles.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: channels
+      vg:primary_key: id
+      vg:identifier: channel_code
+      vg:row_count: 4
+    attributes:
+      id:
+        range: integer
+        required: true
+      channel_code:
+        range: string
+      channel_type:
+        range: string
+      volume_percent:
+        range: float
+      margin_percent:
+        range: float
+
+  Promotion:
+    description: >-
+      Trade promotions with lift multipliers and hangover effects.
+      Named entity: PROMO-BF-2024 (Black Friday, 3x demand + 30% hangover).
+      Pattern 3.1: Dual modeling - Node (trade spend) + Edge (demand lift).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: promotions
+      vg:primary_key: id
+      vg:identifier: promo_code
+      vg:row_count: 200
+      vg:context: >-
+        {
+          "definition": "Trade promotion event with demand impact parameters",
+          "business_logic": "lift_multiplier during promo; hangover_multiplier after end_date",
+          "llm_prompt_hint": "Use temporal_traversal with date bounds for active promos",
+          "examples": ["Find Black Friday promotions", "Calculate bullwhip impact from promos"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      promo_code:
+        range: string
+      name:
+        range: string
+      promo_type:
+        range: string
+      start_date:
+        range: date
+      end_date:
+        range: date
+      lift_multiplier:
+        range: float
+      hangover_multiplier:
+        range: float
+      status:
+        range: string
+
+  PromotionSKU:
+    description: >-
+      Junction linking promotions to participating SKUs.
+      Composite PK: (promo_id, sku_id).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: promotion_skus
+      vg:primary_key: '["promo_id", "sku_id"]'
+      vg:row_count: 2000
+    attributes:
+      promo_id:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+        required: true
+      specific_lift_multiplier:
+        range: float
+
+  PromotionAccount:
+    description: >-
+      Junction linking promotions to retail accounts running them.
+      Composite PK: (promo_id, retail_account_id).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: promotion_accounts
+      vg:primary_key: '["promo_id", "retail_account_id"]'
+      vg:row_count: 1500
+    attributes:
+      promo_id:
+        range: integer
+        required: true
+      retail_account_id:
+        range: integer
+        required: true
+      trade_spend_allocation:
+        range: float
+
+  Order:
+    description: >-
+      Customer orders (~200K). Links retail accounts/locations to demand.
+      Order types: standard, rush, backorder, promotional.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: orders
+      vg:primary_key: id
+      vg:identifier: order_number
+      vg:row_count: 200000
+      vg:context: >-
+        {
+          "definition": "Customer demand signal with delivery requirements",
+          "business_logic": "status flow: pending -> confirmed -> allocated -> shipped -> delivered",
+          "llm_prompt_hint": "For OTIF analysis, compare actual_delivery_date to requested_delivery_date"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      order_number:
+        range: string
+      retail_account_id:
+        range: integer
+      retail_location_id:
+        range: integer
+      channel_id:
+        range: integer
+      order_date:
+        range: date
+      requested_delivery_date:
+        range: date
+      actual_delivery_date:
+        range: date
+      status:
+        range: string
+      promo_id:
+        range: integer
+      total_amount:
+        range: float
+
+  OrderLine:
+    description: >-
+      Order line items with SKU, quantity, price.
+      Composite PK: (order_id, line_number).
+      High-volume table linking demand to SKUs.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: order_lines
+      vg:primary_key: '["order_id", "line_number"]'
+      vg:row_count: 600000
+    attributes:
+      order_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      quantity_cases:
+        range: integer
+      unit_price:
+        range: float
+      status:
+        range: string
+
+  OrderAllocation:
+    description: >-
+      ATP/allocation linking inventory batches to order lines.
+      Connects ORDER to FULFILL domain.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: order_allocations
+      vg:primary_key: id
+      vg:row_count: 550000
+    attributes:
+      id:
+        range: integer
+        required: true
+      order_id:
+        range: integer
+      order_line_number:
+        range: integer
+      dc_id:
+        range: integer
+      batch_id:
+        range: integer
+      allocated_cases:
+        range: integer
+      status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN E: FULFILL (Outbound) - 11 tables
+  # ===========================================================================
+
+  Division:
+    description: >-
+      5 global divisions: NAM (Knoxville), LATAM (Sao Paulo), APAC (Singapore),
+      EUR (Paris), AFR-EUR (Dubai). Top of hierarchy for aggregation.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: divisions
+      vg:primary_key: id
+      vg:identifier: division_code
+      vg:row_count: 5
+    attributes:
+      id:
+        range: integer
+        required: true
+      division_code:
+        range: string
+      name:
+        range: string
+      headquarters_city:
+        range: string
+      is_active:
+        range: boolean
+
+  DistributionCenter:
+    description: >-
+      ~25 DCs globally. Types: regional, national, cross_dock, ecommerce.
+      Named entity: DC-NAM-CHI-001 (Chicago bottleneck DC).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: distribution_centers
+      vg:primary_key: id
+      vg:identifier: dc_code
+      vg:row_count: 25
+      vg:context: >-
+        {
+          "definition": "Warehouse fulfilling orders to retail locations",
+          "business_logic": "capacity_cases determines throughput limits",
+          "llm_prompt_hint": "Use centrality() to find critical/bottleneck DCs",
+          "examples": ["Find DCs at >90% capacity", "Which DC serves most stores?"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      dc_code:
+        range: string
+      name:
+        range: string
+      division_id:
+        range: integer
+      dc_type:
+        range: string
+      country:
+        range: string
+      capacity_cases:
+        range: integer
+      is_active:
+        range: boolean
+
+  Port:
+    description: >-
+      Ocean/air freight nodes for multi-leg international routing.
+      Types: ocean, air, rail, multimodal.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ports
+      vg:primary_key: id
+      vg:identifier: port_code
+      vg:row_count: 30
+    attributes:
+      id:
+        range: integer
+        required: true
+      port_code:
+        range: string
+      name:
+        range: string
+      port_type:
+        range: string
+      country:
+        range: string
+
+  RetailAccount:
+    description: >-
+      Archetype-based accounts (~100). Types: megamart, valueclub, urbanessential,
+      regional_grocer, indie_retail, digital_first, omni_retailer, prism_direct.
+      Named entity: ACCT-MEGA-001 (MegaMart, 4,500 stores, 25% of orders).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: retail_accounts
+      vg:primary_key: id
+      vg:identifier: account_code
+      vg:row_count: 100
+      vg:context: >-
+        {
+          "definition": "Customer account representing retail chain",
+          "business_logic": "is_strategic=true for key accounts with special treatment",
+          "llm_prompt_hint": "Hot node for Pareto analysis - top 20% = 80% volume"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      account_code:
+        range: string
+      name:
+        range: string
+      account_type:
+        range: string
+      channel_id:
+        range: integer
+      division_id:
+        range: integer
+      store_count:
+        range: integer
+      is_strategic:
+        range: boolean
+      is_active:
+        range: boolean
+
+  RetailLocation:
+    description: >-
+      Individual stores (~10,000). Format: hypermarket, supermarket, convenience, pharmacy.
+      Pattern 3.2: Deep hierarchy with flattened edges via v_location_divisions.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: retail_locations
+      vg:primary_key: id
+      vg:identifier: location_code
+      vg:row_count: 10000
+      vg:context: >-
+        {
+          "definition": "Physical store where products are sold to consumers",
+          "business_logic": "primary_dc_id determines default fulfillment source",
+          "llm_prompt_hint": "Use v_location_divisions for fast division-level aggregation"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      location_code:
+        range: string
+      name:
+        range: string
+      retail_account_id:
+        range: integer
+      store_format:
+        range: string
+      country:
+        range: string
+      primary_dc_id:
+        range: integer
+      is_active:
+        range: boolean
+
+  Shipment:
+    description: >-
+      Physical movements (~180K). Types: plant_to_dc, dc_to_dc, dc_to_store, direct_to_store.
+      Pattern 3.6: Hyper-edge reification - modeled as node + shortcut edges.
+      Polymorphic origin/destination via type columns.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipments
+      vg:primary_key: id
+      vg:identifier: shipment_number
+      vg:row_count: 180000
+      vg:context: >-
+        {
+          "definition": "Physical movement of goods between locations",
+          "business_logic": "Polymorphic origin/destination - use origin_type/destination_type",
+          "llm_prompt_hint": "Use as node for full detail; use v_batch_destinations for fast recall trace"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      shipment_number:
+        range: string
+      shipment_type:
+        range: string
+      origin_type:
+        range: string
+      origin_id:
+        range: integer
+      destination_type:
+        range: string
+      destination_id:
+        range: integer
+      carrier_id:
+        range: integer
+      route_id:
+        range: integer
+      ship_date:
+        range: date
+      status:
+        range: string
+      freight_cost:
+        range: float
+
+  ShipmentLine:
+    description: >-
+      Shipment line items with batch/lot tracking (~540K).
+      Critical for recall trace - links batches to destinations.
+      Composite PK: (shipment_id, line_number).
+      batch_fraction supports batch splitting (Section 4.5.1).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipment_lines
+      vg:primary_key: '["shipment_id", "line_number"]'
+      vg:row_count: 540000
+      vg:context: >-
+        {
+          "definition": "Line item with batch/lot for traceability",
+          "business_logic": "batch_fraction for split batches; sum must not exceed 1.0",
+          "llm_prompt_hint": "Key traversal edge for batch -> store recall trace"
+        }
+    attributes:
+      shipment_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      batch_id:
+        range: integer
+      quantity_cases:
+        range: integer
+      batch_fraction:
+        range: float
+      lot_number:
+        range: string
+
+  Inventory:
+    description: >-
+      Stock by location with aging buckets.
+      Polymorphic location (plant, dc, store, in_transit).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: inventory
+      vg:primary_key: id
+      vg:row_count: 500000
+      vg:context: >-
+        {
+          "definition": "Current stock position by location, SKU, and batch",
+          "business_logic": "quantity_available = quantity_cases - quantity_reserved",
+          "llm_prompt_hint": "For inventory turns, compare to order_lines volume"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      location_type:
+        range: string
+      location_id:
+        range: integer
+      sku_id:
+        range: integer
+      batch_id:
+        range: integer
+      quantity_cases:
+        range: integer
+      quantity_reserved:
+        range: integer
+      expiry_date:
+        range: date
+      aging_bucket:
+        range: string
+
+  PickWave:
+    description: >-
+      Picking/packing execution grouping orders for DC processing.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: pick_waves
+      vg:primary_key: id
+      vg:identifier: wave_number
+      vg:row_count: 15000
+    attributes:
+      id:
+        range: integer
+        required: true
+      wave_number:
+        range: string
+      dc_id:
+        range: integer
+      wave_date:
+        range: date
+      status:
+        range: string
+
+  PickWaveOrder:
+    description: >-
+      Junction linking pick waves to orders.
+      Composite PK: (wave_id, order_id).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: pick_wave_orders
+      vg:primary_key: '["wave_id", "order_id"]'
+      vg:row_count: 180000
+    attributes:
+      wave_id:
+        range: integer
+        required: true
+      order_id:
+        range: integer
+        required: true
+      pick_sequence:
+        range: integer
+      status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN E2: LOGISTICS (Transport Network) - 7 tables
+  # ===========================================================================
+
+  Carrier:
+    description: >-
+      Carrier profiles with sustainability ratings.
+      Types: trucking, rail, ocean, air, parcel, ltl, 3pl.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: carriers
+      vg:primary_key: id
+      vg:identifier: carrier_code
+      vg:row_count: 50
+    attributes:
+      id:
+        range: integer
+        required: true
+      carrier_code:
+        range: string
+      name:
+        range: string
+      carrier_type:
+        range: string
+      sustainability_rating:
+        range: string
+      is_preferred:
+        range: boolean
+      is_active:
+        range: boolean
+
+  CarrierContract:
+    description: >-
+      Rate agreements with date effectivity.
+      Pattern 3.1: Dual modeling - Node (contract lifecycle) + Edge (rate lookups).
+      Pattern 3.7: Temporal bounds for valid_at filtering.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: carrier_contracts
+      vg:primary_key: id
+      vg:identifier: contract_number
+      vg:row_count: 150
+      vg:context: >-
+        {
+          "definition": "Contractual rate agreement with carrier",
+          "business_logic": "Only active contracts with current date in [effective_from, effective_to]",
+          "llm_prompt_hint": "Use temporal_traversal with valid_at for rate lookups"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      contract_number:
+        range: string
+      carrier_id:
+        range: integer
+      contract_type:
+        range: string
+      effective_from:
+        range: date
+      effective_to:
+        range: date
+      status:
+        range: string
+
+  CarrierRate:
+    description: >-
+      Rate tables by mode, weight break, lane. Used for freight cost calculations.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: carrier_rates
+      vg:primary_key: id
+      vg:row_count: 2000
+      vg:context: >-
+        {
+          "llm_prompt_hint": "Use for landed cost path_aggregate with rate_per_kg or rate_per_case"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      contract_id:
+        range: integer
+      origin_type:
+        range: string
+      origin_code:
+        range: string
+      destination_type:
+        range: string
+      destination_code:
+        range: string
+      transport_mode:
+        range: string
+      rate_per_kg:
+        range: float
+      rate_per_case:
+        range: float
+      transit_days:
+        range: integer
+
+  RouteSegment:
+    description: >-
+      Atomic transport legs: origin -> destination.
+      Named entity: LANE-SH-LA-001 (seasonal Shanghai->LA, 50% capacity winter).
+      Pattern 3.7: Temporal flickering via is_seasonal and seasonal_months.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: route_segments
+      vg:primary_key: id
+      vg:identifier: segment_code
+      vg:row_count: 300
+      vg:context: >-
+        {
+          "definition": "Atomic transport leg between two nodes",
+          "business_logic": "is_seasonal with seasonal_months for winter storm capacity reduction",
+          "llm_prompt_hint": "Use shortest_path with distance_km or transit_time_hours as weight"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      segment_code:
+        range: string
+      origin_type:
+        range: string
+      origin_id:
+        range: integer
+      destination_type:
+        range: string
+      destination_id:
+        range: integer
+      transport_mode:
+        range: string
+      distance_km:
+        range: float
+      transit_time_hours:
+        range: float
+      is_seasonal:
+        range: boolean
+      is_active:
+        range: boolean
+
+  Route:
+    description: >-
+      Composed routes from multiple segments (Plant -> Port -> Ocean -> DC).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: routes
+      vg:primary_key: id
+      vg:identifier: route_code
+      vg:row_count: 500
+    attributes:
+      id:
+        range: integer
+        required: true
+      route_code:
+        range: string
+      name:
+        range: string
+      total_distance_km:
+        range: float
+      total_transit_hours:
+        range: float
+      is_preferred:
+        range: boolean
+      is_active:
+        range: boolean
+
+  RouteSegmentAssignment:
+    description: >-
+      Links routes to segments in sequence order.
+      Composite PK: (route_id, segment_id, sequence).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: route_segment_assignments
+      vg:primary_key: '["route_id", "segment_id", "sequence"]'
+      vg:row_count: 1500
+    attributes:
+      route_id:
+        range: integer
+        required: true
+      segment_id:
+        range: integer
+        required: true
+      sequence:
+        range: integer
+        required: true
+
+  ShipmentLeg:
+    description: >-
+      Actual execution tracking which segments used per shipment.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipment_legs
+      vg:primary_key: id
+      vg:row_count: 400000
+    attributes:
+      id:
+        range: integer
+        required: true
+      shipment_id:
+        range: integer
+      segment_id:
+        range: integer
+      leg_sequence:
+        range: integer
+      carrier_id:
+        range: integer
+      freight_cost:
+        range: float
+      status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN E3: ESG/SUSTAINABILITY - 5 tables
+  # ===========================================================================
+
+  EmissionFactor:
+    description: >-
+      CO2 emission factors by transport mode and fuel type.
+      Used to calculate Scope 3 Category 4 & 9 emissions.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: emission_factors
+      vg:primary_key: id
+      vg:row_count: 100
+    attributes:
+      id:
+        range: integer
+        required: true
+      transport_mode:
+        range: string
+      fuel_type:
+        range: string
+      carrier_id:
+        range: integer
+      co2_kg_per_km:
+        range: float
+      co2_kg_per_ton_km:
+        range: float
+
+  ShipmentEmission:
+    description: >-
+      Calculated CO2 per shipment/leg for Scope 3 reporting.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipment_emissions
+      vg:primary_key: id
+      vg:row_count: 400000
+      vg:context: >-
+        {
+          "definition": "Calculated carbon emissions per shipment",
+          "llm_prompt_hint": "Use path_aggregate to sum CO2 across multi-leg routes"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      shipment_id:
+        range: integer
+      shipment_leg_id:
+        range: integer
+      scope:
+        range: string
+      co2_kg:
+        range: float
+
+  SupplierESGScore:
+    description: >-
+      Supplier sustainability assessments: EcoVadis, CDP, ISO14001, SBTi.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: supplier_esg_scores
+      vg:primary_key: id
+      vg:row_count: 300
+      vg:context: >-
+        {
+          "definition": "Sustainability assessment scores for supplier",
+          "llm_prompt_hint": "sbti_committed=false identifies carbon risk suppliers"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      supplier_id:
+        range: integer
+      assessment_date:
+        range: date
+      ecovadis_score:
+        range: integer
+      sbti_committed:
+        range: boolean
+      sbti_validated:
+        range: boolean
+
+  SustainabilityTarget:
+    description: >-
+      Division/account-level carbon reduction targets with tracking.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: sustainability_targets
+      vg:primary_key: id
+      vg:row_count: 50
+    attributes:
+      id:
+        range: integer
+        required: true
+      target_type:
+        range: string
+      target_entity_id:
+        range: integer
+      metric:
+        range: string
+      target_value:
+        range: float
+      current_value:
+        range: float
+      status:
+        range: string
+
+  ModalShiftOpportunity:
+    description: >-
+      Identified truck->rail/intermodal opportunities for carbon reduction.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: modal_shift_opportunities
+      vg:primary_key: id
+      vg:row_count: 100
+    attributes:
+      id:
+        range: integer
+        required: true
+      route_segment_id:
+        range: integer
+      current_mode:
+        range: string
+      proposed_mode:
+        range: string
+      co2_reduction_tons:
+        range: float
+      cost_impact_usd:
+        range: float
+      status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN F: PLAN (Demand & Supply Planning) - 9 tables
+  # ===========================================================================
+
+  POSSale:
+    description: >-
+      Point-of-sale signals - actual demand at store/SKU level.
+      Feeds demand forecasting and replenishment.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: pos_sales
+      vg:primary_key: id
+      vg:row_count: 2000000
+      vg:context: >-
+        {
+          "definition": "Consumer purchase transaction at retail location",
+          "llm_prompt_hint": "Aggregate by sale_week for weekly demand patterns"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      retail_location_id:
+        range: integer
+      sku_id:
+        range: integer
+      sale_date:
+        range: date
+      quantity_eaches:
+        range: integer
+      is_promotional:
+        range: boolean
+      promo_id:
+        range: integer
+
+  DemandForecast:
+    description: >-
+      Statistical/ML forecasts by SKU/location. Types: statistical, ml_based, manual, consensus.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: demand_forecasts
+      vg:primary_key: id
+      vg:row_count: 500000
+      vg:context: >-
+        {
+          "definition": "Predicted demand for planning horizon",
+          "business_logic": "forecast_type='consensus' is the official planning number",
+          "llm_prompt_hint": "Use path_aggregate for demand propagation from stores to plants"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      forecast_version:
+        range: string
+      sku_id:
+        range: integer
+      location_type:
+        range: string
+      location_id:
+        range: integer
+      forecast_date:
+        range: date
+      forecast_quantity_cases:
+        range: float
+      forecast_type:
+        range: string
+
+  ForecastAccuracy:
+    description: >-
+      MAPE, bias tracking for forecast quality monitoring.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: forecast_accuracy
+      vg:primary_key: id
+      vg:row_count: 500000
+    attributes:
+      id:
+        range: integer
+        required: true
+      forecast_id:
+        range: integer
+      sku_id:
+        range: integer
+      mape:
+        range: float
+      bias_percent:
+        range: float
+
+  ConsensusAdjustment:
+    description: >-
+      S&OP overrides to statistical forecast with business justification.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: consensus_adjustments
+      vg:primary_key: id
+      vg:row_count: 20000
+    attributes:
+      id:
+        range: integer
+        required: true
+      forecast_id:
+        range: integer
+      adjustment_type:
+        range: string
+      adjustment_percent:
+        range: float
+      reason:
+        range: string
+
+  ReplenishmentParam:
+    description: >-
+      Safety stock, reorder points, review cycles by SKU/location.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: replenishment_params
+      vg:primary_key: id
+      vg:row_count: 100000
+    attributes:
+      id:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      location_type:
+        range: string
+      location_id:
+        range: integer
+      safety_stock_days:
+        range: float
+      reorder_point_cases:
+        range: integer
+      lead_time_days:
+        range: integer
+
+  DemandAllocation:
+    description: >-
+      How forecasted demand is allocated down the network (division -> DC -> store).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: demand_allocation
+      vg:primary_key: id
+      vg:row_count: 1000000
+    attributes:
+      id:
+        range: integer
+        required: true
+      forecast_id:
+        range: integer
+      from_location_type:
+        range: string
+      from_location_id:
+        range: integer
+      to_location_type:
+        range: string
+      to_location_id:
+        range: integer
+      sku_id:
+        range: integer
+      allocated_quantity_cases:
+        range: float
+
+  CapacityPlan:
+    description: >-
+      Available capacity by plant/line/period for supply planning.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: capacity_plans
+      vg:primary_key: id
+      vg:row_count: 5000
+    attributes:
+      id:
+        range: integer
+        required: true
+      plan_version:
+        range: string
+      plant_id:
+        range: integer
+      production_line_id:
+        range: integer
+      period_start:
+        range: date
+      available_hours:
+        range: float
+      planned_hours:
+        range: float
+
+  SupplyPlan:
+    description: >-
+      Planned production/procurement to meet demand.
+      Links PLAN to TRANSFORM (via work orders) and SOURCE (via POs).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: supply_plans
+      vg:primary_key: id
+      vg:row_count: 50000
+    attributes:
+      id:
+        range: integer
+        required: true
+      plan_version:
+        range: string
+      sku_id:
+        range: integer
+      source_type:
+        range: string
+      source_id:
+        range: integer
+      destination_type:
+        range: string
+      destination_id:
+        range: integer
+      planned_quantity_cases:
+        range: integer
+      status:
+        range: string
+
+  PlanException:
+    description: >-
+      Gap identification when demand > capacity or other planning issues.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: plan_exceptions
+      vg:primary_key: id
+      vg:row_count: 5000
+    attributes:
+      id:
+        range: integer
+        required: true
+      plan_version:
+        range: string
+      exception_type:
+        range: string
+      severity:
+        range: string
+      sku_id:
+        range: integer
+      gap_quantity_cases:
+        range: integer
+      status:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN G: RETURN (Regenerate) - 4 tables
+  # ===========================================================================
+
+  RMAAuthorization:
+    description: >-
+      Return Merchandise Authorization workflow.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: rma_authorizations
+      vg:primary_key: id
+      vg:identifier: rma_number
+      vg:row_count: 5000
+    attributes:
+      id:
+        range: integer
+        required: true
+      rma_number:
+        range: string
+      retail_account_id:
+        range: integer
+      reason_code:
+        range: string
+      status:
+        range: string
+
+  Return:
+    description: >-
+      Return events - physical movement of goods back from stores.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: returns
+      vg:primary_key: id
+      vg:identifier: return_number
+      vg:row_count: 10000
+    attributes:
+      id:
+        range: integer
+        required: true
+      return_number:
+        range: string
+      rma_id:
+        range: integer
+      order_id:
+        range: integer
+      retail_location_id:
+        range: integer
+      dc_id:
+        range: integer
+      status:
+        range: string
+
+  ReturnLine:
+    description: >-
+      Return line items with condition assessment.
+      Composite PK: (return_id, line_number).
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: return_lines
+      vg:primary_key: '["return_id", "line_number"]'
+      vg:row_count: 30000
+    attributes:
+      return_id:
+        range: integer
+        required: true
+      line_number:
+        range: integer
+        required: true
+      sku_id:
+        range: integer
+      batch_id:
+        range: integer
+      quantity_cases:
+        range: integer
+      condition:
+        range: string
+
+  DispositionLog:
+    description: >-
+      Disposition decisions: restock, scrap, donate, rework, liquidate, quarantine.
+      Links RETURN to TRANSFORM for regeneration.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: disposition_logs
+      vg:primary_key: id
+      vg:row_count: 30000
+    attributes:
+      id:
+        range: integer
+        required: true
+      return_id:
+        range: integer
+      return_line_number:
+        range: integer
+      disposition:
+        range: string
+      quantity_cases:
+        range: integer
+
+  # ===========================================================================
+  # DOMAIN H: ORCHESTRATE (Hub) - 6 tables
+  # ===========================================================================
+
+  KPIThreshold:
+    description: >-
+      Desmet Triangle targets: Service (OTIF, OSA), Cost (landed cost, freight),
+      Cash (inventory turns, DSO). Industry benchmarks included.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: kpi_thresholds
+      vg:primary_key: id
+      vg:identifier: kpi_code
+      vg:row_count: 50
+      vg:context: >-
+        {
+          "definition": "Target threshold for key performance indicator",
+          "business_logic": "desmet_dimension links to Desmet Triangle (service, cost, cash)",
+          "llm_prompt_hint": "Compare kpi_actuals.actual_value to threshold for RAG status"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      kpi_code:
+        range: string
+      kpi_name:
+        range: string
+      kpi_category:
+        range: string
+      desmet_dimension:
+        range: string
+      target_value:
+        range: float
+      warning_threshold:
+        range: float
+      critical_threshold:
+        range: float
+
+  KPIActual:
+    description: >-
+      Calculated KPI values vs thresholds with trend tracking.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: kpi_actuals
+      vg:primary_key: id
+      vg:row_count: 100000
+    attributes:
+      id:
+        range: integer
+        required: true
+      kpi_id:
+        range: integer
+      measurement_date:
+        range: date
+      scope_type:
+        range: string
+      scope_id:
+        range: integer
+      actual_value:
+        range: float
+      status:
+        range: string
+      trend:
+        range: string
+
+  OSAMetric:
+    description: >-
+      On-shelf availability measurements (~500K). Critical service KPI for FMCG.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: osa_metrics
+      vg:primary_key: id
+      vg:row_count: 500000
+      vg:context: >-
+        {
+          "definition": "On-shelf availability measurement at store/SKU",
+          "business_logic": "is_in_stock=false with out_of_stock_reason for root cause",
+          "llm_prompt_hint": "Aggregate by out_of_stock_reason to find systemic issues",
+          "examples": ["Find stores with <90% OSA", "Correlate OSA with DC bottlenecks"]
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      retail_location_id:
+        range: integer
+      sku_id:
+        range: integer
+      measurement_date:
+        range: date
+      is_in_stock:
+        range: boolean
+      out_of_stock_reason:
+        range: string
+
+  BusinessRule:
+    description: >-
+      Policy management: allocation rules, pricing rules, fulfillment rules.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: business_rules
+      vg:primary_key: id
+      vg:identifier: rule_code
+      vg:row_count: 100
+    attributes:
+      id:
+        range: integer
+        required: true
+      rule_code:
+        range: string
+      rule_name:
+        range: string
+      rule_category:
+        range: string
+      rule_type:
+        range: string
+      is_active:
+        range: boolean
+
+  RiskEvent:
+    description: >-
+      Risk registry: supplier_disruption, quality_hold, logistics_delay, demand_shock.
+      Polymorphic affected_entity for cross-domain impact.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: risk_events
+      vg:primary_key: id
+      vg:identifier: event_code
+      vg:row_count: 500
+      vg:context: >-
+        {
+          "definition": "Identified risk with probability and impact assessment",
+          "llm_prompt_hint": "Use resilience_analysis to model impact of risk events"
+        }
+    attributes:
+      id:
+        range: integer
+        required: true
+      event_code:
+        range: string
+      event_type:
+        range: string
+      severity:
+        range: string
+      affected_entity_type:
+        range: string
+      affected_entity_id:
+        range: integer
+      risk_score:
+        range: float
+      status:
+        range: string
+
+  AuditLog:
+    description: >-
+      Change tracking for governance and compliance.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: audit_log
+      vg:primary_key: id
+      vg:row_count: 1000000
+    attributes:
+      id:
+        range: integer
+        required: true
+      table_name:
+        range: string
+      record_id:
+        range: integer
+      action:
+        range: string
+      changed_at:
+        range: datetime
+
+  # ===========================================================================
+  # VIEW-BACKED CLASSES (for shortcut edges and aggregation)
+  # ===========================================================================
+
+  LocationDivisionView:
+    description: >-
+      Flattened hierarchy view: Location -> Account -> Division (Pattern 3.2).
+      Enables fast division-level aggregation without 2-hop traversal.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: v_location_divisions
+      vg:primary_key: location_id
+      vg:row_count: 10000
+    attributes:
+      location_id:
+        range: integer
+        required: true
+      account_id:
+        range: integer
+      division_id:
+        range: integer
+
+  BatchDestinationView:
+    description: >-
+      Shortcut edge for recall tracing (Pattern 3.6).
+      Batch -> RetailLocation bypassing Shipment node for speed.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: v_batch_destinations
+      vg:primary_key: batch_id
+      vg:row_count: 500000
+      vg:context: >-
+        {
+          "definition": "Pre-joined batch-to-destination for fast recall trace",
+          "llm_prompt_hint": "Use for recall trace when carrier details not needed"
+        }
+    attributes:
+      batch_id:
+        range: integer
+        required: true
+      destination_type:
+        range: string
+      destination_id:
+        range: integer
+      ship_date:
+        range: date
+
+  TransportNormalizedView:
+    description: >-
+      UoM-normalized route segments (Pattern 3.5).
+      All distances in km, costs in USD.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: v_transport_normalized
+      vg:primary_key: id
+      vg:row_count: 300
+    attributes:
+      id:
+        range: integer
+        required: true
+      origin_type:
+        range: string
+      origin_id:
+        range: integer
+      destination_type:
+        range: string
+      destination_id:
+        range: integer
+      distance_km:
+        range: float
+      transit_time_hours:
+        range: float
+
+  SingleSourceIngredientView:
+    description: >-
+      SPOF detection view: ingredients with exactly 1 approved supplier.
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: v_single_source_ingredients
+      vg:primary_key: ingredient_id
+      vg:row_count: 50
+      vg:context: >-
+        {
+          "definition": "Ingredients with single-source supplier risk",
+          "llm_prompt_hint": "Direct query for SPOF detection without handler"
+        }
+    attributes:
+      ingredient_id:
+        range: integer
+        required: true
+      ingredient_code:
+        range: string
+      sole_supplier_code:
+        range: string
 
 # =============================================================================
-# SLOTS (RBox) - Relationships
-# =============================================================================
-#
-# Total: ~40 relationships with operation type mappings
-#
-# Key Relationships by Handler:
-#   traverse(): recall_trace, batch_to_location, order_genealogy
-#   path_aggregate(): landed_cost, carbon_footprint, demand_propagation
-#   shortest_path(): freight_route, multi_leg_cost
-#   centrality(): dc_importance, supplier_criticality
-#   connected_components(): supplier_clusters, distribution_islands
-#   resilience_analysis(): spof_detection, dc_failure_impact
-#
-# TODO: Implement all relationships in Phase 3
+# SLOTS (RBox) - Relationships with Operation Type Mappings
 # =============================================================================
 
 slots:
@@ -355,200 +2247,1049 @@ slots:
   # SOURCE Domain Relationships
   # ===========================================================================
 
-  # TODO: supplies_ingredient - Supplier -> Ingredient
-  # Operation types: direct_join, recursive_traversal (tiered suppliers)
+  supplies_ingredient:
+    description: >-
+      Supplier -> Ingredient relationship via supplier_ingredients junction.
+      Includes cost, lead time, and performance metrics.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_ingredients
+      vg:domain_key: supplier_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Supplier
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "unit_cost", "type": "decimal", "unit": "USD"}, {"name": "lead_time_days", "type": "integer", "unit": "days"}]'
+      vg:edge_attributes: '[{"name": "is_preferred", "type": "boolean"}, {"name": "is_approved", "type": "boolean"}]'
+      vg:sql_filter: "is_approved = true"
+      vg:context: >-
+        {
+          "definition": "Approved sourcing relationship between supplier and ingredient",
+          "llm_prompt_hint": "Filter is_preferred=true for primary source",
+          "traversal_semantics": {"inbound": "which suppliers can source this ingredient", "outbound": "which ingredients does this supplier provide"}
+        }
+    range: Ingredient
 
-  # TODO: has_certification - Supplier -> Certification
-  # Operation types: direct_join
+  has_certification:
+    description: >-
+      Supplier -> Certification for compliance checking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: certifications
+      vg:domain_key: supplier_id
+      vg:range_key: id
+      vg:domain_class: Supplier
+      vg:range_class: Certification
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "is_valid = true"
+    range: Certification
 
-  # TODO: orders_from - PurchaseOrder -> Supplier
-  # Operation types: direct_join
+  po_from_supplier:
+    description: >-
+      PurchaseOrder -> Supplier relationship.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_orders
+      vg:domain_key: id
+      vg:range_key: supplier_id
+      vg:domain_class: PurchaseOrder
+      vg:range_class: Supplier
+      vg:operation_types: '["direct_join"]'
+    range: Supplier
 
-  # TODO: receives_ingredient - GoodsReceipt -> Ingredient (via lot)
-  # Operation types: direct_join, path_aggregation
+  po_line_ingredient:
+    description: >-
+      PurchaseOrderLine -> Ingredient with quantity and price.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_order_lines
+      vg:domain_key: '["po_id", "line_number"]'
+      vg:range_key: ingredient_id
+      vg:domain_class: PurchaseOrderLine
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "quantity", "type": "decimal", "unit": "kg"}, {"name": "unit_price", "type": "decimal", "unit": "USD"}]'
+    range: Ingredient
+
+  gr_line_lot:
+    description: >-
+      GoodsReceiptLine contains lot_number linking to batch_ingredients.
+      Critical for upstream recall tracing.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: goods_receipt_lines
+      vg:domain_key: '["gr_id", "line_number"]'
+      vg:range_key: ingredient_id
+      vg:domain_class: GoodsReceiptLine
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+      vg:edge_attributes: '[{"name": "lot_number", "type": "string"}, {"name": "quality_status", "type": "string"}]'
+    range: Ingredient
 
   # ===========================================================================
   # TRANSFORM Domain Relationships
   # ===========================================================================
 
-  # TODO: produces_at - Formula -> Plant
-  # Operation types: direct_join
+  plant_in_division:
+    description: >-
+      Plant -> Division for organizational hierarchy.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: plants
+      vg:domain_key: id
+      vg:range_key: division_id
+      vg:domain_class: Plant
+      vg:range_class: Division
+      vg:operation_types: '["direct_join"]'
+    range: Division
 
-  # TODO: contains_ingredient - Formula -> Ingredient (with quantity)
-  # Operation types: direct_join, hierarchical_aggregation (BOM explosion lite)
+  line_at_plant:
+    description: >-
+      ProductionLine -> Plant relationship.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: production_lines
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: ProductionLine
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+    range: Plant
 
-  # TODO: executes_formula - Batch -> Formula
-  # Operation types: direct_join, recursive_traversal
+  formula_contains_ingredient:
+    description: >-
+      Formula -> Ingredient via formula_ingredients with quantities.
+      BOM-lite: typically 5-15 ingredients per formula.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: formula_ingredients
+      vg:domain_key: formula_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Formula
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "hierarchical_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "quantity_kg", "type": "decimal", "unit": "kg"}, {"name": "quantity_percent", "type": "decimal", "unit": "percent"}]'
+      vg:edge_attributes: '[{"name": "sequence", "type": "integer"}]'
+      vg:context: >-
+        {
+          "definition": "Ingredient requirement in formula (BOM-lite)",
+          "llm_prompt_hint": "Use hierarchical_aggregation for quantity explosion"
+        }
+    range: Ingredient
 
-  # TODO: consumes_lot - Batch -> GoodsReceiptLine (lot traceability)
-  # Operation types: recursive_traversal (recall trace backward)
+  formula_for_product:
+    description: >-
+      Formula -> Product relationship.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: formulas
+      vg:domain_key: id
+      vg:range_key: product_id
+      vg:domain_class: Formula
+      vg:range_class: Product
+      vg:operation_types: '["direct_join"]'
+    range: Product
+
+  wo_executes_formula:
+    description: >-
+      WorkOrder -> Formula for production scheduling.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: work_orders
+      vg:domain_key: id
+      vg:range_key: formula_id
+      vg:domain_class: WorkOrder
+      vg:range_class: Formula
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Formula
+
+  batch_from_wo:
+    description: >-
+      Batch -> WorkOrder linking production output to schedule.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: wo_id
+      vg:domain_class: Batch
+      vg:range_class: WorkOrder
+      vg:operation_types: '["direct_join"]'
+    range: WorkOrder
+
+  batch_uses_formula:
+    description: >-
+      Batch -> Formula for recipe traceability.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: formula_id
+      vg:domain_class: Batch
+      vg:range_class: Formula
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Formula
+
+  batch_ingredient_consumption:
+    description: >-
+      Batch -> Ingredient via batch_ingredients with actual consumption.
+      lot_number links to goods_receipt_lines for upstream tracing.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batch_ingredients
+      vg:domain_key: batch_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Batch
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "recursive_traversal", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "actual_quantity_kg", "type": "decimal", "unit": "kg"}]'
+      vg:edge_attributes: '[{"name": "lot_number", "type": "string"}]'
+      vg:context: >-
+        {
+          "definition": "Actual material consumption with lot traceability",
+          "llm_prompt_hint": "Join lot_number to goods_receipt_lines for upstream recall"
+        }
+    range: Ingredient
+
+  batch_cost:
+    description: >-
+      Batch -> BatchCostLedger for cost breakdown.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batch_cost_ledger
+      vg:domain_key: batch_id
+      vg:range_key: id
+      vg:domain_class: Batch
+      vg:range_class: BatchCostLedger
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "cost_amount", "type": "decimal", "unit": "USD"}]'
+    range: BatchCostLedger
 
   # ===========================================================================
   # PRODUCT Domain Relationships
   # ===========================================================================
 
-  # TODO: belongs_to_product - SKU -> Product
-  # Operation types: direct_join
+  sku_of_product:
+    description: >-
+      SKU -> Product for product hierarchy.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: skus
+      vg:domain_key: id
+      vg:range_key: product_id
+      vg:domain_class: SKU
+      vg:range_class: Product
+      vg:operation_types: '["direct_join"]'
+    range: Product
 
-  # TODO: has_packaging - SKU -> PackagingType
-  # Operation types: direct_join
+  sku_packaging:
+    description: >-
+      SKU -> PackagingType for packaging specification.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: skus
+      vg:domain_key: id
+      vg:range_key: packaging_id
+      vg:domain_class: SKU
+      vg:range_class: PackagingType
+      vg:operation_types: '["direct_join"]'
+    range: PackagingType
 
-  # TODO: substitutes_for - SKU -> SKU (symmetric)
-  # Operation types: direct_join, connected_components
+  sku_formula:
+    description: >-
+      SKU -> Formula for manufacturing recipe.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: skus
+      vg:domain_key: id
+      vg:range_key: formula_id
+      vg:domain_class: SKU
+      vg:range_class: Formula
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Formula
+
+  sku_substitutes_for:
+    description: >-
+      SKU -> SKU substitution relationship (symmetric).
+      Pattern 3.3: Direct edge for simple lookups.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: sku_substitutes
+      vg:domain_key: sku_id
+      vg:range_key: substitute_sku_id
+      vg:domain_class: SKU
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "connected_components"]'
+      vg:symmetric: true
+      vg:edge_attributes: '[{"name": "substitute_type", "type": "string"}, {"name": "priority", "type": "integer"}]'
+      vg:context: >-
+        {
+          "definition": "Interchangeable SKU for fulfillment",
+          "llm_prompt_hint": "Use connected_components to find substitution clusters"
+        }
+    range: SKU
 
   # ===========================================================================
   # ORDER Domain Relationships
   # ===========================================================================
 
-  # TODO: placed_by_channel - Order -> Channel
-  # Operation types: direct_join
+  order_via_channel:
+    description: >-
+      Order -> Channel for demand segmentation.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: channel_id
+      vg:domain_class: Order
+      vg:range_class: Channel
+      vg:operation_types: '["direct_join"]'
+    range: Channel
 
-  # TODO: applies_promo - Order -> Promotion
-  # Operation types: direct_join, temporal_traversal
+  order_from_account:
+    description: >-
+      Order -> RetailAccount for customer identification.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: retail_account_id
+      vg:domain_class: Order
+      vg:range_class: RetailAccount
+      vg:operation_types: '["direct_join"]'
+    range: RetailAccount
 
-  # TODO: contains_sku - OrderLine -> SKU
-  # Operation types: direct_join
+  order_to_location:
+    description: >-
+      Order -> RetailLocation for delivery destination.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: retail_location_id
+      vg:domain_class: Order
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+    range: RetailLocation
+
+  order_with_promo:
+    description: >-
+      Order -> Promotion for promotional orders.
+      Pattern 3.7: Temporal relationship based on promo dates.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: promo_id
+      vg:domain_class: Order
+      vg:range_class: Promotion
+      vg:operation_types: '["direct_join", "temporal_traversal"]'
+    range: Promotion
+
+  order_line_sku:
+    description: >-
+      OrderLine -> SKU for demand to product mapping.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: order_lines
+      vg:domain_key: '["order_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: OrderLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "quantity_cases", "type": "integer", "unit": "cases"}, {"name": "unit_price", "type": "decimal", "unit": "USD"}]'
+    range: SKU
+
+  allocation_from_batch:
+    description: >-
+      OrderAllocation -> Batch for inventory commitment.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: order_allocations
+      vg:domain_key: id
+      vg:range_key: batch_id
+      vg:domain_class: OrderAllocation
+      vg:range_class: Batch
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Batch
 
   # ===========================================================================
   # FULFILL Domain Relationships
   # ===========================================================================
 
-  # TODO: in_division - RetailAccount -> Division
-  # Operation types: direct_join
+  dc_in_division:
+    description: >-
+      DistributionCenter -> Division for regional organization.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: distribution_centers
+      vg:domain_key: id
+      vg:range_key: division_id
+      vg:domain_class: DistributionCenter
+      vg:range_class: Division
+      vg:operation_types: '["direct_join"]'
+    range: Division
 
-  # TODO: location_of_account - RetailLocation -> RetailAccount
-  # Operation types: direct_join
+  account_in_division:
+    description: >-
+      RetailAccount -> Division for account hierarchy.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: retail_accounts
+      vg:domain_key: id
+      vg:range_key: division_id
+      vg:domain_class: RetailAccount
+      vg:range_class: Division
+      vg:operation_types: '["direct_join"]'
+    range: Division
 
-  # TODO: location_in_division - RetailLocation -> Division (flattened shortcut)
-  # Operation types: direct_join, hierarchical_aggregation
-  # Edge table: v_location_divisions (SQL view)
+  account_via_channel:
+    description: >-
+      RetailAccount -> Channel for channel segmentation.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: retail_accounts
+      vg:domain_key: id
+      vg:range_key: channel_id
+      vg:domain_class: RetailAccount
+      vg:range_class: Channel
+      vg:operation_types: '["direct_join"]'
+    range: Channel
 
-  # TODO: ships_to - Shipment -> RetailLocation
-  # Operation types: direct_join
+  location_of_account:
+    description: >-
+      RetailLocation -> RetailAccount for store hierarchy.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: retail_locations
+      vg:domain_key: id
+      vg:range_key: retail_account_id
+      vg:domain_class: RetailLocation
+      vg:range_class: RetailAccount
+      vg:operation_types: '["direct_join"]'
+    range: RetailAccount
 
-  # TODO: ships_from_dc - Shipment -> DistributionCenter
-  # Operation types: direct_join
+  location_served_by_dc:
+    description: >-
+      RetailLocation -> DistributionCenter for fulfillment assignment.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: retail_locations
+      vg:domain_key: id
+      vg:range_key: primary_dc_id
+      vg:domain_class: RetailLocation
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join", "centrality"]'
+      vg:context: >-
+        {
+          "definition": "Primary DC serving this retail location",
+          "llm_prompt_hint": "Use centrality() on DC side to find bottleneck DCs"
+        }
+    range: DistributionCenter
 
-  # TODO: contains_batch - ShipmentLine -> Batch
-  # Operation types: direct_join, recursive_traversal (recall trace forward)
+  location_in_division_shortcut:
+    description: >-
+      RetailLocation -> Division via flattened view (Pattern 3.2).
+      Shortcut edge bypassing account for fast aggregation.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: v_location_divisions
+      vg:domain_key: location_id
+      vg:range_key: division_id
+      vg:domain_class: RetailLocation
+      vg:range_class: Division
+      vg:operation_types: '["direct_join", "hierarchical_aggregation"]'
+      vg:context: >-
+        {
+          "definition": "Flattened hierarchy for fast division aggregation",
+          "llm_prompt_hint": "Use instead of Location->Account->Division for aggregation"
+        }
+    range: Division
 
-  # TODO: batch_shipped_to - Batch -> RetailLocation (shortcut edge)
-  # Operation types: recursive_traversal
-  # Edge table: v_batch_destinations (SQL view, bypasses Shipment node)
-  # Context: Use for recall tracing when carrier details not needed
+  shipment_line_batch:
+    description: >-
+      ShipmentLine -> Batch for lot traceability.
+      Key edge for forward recall trace.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_lines
+      vg:domain_key: '["shipment_id", "line_number"]'
+      vg:range_key: batch_id
+      vg:domain_class: ShipmentLine
+      vg:range_class: Batch
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+      vg:edge_attributes: '[{"name": "lot_number", "type": "string"}, {"name": "batch_fraction", "type": "decimal"}]'
+      vg:context: >-
+        {
+          "definition": "Batch shipped in this line for traceability",
+          "llm_prompt_hint": "Key edge for recall trace: batch -> shipment_lines -> shipments -> destination"
+        }
+    range: Batch
+
+  shipment_line_sku:
+    description: >-
+      ShipmentLine -> SKU for product shipped.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_lines
+      vg:domain_key: '["shipment_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: ShipmentLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+    range: SKU
+
+  batch_shipped_to_shortcut:
+    description: >-
+      Batch -> destination via v_batch_destinations (Pattern 3.6).
+      Shortcut edge bypassing Shipment node for fast recall trace.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: v_batch_destinations
+      vg:domain_key: batch_id
+      vg:range_key: destination_id
+      vg:domain_class: Batch
+      vg:range_class: RetailLocation
+      vg:operation_types: '["recursive_traversal"]'
+      vg:edge_attributes: '[{"name": "ship_date", "type": "date"}, {"name": "quantity_cases", "type": "integer"}]'
+      vg:sql_filter: "destination_type = 'store'"
+      vg:context: >-
+        {
+          "definition": "Direct batch-to-store link for fast recall trace",
+          "llm_prompt_hint": "Use for recall when carrier details not needed; 10x faster than via shipments"
+        }
+    range: RetailLocation
 
   # ===========================================================================
   # LOGISTICS Domain Relationships
   # ===========================================================================
 
-  # TODO: operates_segment - Carrier -> RouteSegment
-  # Operation types: direct_join
+  shipment_via_carrier:
+    description: >-
+      Shipment -> Carrier for transport provider.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: carrier_id
+      vg:domain_class: Shipment
+      vg:range_class: Carrier
+      vg:operation_types: '["direct_join"]'
+    range: Carrier
 
-  # TODO: serves_lane - Carrier -> RouteSegment (via CarrierContract, shortcut)
-  # Operation types: direct_join, temporal_traversal
-  # Edge attributes: freight_rate, effective_from
-  # Pattern: Dual modeling (Section 3.1)
+  shipment_uses_route:
+    description: >-
+      Shipment -> Route for transport path.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: route_id
+      vg:domain_class: Shipment
+      vg:range_class: Route
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+    range: Route
 
-  # TODO: segment_in_route - RouteSegment -> Route (ordered)
-  # Operation types: direct_join, path_aggregation
+  contract_with_carrier:
+    description: >-
+      CarrierContract -> Carrier relationship.
+      Pattern 3.7: Temporal bounds for contract effectivity.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: carrier_contracts
+      vg:domain_key: id
+      vg:range_key: carrier_id
+      vg:domain_class: CarrierContract
+      vg:range_class: Carrier
+      vg:operation_types: '["direct_join", "temporal_traversal"]'
+      vg:temporal_bounds: '{"start_col": "effective_from", "end_col": "effective_to"}'
+      vg:sql_filter: "status = 'active'"
+    range: Carrier
 
-  # TODO: connects_origin - RouteSegment -> (Plant|Port|DC)
-  # Operation types: direct_join, shortest_path
-  # Weight columns: distance_km, transit_hours, cost_usd, co2_kg
+  rate_under_contract:
+    description: >-
+      CarrierRate -> CarrierContract for rate agreement.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: carrier_rates
+      vg:domain_key: id
+      vg:range_key: contract_id
+      vg:domain_class: CarrierRate
+      vg:range_class: CarrierContract
+      vg:operation_types: '["direct_join", "temporal_traversal"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "rate_per_kg", "type": "decimal", "unit": "USD/kg"}, {"name": "rate_per_case", "type": "decimal", "unit": "USD/case"}, {"name": "transit_days", "type": "integer", "unit": "days"}]'
+    range: CarrierContract
 
-  # TODO: connects_destination - RouteSegment -> (Port|DC|RetailLocation)
-  # Operation types: direct_join, shortest_path
+  route_has_segment:
+    description: >-
+      Route -> RouteSegment via route_segment_assignments.
+      Enables multi-leg route composition.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: route_segment_assignments
+      vg:domain_key: route_id
+      vg:range_key: segment_id
+      vg:domain_class: Route
+      vg:range_class: RouteSegment
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:edge_attributes: '[{"name": "sequence", "type": "integer"}]'
+    range: RouteSegment
+
+  segment_transport:
+    description: >-
+      RouteSegment with distance and time for shortest_path.
+      Uses normalized view for consistent units.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: v_transport_normalized
+      vg:domain_key: origin_id
+      vg:range_key: destination_id
+      vg:domain_class: Port
+      vg:range_class: Port
+      vg:operation_types: '["shortest_path", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}, {"name": "transit_time_hours", "type": "decimal", "unit": "hours"}]'
+      vg:sql_filter: "is_active = true"
+      vg:context: >-
+        {
+          "definition": "Transport segment with normalized distance/time",
+          "llm_prompt_hint": "Use shortest_path with distance_km or transit_time_hours as weight"
+        }
+    range: Port
+
+  leg_on_shipment:
+    description: >-
+      ShipmentLeg -> Shipment for multi-leg execution tracking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_legs
+      vg:domain_key: id
+      vg:range_key: shipment_id
+      vg:domain_class: ShipmentLeg
+      vg:range_class: Shipment
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "freight_cost", "type": "decimal", "unit": "USD"}]'
+    range: Shipment
+
+  leg_uses_segment:
+    description: >-
+      ShipmentLeg -> RouteSegment for actual transport path.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_legs
+      vg:domain_key: id
+      vg:range_key: segment_id
+      vg:domain_class: ShipmentLeg
+      vg:range_class: RouteSegment
+      vg:operation_types: '["direct_join"]'
+    range: RouteSegment
 
   # ===========================================================================
   # ESG Domain Relationships
   # ===========================================================================
 
-  # TODO: emits_for_shipment - ShipmentEmission -> Shipment
-  # Operation types: direct_join, path_aggregation
+  emission_for_shipment:
+    description: >-
+      ShipmentEmission -> Shipment for carbon tracking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_emissions
+      vg:domain_key: id
+      vg:range_key: shipment_id
+      vg:domain_class: ShipmentEmission
+      vg:range_class: Shipment
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "co2_kg", "type": "decimal", "unit": "kg CO2"}]'
+    range: Shipment
 
-  # TODO: has_esg_score - Supplier -> SupplierESGScore
-  # Operation types: direct_join
+  supplier_esg:
+    description: >-
+      Supplier -> SupplierESGScore for sustainability assessment.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_esg_scores
+      vg:domain_key: supplier_id
+      vg:range_key: id
+      vg:domain_class: Supplier
+      vg:range_class: SupplierESGScore
+      vg:operation_types: '["direct_join"]'
+    range: SupplierESGScore
 
-  # TODO: targets_account - SustainabilityTarget -> RetailAccount
-  # Operation types: direct_join
+  modal_shift_for_segment:
+    description: >-
+      ModalShiftOpportunity -> RouteSegment for carbon reduction opportunities.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: modal_shift_opportunities
+      vg:domain_key: id
+      vg:range_key: route_segment_id
+      vg:domain_class: ModalShiftOpportunity
+      vg:range_class: RouteSegment
+      vg:operation_types: '["direct_join"]'
+    range: RouteSegment
 
   # ===========================================================================
   # PLAN Domain Relationships
   # ===========================================================================
 
-  # TODO: forecasts_for - DemandForecast -> (SKU, RetailLocation)
-  # Operation types: direct_join
+  pos_at_location:
+    description: >-
+      POSSale -> RetailLocation for demand source.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: pos_sales
+      vg:domain_key: id
+      vg:range_key: retail_location_id
+      vg:domain_class: POSSale
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+    range: RetailLocation
 
-  # TODO: consumes_forecast - SupplyPlan -> DemandForecast
-  # Operation types: direct_join, path_aggregation (demand propagation)
+  pos_for_sku:
+    description: >-
+      POSSale -> SKU for demand by product.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: pos_sales
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: POSSale
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "quantity_eaches", "type": "integer", "unit": "eaches"}]'
+    range: SKU
 
-  # TODO: produces_for_plan - WorkOrder -> SupplyPlan
-  # Operation types: direct_join
+  forecast_for_sku:
+    description: >-
+      DemandForecast -> SKU for demand prediction.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: demand_forecasts
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: DemandForecast
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "forecast_quantity_cases", "type": "decimal", "unit": "cases"}]'
+    range: SKU
 
-  # TODO: has_capacity - ProductionLine -> CapacityPlan
-  # Operation types: direct_join
+  supply_plan_for_sku:
+    description: >-
+      SupplyPlan -> SKU for supply commitment.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supply_plans
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: SupplyPlan
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+    range: SKU
+
+  capacity_at_plant:
+    description: >-
+      CapacityPlan -> Plant for capacity availability.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: capacity_plans
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: CapacityPlan
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+    range: Plant
 
   # ===========================================================================
   # RETURN Domain Relationships
   # ===========================================================================
 
-  # TODO: returns_to - Return -> DistributionCenter
-  # Operation types: direct_join
+  return_to_dc:
+    description: >-
+      Return -> DistributionCenter for return destination.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: returns
+      vg:domain_key: id
+      vg:range_key: dc_id
+      vg:domain_class: Return
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+    range: DistributionCenter
 
-  # TODO: disposes_as - ReturnLine -> DispositionLog
-  # Operation types: direct_join
+  return_from_location:
+    description: >-
+      Return -> RetailLocation for return source.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: returns
+      vg:domain_key: id
+      vg:range_key: retail_location_id
+      vg:domain_class: Return
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+    range: RetailLocation
 
-  # TODO: regenerates_to - DispositionLog -> Batch
-  # Operation types: direct_join, recursive_traversal
+  return_line_batch:
+    description: >-
+      ReturnLine -> Batch for lot tracking on returns.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: return_lines
+      vg:domain_key: '["return_id", "line_number"]'
+      vg:range_key: batch_id
+      vg:domain_class: ReturnLine
+      vg:range_class: Batch
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Batch
+
+  disposition_from_return:
+    description: >-
+      DispositionLog -> Return for disposition tracking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: disposition_logs
+      vg:domain_key: id
+      vg:range_key: return_id
+      vg:domain_class: DispositionLog
+      vg:range_class: Return
+      vg:operation_types: '["direct_join"]'
+    range: Return
 
   # ===========================================================================
   # ORCHESTRATE Domain Relationships
   # ===========================================================================
 
-  # TODO: measures_kpi - KPIActual -> KPIThreshold
-  # Operation types: direct_join
+  kpi_actual_threshold:
+    description: >-
+      KPIActual -> KPIThreshold for performance measurement.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: kpi_actuals
+      vg:domain_key: id
+      vg:range_key: kpi_id
+      vg:domain_class: KPIActual
+      vg:range_class: KPIThreshold
+      vg:operation_types: '["direct_join"]'
+    range: KPIThreshold
 
-  # TODO: triggers_risk - RiskEvent -> (Supplier|DistributionCenter|Carrier)
-  # Operation types: direct_join, resilience_analysis
+  osa_at_location:
+    description: >-
+      OSAMetric -> RetailLocation for OSA measurement.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: osa_metrics
+      vg:domain_key: id
+      vg:range_key: retail_location_id
+      vg:domain_class: OSAMetric
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join", "centrality"]'
+      vg:context: >-
+        {
+          "definition": "OSA measurement at specific location",
+          "llm_prompt_hint": "Correlate with location_served_by_dc to find DC bottlenecks"
+        }
+    range: RetailLocation
 
-  # TODO: enforces_rule - BusinessRule -> (Channel|RetailAccount)
-  # Operation types: direct_join
+  osa_for_sku:
+    description: >-
+      OSAMetric -> SKU for product availability tracking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: osa_metrics
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: OSAMetric
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+    range: SKU
 
   # ===========================================================================
-  # BEAST MODE QUERY RELATIONSHIPS (Cross-Domain)
+  # BEAST MODE Cross-Domain Relationships
   # ===========================================================================
 
-  # TODO: recall_trace - Batch -> RetailLocation (transitive closure)
-  # Operation types: recursive_traversal
-  # Target: <5 seconds for 1 batch -> 47,500 affected orders
+  recall_trace_path:
+    description: >-
+      Composite path for recall tracing: Batch -> ShipmentLines -> Shipments -> Destinations.
+      Target: <5 seconds for 1 batch -> 47,500 affected orders.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: v_batch_destinations
+      vg:domain_key: batch_id
+      vg:range_key: destination_id
+      vg:domain_class: Batch
+      vg:range_class: RetailLocation
+      vg:operation_types: '["recursive_traversal"]'
+      vg:context: >-
+        {
+          "definition": "Beast mode recall trace path",
+          "llm_prompt_hint": "Use traverse() handler for horizontal fan-out from contaminated batch",
+          "examples": ["Trace B-2024-RECALL-001 to all affected stores"]
+        }
+    range: RetailLocation
 
-  # TODO: landed_cost_path - Plant -> RetailLocation (full cost aggregation)
-  # Operation types: path_aggregation
-  # Weight columns: material_cost, freight_cost, handling_cost, overhead
+  landed_cost_path:
+    description: >-
+      Aggregate costs along Plant -> DC -> Store path.
+      Combines batch cost, freight cost, handling cost.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_legs
+      vg:domain_key: shipment_id
+      vg:range_key: segment_id
+      vg:domain_class: Shipment
+      vg:range_class: RouteSegment
+      vg:operation_types: '["path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "freight_cost", "type": "decimal", "unit": "USD"}]'
+      vg:context: >-
+        {
+          "definition": "Cost aggregation along multi-leg shipment path",
+          "llm_prompt_hint": "Use path_aggregate() to sum costs across all legs"
+        }
+    range: RouteSegment
 
-  # TODO: spof_analysis - Ingredient -> Supplier (single-source detection)
-  # Operation types: resilience_analysis
-  # Context: Find all ingredients with exactly 1 qualified supplier
-
-  # ===========================================================================
-  # PLACEHOLDER - Required for valid LinkML
-  # ===========================================================================
-
-  placeholder_slot:
-    description: "Placeholder slot - remove when implementing actual relationships"
-    range: Placeholder
-
-# =============================================================================
-# VIEWS (SQL Layer)
-# =============================================================================
-#
-# These SQL views are referenced by shortcut edges and UoM normalization:
-#
-# v_location_divisions     - Flattened RetailLocation -> Division
-# v_batch_destinations     - Shortcut Batch -> RetailLocation
-# v_transport_normalized   - UoM normalized route segments
-# v_weights_normalized     - UoM normalized weights to kg
-# v_inventory_normalized   - UoM normalized inventory to eaches
-#
-# See schema.sql for view definitions
-# =============================================================================
+  spof_detection:
+    description: >-
+      Single-source ingredient detection via v_single_source_ingredients view.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: v_single_source_ingredients
+      vg:domain_key: ingredient_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Ingredient
+      vg:range_class: Ingredient
+      vg:operation_types: '["resilience_analysis"]'
+      vg:context: >-
+        {
+          "definition": "Single-source (SPOF) ingredient identification",
+          "llm_prompt_hint": "Direct query on view; no handler needed for basic detection"
+        }
+    range: Ingredient

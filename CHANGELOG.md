@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.22] - 2025-12-17
+
+### Added
+
+- **FMCG Ontology Phase 3 Complete** - Full LinkML ontology with VG extensions for Prism Consumer Goods:
+  - **71 entity classes (TBox)** across SCOR-DS domains with SQLMappedClass annotations
+  - **~50 relationship slots (RBox)** with operation type mappings, weight columns, edge attributes
+  - **4 view-backed classes** for shortcut edges (BatchDestination, LocationDivision, etc.)
+
+- **All 7 modeling patterns from spec Section 3**:
+  - **3.1 Dual Modeling (Rich Link)**: CarrierContract, Promotion as both Node and Edge
+  - **3.2 Deep Hierarchy (Flattened Edges)**: v_location_divisions shortcut for fast rollups
+  - **3.3 Equivalency Pattern**: SKU substitutes with symmetric relationships
+  - **3.4 Composite Keys**: JSON array format for order_lines, shipment_lines, formula_ingredients
+  - **3.5 UoM Normalization**: v_transport_normalized view reference
+  - **3.6 Hyper-edges (Event Reification)**: Shipment node + v_batch_destinations shortcut
+  - **3.7 Temporal Bounds**: carrier_contracts, promotions with effective_from/effective_to
+
+- **Full SCOR-DS domain coverage**:
+  - **SOURCE**: Ingredient, Supplier, SupplierIngredient, PurchaseOrder, GoodsReceipt, Certification
+  - **TRANSFORM**: Plant, ProductionLine, Formula, FormulaIngredient, WorkOrder, Batch, QCTest
+  - **PRODUCT**: Product, PackagingType, SKU, SKUSubstitute, BOMLine
+  - **ORDER**: Channel, Account, Promotion, CustomerOrder, OrderLine, PromotionSKU
+  - **FULFILL**: Division, DistributionCenter, RetailLocation, Inventory, Shipment, ShipmentLine
+  - **LOGISTICS**: Carrier, CarrierContract, Route, RouteSegment, ShipmentLeg
+  - **ESG**: EmissionFactor, ShipmentEmission, SupplierScore, LocationUtility
+  - **PLAN**: POSSale, DemandForecast, SupplyPlan, CapacityPlan, InventoryPolicy, SeasonalRoute
+  - **RETURN**: RMAAuthorization, Return, DispositionLog, RefurbishmentWorkOrder
+  - **ORCHESTRATE**: KPIThreshold, KPIActual, OSAMetric, RiskEvent, AlertSubscription
+
+- **Operation type mappings** for beast mode queries:
+  - `recursive_traversal` for recall trace (Batch → Orders)
+  - `path_aggregation` for landed cost rollups
+  - `centrality` for OSA/DC bottleneck analysis
+  - `resilience_analysis` for SPOF detection
+  - `temporal_traversal` for seasonal routes and promotions
+
+- **Context blocks** with LLM hints for AI-assisted query generation
+
+### Technical
+
+- Ontology version: 0.9.21
+- Connection string: postgresql://virt_graph:dev_password@localhost:5433/prism_fmcg
+- All composite keys use JSON array format per metamodel spec
+- Temporal bounds configured for 3 relationship types
+- SQL filters for status-based edge filtering (active suppliers, approved batches)
+
+---
+
 ## [0.9.21] - 2025-12-17
 
 ### Added
