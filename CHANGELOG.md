@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.27] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 4** - Vectorized Generation:
+  - **POSSalesGenerator** (`vectorized.py`): NumPy-based POS sales generation
+    - Zipf-weighted SKU selection for Pareto distribution
+    - Lumpy demand with negative binomial distribution
+    - Promotional lift (2.5x) and hangover (0.7x) effects
+    - 500K rows in ~0.07s (7M rows/sec)
+  - **OrderLinesGenerator**: Vectorized order line generation
+    - Poisson-distributed quantities
+    - Zipf SKU selection with configurable weights
+  - **ShipmentLegsGenerator**: Vectorized shipment leg generation
+    - Mode-specific delay distributions (truck, ocean, air, rail)
+    - StochasticMode support: normal (Poisson) vs disrupted (Gamma fat-tails)
+    - Vectorized datetime64 arithmetic
+  - **Structured array dtypes**: Contiguous memory layout
+    - `POS_SALES_DTYPE`: 57 bytes/row → 27MB for 500K rows
+    - `ORDER_LINES_DTYPE`, `SHIPMENT_LEGS_DTYPE`
+  - **Utility functions**: `zipf_weights()`, `lumpy_demand()`, `apply_promo_effects()`
+  - **Conversion utilities**: `structured_to_dicts()`, `structured_to_copy_lines()`
+
+### Performance
+
+- **7M rows/sec** for POS sales generation (vs estimated ~5K rows/sec before)
+- Memory-efficient: 27MB for 500K rows (contiguous NumPy arrays)
+- Batch generation with configurable batch sizes
+
+### Technical
+
+- Phase 4 of performance refactor plan (robust-frolicking-coral.md)
+- Module now 2,900+ lines across 6 files
+- Pareto validation: top 20% SKUs = 72% of volume (close to 80/20 target)
+
 ## [0.9.26] - 2025-12-18
 
 ### Added
