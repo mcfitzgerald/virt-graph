@@ -2,6 +2,115 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.21] - 2025-12-17
+
+### Added
+
+- **FMCG Schema Phase 2 Complete** - Full PostgreSQL DDL for Prism Consumer Goods:
+  - **67 tables** across 10 SCOR-DS domains (was scaffold with TODOs)
+  - **8 views** for graph operations and shortcut edges
+
+- **Domain A - SOURCE (8 tables)**:
+  - `ingredients` - Raw chemicals with CAS numbers, purity, storage requirements
+  - `suppliers` - Global supplier network (Tier 1/2/3) with qualification status
+  - `supplier_ingredients` - M:M with lead times, MOQs, costs, OTD/quality rates
+  - `certifications` - ISO, GMP, Halal, Kosher, RSPO certifications
+  - `purchase_orders`, `purchase_order_lines` - Procurement cycle
+  - `goods_receipts`, `goods_receipt_lines` - Inbound receiving with lot tracking
+
+- **Domain B - TRANSFORM (9 tables)**:
+  - `plants` - 7 manufacturing facilities globally
+  - `production_lines` - Line capacity with OEE targets
+  - `formulas`, `formula_ingredients` - Recipe/BOM with yield parameters
+  - `work_orders`, `work_order_materials` - Production scheduling
+  - `batches`, `batch_ingredients` - Lot tracking with mass balance
+  - `batch_cost_ledger` - Material, labor, energy, overhead costs
+
+- **Domain C - PRODUCT (5 tables)**:
+  - `products` - Product families (PrismWhite, ClearWave, AquaPure)
+  - `packaging_types` - Tubes, bottles, sizes, regional variants
+  - `skus` - The explosion point (~2,000 SKUs)
+  - `sku_costs` - Standard costs by type with effectivity
+  - `sku_substitutes` - Substitute/equivalent SKUs
+
+- **Domain D - ORDER (7 tables)**:
+  - `channels` - 4 channel types (B&M Large, B&M Dist, Ecom, DTC)
+  - `promotions` - Trade promos with lift multipliers and hangover effects
+  - `promotion_skus`, `promotion_accounts` - Promo targeting
+  - `orders`, `order_lines` - Customer orders (~200K)
+  - `order_allocations` - ATP/allocation of inventory to orders
+
+- **Domain E - FULFILL (11 tables)**:
+  - `divisions` - 5 global divisions (NAM, LATAM, APAC, EUR, AFR-EUR)
+  - `distribution_centers` - ~25 DCs globally
+  - `ports` - Ocean/air freight nodes for multi-leg routing
+  - `retail_accounts` - Archetype-based accounts (~100)
+  - `retail_locations` - Individual stores (~10,000)
+  - `shipments`, `shipment_lines` - Physical movements with lot tracking
+  - `inventory` - Stock by location with aging buckets
+  - `pick_waves`, `pick_wave_orders` - Picking/packing execution
+
+- **Domain E2 - LOGISTICS (7 tables)**:
+  - `carriers` - Carrier profiles with sustainability ratings
+  - `carrier_contracts`, `carrier_rates` - Rate agreements with effectivity
+  - `route_segments` - Atomic legs with seasonal flickering support
+  - `routes`, `route_segment_assignments` - Composed multi-leg routes
+  - `shipment_legs` - Actual execution per shipment
+
+- **Domain E3 - ESG/SUSTAINABILITY (5 tables)**:
+  - `emission_factors` - CO2/km by mode, fuel type, carrier
+  - `shipment_emissions` - Scope 3 Category 4 & 9 tracking
+  - `supplier_esg_scores` - EcoVadis, CDP, ISO14001, SBTi
+  - `sustainability_targets` - Division/account carbon reduction targets
+  - `modal_shift_opportunities` - Truck→rail optimization opportunities
+
+- **Domain F - PLAN (9 tables)**:
+  - `pos_sales` - Point-of-sale signals
+  - `demand_forecasts` - Statistical/ML forecasts
+  - `forecast_accuracy` - MAPE, bias tracking
+  - `consensus_adjustments` - S&OP overrides
+  - `replenishment_params` - Safety stock, reorder points
+  - `demand_allocation` - Network allocation
+  - `capacity_plans`, `supply_plans` - Resource planning
+  - `plan_exceptions` - Gap identification
+
+- **Domain G - RETURN (4 tables)**:
+  - `rma_authorizations` - Return authorization workflow
+  - `returns`, `return_lines` - Return events with condition assessment
+  - `disposition_logs` - Restock, scrap, donate decisions
+
+- **Domain H - ORCHESTRATE (6 tables)**:
+  - `kpi_thresholds` - Desmet Triangle targets (Service, Cost, Cash)
+  - `kpi_actuals` - Calculated KPI values vs thresholds
+  - `osa_metrics` - On-shelf availability (~500K measurements)
+  - `business_rules` - Policy management
+  - `risk_events` - Risk registry
+  - `audit_log` - Change tracking
+
+- **8 Views for graph operations**:
+  - `v_location_divisions` - Flattened retail hierarchy
+  - `v_transport_normalized` - UoM normalization for distances
+  - `v_batch_destinations` - Recall trace shortcut edge
+  - `v_inventory_summary` - Aggregated inventory by location
+  - `v_supplier_risk` - Supplier risk assessment
+  - `v_single_source_ingredients` - SPOF detection
+  - `v_order_fulfillment_metrics` - OTIF calculation
+  - `v_dc_utilization` - DC capacity utilization
+
+### Technical
+
+- Composite primary keys for line-item tables (order_lines, shipment_lines, etc.)
+- Generated columns for computed values (line_amount, variance_kg, etc.)
+- Polymorphic FKs using type/id pattern (origin_type/origin_id)
+- Temporal fields for flickering connections (seasonal routes, contract effectivity)
+- Deferred foreign keys for circular dependencies across domains
+
+### Changed
+
+- Archived `supply_chain_example/` to `ARCHIVE/` - FMCG example replaces it as primary demo
+
+---
+
 ## [0.9.20] - 2025-12-17
 
 ### Added
