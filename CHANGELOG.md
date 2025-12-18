@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.24] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 1** - Foundation classes for O(N) generation:
+  - New `fmcg_example/scripts/data_generation/` module (662 lines)
+  - **StaticDataPool** (`static_pool.py`): Pre-generates Faker data at startup for O(1) vectorized sampling
+    - 5,000 names, companies, emails; 3,000 first/last names; 2,000 addresses; 1,000 cities
+    - Methods: `sample_names(n)`, `sample_companies(n)`, `sample_cities(n)`, etc.
+  - **LookupIndex** (`lookup_builder.py`): Generic O(1) lookup index for grouped data
+    - Replaces O(N×M) list comprehensions with O(1) dict lookups
+    - Supports composite keys for multi-column lookups
+  - **LookupBuilder**: Factory with pre-defined builders for FMCG FK patterns
+    - `build_po_lines_by_po_id()`, `build_formula_ings_by_formula_id()`
+    - `build_locations_by_account_id()`, `build_order_lines_by_order_id()`
+
+### Technical
+
+- Phase 1 of performance refactor plan (robust-frolicking-coral.md)
+- Targets: <5 min generation (from ~15-20 min), <500MB memory (from ~4.5GB)
+- Phases 2-5 to follow: StreamingWriter, RealismMonitor, vectorized generators
+
 ## [0.9.23] - 2025-12-18
 
 ### Added
