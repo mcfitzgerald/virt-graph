@@ -447,6 +447,24 @@ class SupplyChainGenerator:
             for sid in tier_ids:
                 self.supplier_connection_counts[sid] = 0
 
+        # Seed hub buyers for scale-free network structure
+        # Pre-seeding gives some buyers high initial "attractiveness" for preferential attachment
+        # This creates realistic hub structure where ~5% of buyers attract many sellers
+        # Reference: https://pmc.ncbi.nlm.nih.gov/articles/PMC6214257/
+        t2_hubs = random.sample(
+            self.supplier_ids_by_tier[2],
+            k=max(1, len(self.supplier_ids_by_tier[2]) // 20)  # ~5% of T2 suppliers
+        )
+        for hub_id in t2_hubs:
+            self.supplier_connection_counts[hub_id] = random.randint(15, 30)
+
+        t1_hubs = random.sample(
+            self.supplier_ids_by_tier[1],
+            k=max(1, len(self.supplier_ids_by_tier[1]) // 20)  # ~5% of T1 suppliers
+        )
+        for hub_id in t1_hubs:
+            self.supplier_connection_counts[hub_id] = random.randint(20, 40)
+
         # First, ensure named supplier chain exists:
         # Eastern Electronics (T3, id=7) → Pacific Components (T2, id=4) → Acme Corp (T1, id=1)
         named_supply_chain = [
@@ -481,8 +499,9 @@ class SupplyChainGenerator:
         random.shuffle(t3_shuffled)
 
         for t3_id in t3_shuffled:
-            # Each T3 sells to 1-3 T2 suppliers, selected by preferential attachment
-            num_buyers = random.randint(1, 3)
+            # Each T3 sells to 3-8 T2 suppliers, selected by preferential attachment
+            # Higher fan-out creates realistic scale-free network (research: OEMs have ~250 T1s)
+            num_buyers = random.randint(3, 8)
 
             # Get candidates (T2 suppliers not already connected to this T3)
             candidates = [t2 for t2 in self.supplier_ids_by_tier[2] if (t3_id, t2) not in existing_rels]
@@ -518,8 +537,9 @@ class SupplyChainGenerator:
         random.shuffle(t2_shuffled)
 
         for t2_id in t2_shuffled:
-            # Each T2 sells to 1-2 T1 suppliers
-            num_buyers = random.randint(1, 2)
+            # Each T2 sells to 2-5 T1 suppliers
+            # Higher fan-out for realistic hub formation
+            num_buyers = random.randint(2, 5)
 
             # Get candidates (T1 suppliers not already connected to this T2)
             candidates = [t1 for t1 in self.supplier_ids_by_tier[1] if (t2_id, t1) not in existing_rels]
@@ -548,11 +568,11 @@ class SupplyChainGenerator:
                     self.supplier_connection_counts[t1_id] = self.supplier_connection_counts.get(t1_id, 0) + 1
                     rel_id += 1
 
-        # Identify super hub suppliers (10x median connections)
+        # Identify super hub suppliers (30x median connections)
         connection_values = list(self.supplier_connection_counts.values())
         if connection_values:
             median_connections = float(np.median(connection_values))
-            threshold = max(median_connections * 10, 5)  # At least 5 connections to be a hub
+            threshold = max(median_connections * 30, 10)  # At least 10 connections to be a hub
             self.super_hub_supplier_ids = [
                 sid for sid, count in self.supplier_connection_counts.items()
                 if count >= threshold
@@ -2376,6 +2396,9 @@ class SupplyChainGenerator:
             ("FC-2024-003", 1, dc_ids[1] if len(dc_ids) > 1 else 1, date(2024, 1, 1), 200, "machine_learning"),
         ]
 
+        # Track existing (product_id, facility_id, forecast_date) to avoid duplicates
+        existing_forecasts: set[tuple[int, int, date]] = set()
+
         for fc_num, prod_id, fac_id, fc_date, qty, fc_type in named_forecasts:
             product = next((p for p in self.products if p["id"] == prod_id), None)
             category = product.get("category", "Industrial") if product else "Industrial"
@@ -2396,6 +2419,7 @@ class SupplyChainGenerator:
                 "confidence_level": round(random.uniform(0.70, 0.95), 2),
                 "seasonality_factor": round(seasonality, 2),
             })
+            existing_forecasts.add((prod_id, fac_id, fc_date))
             forecast_id += 1
 
         # Generate remaining forecasts
@@ -2429,6 +2453,11 @@ class SupplyChainGenerator:
                         break
 
                     fc_date = date(2024, 1, 1) + timedelta(days=month_offset * 30)
+
+                    # Skip if this combination already exists (from named forecasts)
+                    if (prod_id, dc_id, fc_date) in existing_forecasts:
+                        continue
+
                     month = fc_date.month
                     seasonality = 1.0 + 0.3 * math.sin(2 * math.pi * (month - phase) / 12)
 
@@ -2460,6 +2489,7 @@ class SupplyChainGenerator:
                         "confidence_level": round(random.uniform(0.60, 0.98), 2),
                         "seasonality_factor": round(seasonality * noise_factor, 2),
                     })
+                    existing_forecasts.add((prod_id, dc_id, fc_date))
                     forecast_id += 1
                     generated += 1
 

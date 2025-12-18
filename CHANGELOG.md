@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.20] - 2025-12-17
+
+### Added
+
+- **FMCG Example Scaffold** (`fmcg_example/`) - New "Prism Consumer Goods" example for FMCG supply chain:
+  - **Phase 1 Complete**: Full directory structure with 17 scaffolded files
+  - Demonstrates horizontal fan-out (1 batch → 50,000 retail nodes) vs supply_chain_example's deep BOM recursion
+  - Full SCOR-DS coverage: Plan/Source/Transform/Order/Fulfill/Return/Orchestrate domains
+  - Colgate-Palmolive inspired surrogate with 5 divisions, 7 plants, ~60 tables planned
+
+- **FMCG PostgreSQL setup** (`fmcg_example/postgres/`):
+  - `docker-compose.yml` - Port 5433 (avoids conflict with supply_chain_example)
+  - `schema.sql` - Scaffolded ~60 tables organized by SCOR-DS domain with TODO markers
+  - `seed.sql` - Placeholder for ~4M rows of generated data
+
+- **FMCG Neo4j setup** (`fmcg_example/neo4j/`):
+  - `docker-compose.yml` - Ports 7475/7688 (avoids conflict)
+  - `migrate.py` - Stub for ontology-driven PostgreSQL → Neo4j migration
+
+- **FMCG Ontology scaffold** (`fmcg_example/ontology/prism_fmcg.yaml`):
+  - ~35 entity classes outlined across SCOR-DS domains
+  - ~40 relationships with operation type mappings
+  - Modeling patterns documented: dual modeling, composite keys, temporal bounds, shortcut edges
+
+- **FMCG Data generation** (`fmcg_example/scripts/`):
+  - `generate_data.py` - Distribution helpers (Zipf, Barabási-Albert, lumpy demand), named entity fixtures
+  - `validate_realism.sql` - FMCG benchmark validation queries (Pareto 80/20, inventory turns 8-12, OTIF 95%+)
+
+- **FMCG Beast Mode tests** (`fmcg_example/tests/`):
+  - `test_recall_trace.py` - traverse() tests: 1 batch → 47,500 orders in <5s
+  - `test_landed_cost.py` - path_aggregate() tests: full margin calculation
+  - `test_spof_risk.py` - resilience_analysis() tests: single-source detection
+  - `test_osa_analysis.py` - centrality() tests: DC bottleneck correlation
+  - `test_ontology.py` - Two-layer validation tests
+  - `conftest.py` - Fixtures with performance thresholds and named entities
+
+- **FMCG Documentation**:
+  - `FMCG_README.md` - Quick start and directory overview
+  - `docs/prism-fmcg.md` - Domain documentation with SCOR-DS model, Desmet Triangle, benchmarks
+
+- **Named entities for deterministic testing**:
+  - `B-2024-RECALL-001` - Contaminated batch (recall trace)
+  - `ACCT-MEGA-001` - MegaMart hub (4,500 stores, 25% of orders)
+  - `SUP-PALM-MY-001` - Single-source Palm Oil supplier (SPOF)
+  - `DC-NAM-CHI-001` - Bottleneck DC Chicago (40% NAM volume)
+  - `PROMO-BF-2024` - Black Friday promotion (bullwhip effect)
+  - `LANE-SH-LA-001` - Seasonal Shanghai→LA lane
+
+### Technical
+
+- All files contain TODO markers for multi-session development tracking
+- Tests use `@pytest.mark.skip(reason="Pending schema implementation")`
+- Cross-references to `magical-launching-forest.md` specification throughout
+
+---
+
 ## [0.9.19] - 2025-12-16
 
 ### Added

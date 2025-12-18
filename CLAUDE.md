@@ -89,14 +89,6 @@ traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
          edge_from_col="seller_id", edge_to_col="buyer_id", start_id=123)
 ```
 
-### Supply Chain Example
-
-`supply_chain_example/` contains a complete working example:
-- `ontology/supply_chain.yaml` - Domain ontology (9 entities, 15 relationships)
-- `postgres/` - Docker setup and schema/seed SQL
-- `neo4j/` - Docker setup for benchmark comparison
-- `tests/` - Comprehensive handler tests
-- `questions.md` - 60 benchmark questions
 
 ### Database Access
 
