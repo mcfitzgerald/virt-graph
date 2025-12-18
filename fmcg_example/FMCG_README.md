@@ -80,7 +80,7 @@ fmcg_example/
 |-------|-------------|--------|
 | 1 | Directory Structure | ✅ Complete |
 | 2 | Schema (67 tables + 8 views) | ✅ Complete |
-| 3 | Ontology (LinkML + VG) | 📋 TODO |
+| 3 | Ontology (LinkML + VG) | ✅ Complete |
 | 4 | Data Generator (~4M rows) | 📋 TODO |
 | 5 | Beast Mode Tests | 📋 TODO |
 | 6 | Neo4j Comparison | 📋 TODO |
