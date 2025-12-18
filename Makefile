@@ -5,7 +5,8 @@
         validate-ontology validate-linkml validate-vg \
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
         db-up db-down db-reset db-logs \
-        neo4j-up neo4j-down neo4j-stop neo4j-reset neo4j-cycle neo4j-logs validate-neo4j
+        neo4j-up neo4j-down neo4j-stop neo4j-reset neo4j-cycle neo4j-logs validate-neo4j \
+        fmcg-generate fmcg-validate fmcg-db-up fmcg-db-down fmcg-db-reset
 
 # Default target
 help:
@@ -46,6 +47,13 @@ help:
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make serve-docs       Serve documentation locally"
+	@echo ""
+	@echo "FMCG Example (Prism Consumer Goods):"
+	@echo "  make fmcg-generate    Generate ~7.5M rows of FMCG data"
+	@echo "  make fmcg-validate    Validate data without writing SQL"
+	@echo "  make fmcg-db-up       Start FMCG PostgreSQL"
+	@echo "  make fmcg-db-down     Stop FMCG PostgreSQL"
+	@echo "  make fmcg-db-reset    Reset FMCG PostgreSQL (wipe and reload)"
 
 # Setup
 install:
@@ -132,3 +140,20 @@ validate-neo4j:  ## Validate Neo4j graph against ontology
 # Documentation
 serve-docs:
 	poetry run mkdocs serve
+
+# FMCG Example (Prism Consumer Goods)
+fmcg-generate:  ## Generate FMCG seed data (~7.5M rows)
+	poetry run python fmcg_example/scripts/generate_data.py --output fmcg_example/postgres/seed.sql
+
+fmcg-validate:  ## Validate FMCG data generation without writing SQL
+	poetry run python fmcg_example/scripts/generate_data.py --validate-only
+
+fmcg-db-up:  ## Start FMCG PostgreSQL
+	docker-compose -f fmcg_example/postgres/docker-compose.yml up -d
+
+fmcg-db-down:  ## Stop FMCG PostgreSQL
+	docker-compose -f fmcg_example/postgres/docker-compose.yml down
+
+fmcg-db-reset:  ## Reset FMCG PostgreSQL (wipe and reload)
+	docker-compose -f fmcg_example/postgres/docker-compose.yml down -v
+	docker-compose -f fmcg_example/postgres/docker-compose.yml up -d

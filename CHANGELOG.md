@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.23] - 2025-12-18
+
+### Added
+
+- **FMCG Data Generator Phase 4 - Level 9 Complete** - Order lines and planning tables:
+  - **order_lines (~600K)**: Channel-based line distribution (DTC: 1-4, B2M Large: 50-200 lines/order), Zipf-weighted SKU selection for 80/20 Pareto distribution
+  - **order_allocations (~350K)**: ATP allocation for fulfilled orders, 70% single / 30% split allocations across DCs, links to batches
+  - **pick_waves (~25K)**: Daily warehouse waves per DC, 3 types (standard 85%, rush 10%, replenishment 5%)
+  - **supply_plans (~50K)**: Weekly plans (52 weeks × SKU-destination), source types (production 70%, procurement 20%, transfer 10%)
+  - **plan_exceptions (~20K)**: 6 exception types with severity distribution, named problem node references (Sorbitol, Palm Oil shortages)
+
+- **Realistic B2B patterns based on research**:
+  - Wave sizing: 4-12 orders/wave for handheld picking (per ShipBob, NetSuite benchmarks)
+  - ATP formula: On-hand + Expected - Allocated - Backorders
+  - Exception types: demand_spike, capacity_shortage, material_shortage, lead_time_violation, inventory_excess, supply_disruption
+
+### Technical
+
+- Total rows with Level 9: ~2.8M (up from ~1.79M)
+- Level 9 completes Step 5 of Phase 4 plan (jolly-sauteeing-fern.md)
+- Levels 10-14 remain as stubs for future implementation
+
 ## [0.9.22] - 2025-12-17
 
 ### Added
