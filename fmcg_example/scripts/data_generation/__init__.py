@@ -32,11 +32,16 @@ Phase 4 - Vectorized Generation:
 Phase 5 - Chaos Injection:
 - RiskEventManager: Risk event triggering and override configuration
 - QuirksManager: Behavioral pathology injection (bullwhip, phantom inventory, etc.)
+
+Phase 6 - Multi-Promo Calendar:
+- PromoCalendar: Pre-computed (week, account, sku) -> PromoEffect index
+- PromoEffect: Promo effect data for lift/hangover application
 """
 
 from pathlib import Path
 
 from .bottleneck_fixes import LookupCache, PooledFaker
+from .promo_calendar import PromoCalendar, PromoEffect, date_to_week
 from .quirks import Quirk, QuirksManager
 from .risk_events import RiskEvent, RiskEventManager
 from .lookup_builder import LookupBuilder, LookupIndex
@@ -130,6 +135,10 @@ __all__ = [
     "RiskEvent",
     "QuirksManager",
     "Quirk",
+    # Phase 6: Multi-Promo Calendar
+    "PromoCalendar",
+    "PromoEffect",
+    "date_to_week",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]

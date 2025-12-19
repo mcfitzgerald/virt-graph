@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.31] - 2025-12-19
+
+### Added
+
+- **Multi-Promo Calendar System (Step 1)** - Foundation for all 100 promotions affecting POS demand:
+  - **PromoCalendar** (`promo_calendar.py`): Pre-computed promotion calendar for vectorized lookups
+    - O(1) index structure: `(week, account_id, sku_id) → PromoEffect`
+    - Overlapping promotions resolved with max-lift strategy
+    - Hangover effects applied when no follow-on promo exists
+    - Location-to-account mapping for retail hierarchy traversal
+  - **PromoEffect**: Frozen dataclass with lift/hangover multipliers and discount
+  - **date_to_week()**: Helper to convert dates to ISO week numbers
+  - **Vectorized lookup**: `get_effects_vectorized()` processes 500K rows in <0.1s (10M rows/sec)
+  - **Statistics tracking**: promo_count, active_weeks, targeted_skus, targeted_accounts
+
+### Technical
+
+- Step 1 of multi-promo enhancement plan (typed-waddling-coral.md)
+- Steps 2-4 pending: POSSalesGenerator integration, Level 8 update, validation
+- Performance validated: 10x faster than 1.5s target at 500K rows
+- Module exports added to `data_generation/__init__.py`
+
 ## [0.9.30] - 2025-12-18
 
 ### Added
