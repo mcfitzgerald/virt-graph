@@ -29,13 +29,16 @@ Phase 4 - Vectorized Generation:
 - ShipmentLegsGenerator: Vectorized shipment legs with delay distributions
 - Structured array dtypes and conversion utilities
 
-Future Phases (to be implemented):
-- Phase 5: Integration with generate_data.py
+Phase 5 - Chaos Injection:
+- RiskEventManager: Risk event triggering and override configuration
+- QuirksManager: Behavioral pathology injection (bullwhip, phantom inventory, etc.)
 """
 
 from pathlib import Path
 
 from .bottleneck_fixes import LookupCache, PooledFaker
+from .quirks import Quirk, QuirksManager
+from .risk_events import RiskEvent, RiskEventManager
 from .lookup_builder import LookupBuilder, LookupIndex
 from .realism_monitor import (
     CardinalityEstimator,
@@ -122,6 +125,11 @@ __all__ = [
     "apply_promo_effects",
     "structured_to_dicts",
     "structured_to_copy_lines",
+    # Phase 5: Chaos Injection
+    "RiskEventManager",
+    "RiskEvent",
+    "QuirksManager",
+    "Quirk",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]
