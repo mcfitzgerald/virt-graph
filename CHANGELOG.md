@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.35] - 2025-12-19
+
+### Added
+
+- **Phase A: Generator Skeleton** (`data_generation/generators/`): Foundation for modular `generate_data.py` refactor
+  - `GeneratorContext` dataclass: Shared state for all level generators
+    - Core random state (seed, rng, fake, pooled_faker, base_year)
+    - 30+ ID tracking dicts for referential integrity (organized by level 0-13)
+    - Shared data storage (`data: dict[str, list[dict]]`)
+    - Performance modules (pool, realism_monitor, risk_manager, quirks_manager)
+    - `build_cache(level)` for lazy LookupCache building
+    - `init_data_tables()` initializes all 70 tables
+  - `BaseLevelGenerator` ABC: Abstract base class for level-specific generators
+    - Abstract `generate()` method
+    - Convenience properties: `rng`, `fake`, `data`
+
+### Technical
+
+- Part of modularization plan (effervescent-shimmying-blum.md)
+- Phase A complete: skeleton ready for Phase B (constants extraction)
+- No changes to existing `generate_data.py` behavior
+
 ## [0.9.34] - 2025-12-19
 
 ### Changed

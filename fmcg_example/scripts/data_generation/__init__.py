@@ -36,6 +36,10 @@ Phase 5 - Chaos Injection:
 Phase 6 - Multi-Promo Calendar:
 - PromoCalendar: Pre-computed (week, account, sku) -> PromoEffect index
 - PromoEffect: Promo effect data for lift/hangover application
+
+Phase 7 - Modular Generators (see effervescent-shimmying-blum.md):
+- GeneratorContext: Shared state dataclass passed to all generators
+- BaseLevelGenerator: Abstract base class for level-specific generators
 """
 
 from pathlib import Path
@@ -82,6 +86,7 @@ from .vectorized import (
     structured_to_dicts,
     zipf_weights,
 )
+from .generators import BaseLevelGenerator, GeneratorContext
 
 # Path to default benchmark manifest
 BENCHMARK_MANIFEST_PATH = Path(__file__).parent / "benchmark_manifest.json"
@@ -139,6 +144,9 @@ __all__ = [
     "PromoCalendar",
     "PromoEffect",
     "date_to_week",
+    # Phase 7: Modular Generators
+    "GeneratorContext",
+    "BaseLevelGenerator",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]
