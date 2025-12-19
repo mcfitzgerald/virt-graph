@@ -5,28 +5,32 @@ Generate synthetic FMCG supply chain data for Prism Consumer Goods.
 Spec: magical-launching-forest.md Phase 4
 Detailed Plan: jolly-sauteeing-fern.md
 
-Target data volumes (~7.5M rows across 67 tables):
+Target data volumes (~11.6M rows across 67 tables):
+
+Note: Row counts reflect realistic B2B CPG model (Colgate→Retailer pattern).
+Order lines use industry benchmarks: avg 16 lines/order for big box retailers.
+See: https://impactwms.com/2020/09/01/know-your-order-profile
 
 DOMAIN A - SOURCE (~200K rows):
 - 50 ingredients (ING-xxx codes, CAS numbers)
 - 200 suppliers (tiered: 40 T1, 80 T2, 80 T3)
-- 400 supplier-ingredient links with lead times, MOQs
+- 130 supplier-ingredient links with lead times, MOQs
 - 500 certifications (ISO, GMP, Halal, Kosher, RSPO)
 - 25,000 purchase orders
 - 75,000 purchase order lines
 - 20,000 goods receipts
 - 60,000 goods receipt lines
 
-DOMAIN B - TRANSFORM (~150K rows):
+DOMAIN B - TRANSFORM (~900K rows):
 - 7 plants (Tennessee, Texas, Brazil, China, India, Poland, Turkey)
 - 35 production lines (~5 per plant)
-- 150 formulas (recipes for ~50 products x 3 variants)
-- 1,500 formula ingredients (avg 10 ingredients per formula)
+- 45 formulas (recipes)
+- 450 formula ingredients (avg 10 ingredients per formula)
 - 50,000 work orders
 - 150,000 work order materials
-- 50,000 batches (production lots)
+- 48,000 batches (production lots)
 - 150,000 batch ingredients
-- 50,000 batch cost ledger entries
+- 48,000 batch cost ledger entries
 
 DOMAIN C - PRODUCT (~10K rows):
 - 3 products (PrismWhite, ClearWave, AquaPure)
@@ -35,31 +39,33 @@ DOMAIN C - PRODUCT (~10K rows):
 - 2,000 SKU costs
 - 500 SKU substitute links
 
-DOMAIN D - ORDER (~600K rows):
+DOMAIN D - ORDER (~7M rows):
 - 4 channels (B&M Large, B&M Dist, Ecom, DTC)
 - 100 promotions (with temporal effectivity and hangover)
 - 200,000 orders
-- 600,000 order lines
+- 3,200,000 order lines (realistic B2B: 10-40 lines for big box)
+- 3,700,000 order allocations
 
-DOMAIN E - FULFILL (~800K rows):
+DOMAIN E - FULFILL (~2M rows):
 - 5 divisions (NAM, LATAM, APAC, EUR, AFR-EUR)
 - 25 distribution centers
 - 20 ports
-- 100 retail accounts (archetypes)
+- 86 retail accounts (archetypes)
 - 10,000 retail locations (stores)
 - 180,000 shipments
-- 540,000 shipment lines (with batch_fraction for splitting)
-- 50,000 inventory records
-- 5,000 pick waves
+- 1,000,000 shipment lines (with batch_fraction for splitting)
+- 23,000 inventory records
+- 25,000 pick waves
+- 727,000 pick wave orders
 
-DOMAIN E2 - LOGISTICS (~50K rows):
+DOMAIN E2 - LOGISTICS (~260K rows):
 - 20 carriers
 - 100 carrier contracts (temporal effectivity)
 - 1,000 carrier rates
 - 200 route segments (atomic legs)
 - 50 routes (composed, multi-leg)
 - 500 route segment assignments
-- 180,000 shipment legs
+- 261,000 shipment legs (multi-leg routing)
 
 DOMAIN E3 - ESG (~200K rows):
 - 100 emission factors
@@ -68,7 +74,7 @@ DOMAIN E3 - ESG (~200K rows):
 - 50 sustainability targets
 - 100 modal shift opportunities
 
-DOMAIN F - PLAN (~600K rows):
+DOMAIN F - PLAN (~900K rows):
 - 500,000 POS sales (52 weeks x ~10K stores x ~10 SKUs per store)
 - 100,000 demand forecasts
 - 10,000 forecast accuracy records
@@ -76,22 +82,22 @@ DOMAIN F - PLAN (~600K rows):
 - 25,000 replenishment params
 - 50,000 demand allocations
 - 10,000 capacity plans
-- 10,000 supply plans
-- 5,000 plan exceptions
+- 50,000 supply plans
+- 20,000 plan exceptions
 
-DOMAIN G - RETURN (~20K rows):
+DOMAIN G - RETURN (~80K rows):
+- 10,000 RMA authorizations
 - 10,000 returns
 - 30,000 return lines
 - 30,000 disposition logs
-- 10,000 RMA authorizations
 
-DOMAIN H - ORCHESTRATE (~500K rows):
-- 50 KPI thresholds (Desmet Triangle)
-- 50,000 KPI actuals
-- 500,000 OSA metrics
+DOMAIN H - ORCHESTRATE (~570K rows):
+- 20 KPI thresholds (Desmet Triangle)
+- 1,000 KPI actuals (weekly measurements)
+- 520,000 OSA metrics (on-shelf availability)
 - 100 business rules
 - 500 risk events
-- 50,000 audit log entries
+- 46,000 audit log entries
 
 NAMED ENTITIES (Deterministic Testing - Section 4.8):
 - B-2024-RECALL-001: Contaminated Sorbitol batch -> 500 stores
@@ -111,7 +117,7 @@ DATA GENERATION PRINCIPLES (Section 4):
 - Temporal flickering for seasonal routes and carrier contracts
 - FMCG benchmarks: 8-12 inventory turns, 95%+ OTIF, 92-95% OSA
 
-Implementation Status: Step 1 - CLI and Setup Complete
+Implementation Status: Complete (Levels 0-14, v0.9.29)
 """
 
 import argparse
