@@ -559,7 +559,7 @@ CREATE TABLE promotions (
     promo_code VARCHAR(30) UNIQUE NOT NULL,        -- e.g., PROMO-BF-2024
     name VARCHAR(200) NOT NULL,
     promo_type VARCHAR(30) NOT NULL
-        CHECK (promo_type IN ('price_discount', 'bogo', 'display', 'feature', 'tpr')),
+        CHECK (promo_type IN ('price_discount', 'bogo', 'display', 'feature', 'tpr', 'seasonal')),
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     lift_multiplier DECIMAL(5,2) NOT NULL,         -- 2.50 = 150% increase
