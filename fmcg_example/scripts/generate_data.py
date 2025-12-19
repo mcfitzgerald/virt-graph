@@ -4244,81 +4244,191 @@ class FMCGDataGenerator:
                 }
             )
 
-        # --- PROMOTIONS (~100 including PROMO-BF-2024) ---
+        # --- PROMOTIONS (~250 realistic mix) ---
+        # Based on industry research: 25-30% of FMCG volume sold on promotion
+        # Mix: National FSI (48), Account TPRs (150), Seasonal (12), BOGO (40)
         promo_id = 1
-        promo_types = ["price_discount", "bogo", "display", "feature", "tpr"]
+        account_ids_list = list(self.retail_account_ids.values())
+        sku_ids_list = list(self.sku_ids.values())
 
-        # Named entity: Black Friday 2024 (PROMO-BF-2024)
-        self.promotion_ids["PROMO-BF-2024"] = promo_id
-        self.data["promotions"].append(
-            {
-                "id": promo_id,
-                "promo_code": "PROMO-BF-2024",
-                "name": "Black Friday 2024 Mega Sale",
-                "promo_type": "price_discount",
-                "start_date": date(2024, 11, 25),  # Week 48 start
-                "end_date": date(2024, 12, 1),  # Week 48 end
-                "lift_multiplier": 3.0,  # 3x demand spike
-                "hangover_multiplier": 0.60,  # 40% drop post-promo
-                "hangover_weeks": 2,
-                "discount_percent": 25.0,
-                "trade_spend_budget": 5_000_000,
-                "status": "completed",
-                "notes": "Annual Black Friday event - highest volume week",
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-        promo_id += 1
+        # =====================================================================
+        # 1. SEASONAL EVENTS (12 promos) - Major retail calendar events
+        # All accounts, broad SKU coverage, 2-4 weeks, high lift
+        # =====================================================================
+        seasonal_events = [
+            ("New Year Reset", date(2024, 1, 1), 21, 2.5),
+            ("Valentine's Day", date(2024, 2, 5), 14, 2.0),
+            ("Easter/Spring", date(2024, 3, 25), 14, 2.2),
+            ("Memorial Day", date(2024, 5, 20), 14, 2.0),
+            ("July 4th Summer", date(2024, 6, 24), 21, 2.3),
+            ("Back to School", date(2024, 8, 5), 28, 2.5),
+            ("Labor Day", date(2024, 8, 26), 14, 2.0),
+            ("Halloween", date(2024, 10, 14), 21, 2.2),
+            ("Thanksgiving", date(2024, 11, 18), 14, 2.8),
+            ("Black Friday", date(2024, 11, 25), 7, 3.5),  # PROMO-BF-2024
+            ("Christmas", date(2024, 12, 2), 21, 2.5),
+            ("Year End Clearance", date(2024, 12, 26), 7, 2.0),
+        ]
 
-        # Generate 99 more promotions throughout the year
-        for _ in range(99):
-            code = f"PROMO-{self.base_year}-{promo_id:03d}"
+        for event_name, start, duration, lift in seasonal_events:
+            code = f"PROMO-BF-2024" if "Black Friday" in event_name else f"PROMO-SEASONAL-{promo_id:03d}"
             self.promotion_ids[code] = promo_id
 
-            promo_type = random.choice(promo_types)
-            start = self.fake.date_between(
-                start_date=date(self.base_year, 1, 1),
-                end_date=date(self.base_year, 12, 15),
-            )
-            duration = random.choice([7, 14, 21, 28])
             end = start + timedelta(days=duration)
-
-            lift = random.uniform(1.3, 2.5)
-            hangover = random.uniform(0.60, 0.85)
+            # Seasonal events target 300-600 SKUs (15-30% of catalog)
+            num_skus = random.randint(300, 600)
 
             self.data["promotions"].append(
                 {
                     "id": promo_id,
                     "promo_code": code,
-                    "name": f"{random.choice(['Spring', 'Summer', 'Fall', 'Winter', 'Holiday', 'Back to School', 'Clearance'])} {promo_type.replace('_', ' ').title()}",
-                    "promo_type": promo_type,
+                    "name": f"{event_name} {self.base_year}",
+                    "promo_type": "seasonal",
                     "start_date": start,
                     "end_date": end,
-                    "lift_multiplier": round(lift, 2),
-                    "hangover_multiplier": round(hangover, 2),
-                    "hangover_weeks": random.randint(1, 3),
-                    "discount_percent": round(random.uniform(10, 40), 1)
-                    if promo_type == "price_discount"
-                    else None,
-                    "trade_spend_budget": round(random.uniform(50000, 500000), 2),
-                    "status": "completed"
-                    if end < date.today()
-                    else "active"
-                    if start <= date.today()
-                    else "planned",
+                    "lift_multiplier": round(lift + random.uniform(-0.2, 0.2), 2),
+                    "hangover_multiplier": round(random.uniform(0.55, 0.70), 2),
+                    "hangover_weeks": 2,
+                    "discount_percent": round(random.uniform(15, 30), 1),
+                    "trade_spend_budget": round(random.uniform(500000, 2000000), 2),
+                    "status": "completed" if end < date.today() else "active",
+                    "notes": f"Seasonal event: {event_name}",
+                    "created_at": now,
+                    "updated_at": now,
+                    "_promo_class": "seasonal",  # Internal marker for SKU/account assignment
+                    "_target_sku_count": num_skus,
+                }
+            )
+            promo_id += 1
+
+        # =====================================================================
+        # 2. NATIONAL FSI/CIRCULAR PROMOS (52 promos) - Weekly circular features
+        # All accounts, 150-400 hero SKUs, 1 week, moderate lift
+        # =====================================================================
+        for week_num in range(1, 53):  # Full 52 weeks of circulars
+            week_start = date(2024, 1, 1) + timedelta(weeks=week_num - 1)
+
+            code = f"PROMO-FSI-W{week_num:02d}"
+            self.promotion_ids[code] = promo_id
+
+            # FSI features 150-400 SKUs (broader coverage for realistic penetration)
+            num_skus = random.randint(150, 400)
+
+            self.data["promotions"].append(
+                {
+                    "id": promo_id,
+                    "promo_code": code,
+                    "name": f"Weekly Circular W{week_num}",
+                    "promo_type": "feature",
+                    "start_date": week_start,
+                    "end_date": week_start + timedelta(days=6),
+                    "lift_multiplier": round(random.uniform(1.5, 2.0), 2),
+                    "hangover_multiplier": round(random.uniform(0.75, 0.85), 2),
+                    "hangover_weeks": 1,
+                    "discount_percent": round(random.uniform(15, 25), 1),
+                    "trade_spend_budget": round(random.uniform(100000, 300000), 2),
+                    "status": "completed" if week_start < date.today() else "active",
                     "notes": None,
                     "created_at": now,
                     "updated_at": now,
+                    "_promo_class": "fsi",
+                    "_target_sku_count": num_skus,
+                }
+            )
+            promo_id += 1
+
+        # =====================================================================
+        # 3. ACCOUNT-SPECIFIC TPRs (150 promos) - Retailer-negotiated deals
+        # Single account, 20-50 SKUs, 1-2 weeks, deep discount/high lift
+        # =====================================================================
+        # 3 TPRs per account across the year
+        for acct_id in account_ids_list:
+            for tpr_num in range(3):
+                code = f"PROMO-TPR-{promo_id:03d}"
+                self.promotion_ids[code] = promo_id
+
+                # Spread TPRs across the year
+                quarter_start = date(2024, 1 + tpr_num * 4, 1)
+                start = self.fake.date_between(
+                    start_date=quarter_start,
+                    end_date=quarter_start + timedelta(days=100),
+                )
+                duration = random.choice([7, 14])
+                end = start + timedelta(days=duration)
+
+                # TPRs have high lift (deep discount)
+                num_skus = random.randint(20, 50)
+
+                self.data["promotions"].append(
+                    {
+                        "id": promo_id,
+                        "promo_code": code,
+                        "name": f"TPR Q{tpr_num + 1} Account {acct_id}",
+                        "promo_type": "tpr",
+                        "start_date": start,
+                        "end_date": end,
+                        "lift_multiplier": round(random.uniform(2.0, 3.0), 2),
+                        "hangover_multiplier": round(random.uniform(0.60, 0.75), 2),
+                        "hangover_weeks": 1,
+                        "discount_percent": round(random.uniform(20, 40), 1),
+                        "trade_spend_budget": round(random.uniform(20000, 100000), 2),
+                        "status": "completed" if end < date.today() else "active",
+                        "notes": None,
+                        "created_at": now,
+                        "updated_at": now,
+                        "_promo_class": "tpr",
+                        "_target_account_id": acct_id,  # Single account
+                        "_target_sku_count": num_skus,
+                    }
+                )
+                promo_id += 1
+
+        # =====================================================================
+        # 4. BOGO/MULTI-BUY PROMOS (40 promos) - Volume drivers
+        # Most accounts (30-50), 10-30 SKUs, 1-2 weeks, very high lift
+        # =====================================================================
+        for _ in range(40):
+            code = f"PROMO-BOGO-{promo_id:03d}"
+            self.promotion_ids[code] = promo_id
+
+            start = self.fake.date_between(
+                start_date=date(self.base_year, 1, 1),
+                end_date=date(self.base_year, 12, 1),
+            )
+            duration = random.choice([7, 14])
+            end = start + timedelta(days=duration)
+
+            num_skus = random.randint(10, 30)
+            num_accounts = random.randint(30, 50)
+
+            self.data["promotions"].append(
+                {
+                    "id": promo_id,
+                    "promo_code": code,
+                    "name": f"Buy More Save More #{promo_id}",
+                    "promo_type": "bogo",
+                    "start_date": start,
+                    "end_date": end,
+                    "lift_multiplier": round(random.uniform(2.5, 4.0), 2),
+                    "hangover_multiplier": round(random.uniform(0.50, 0.65), 2),
+                    "hangover_weeks": 2,
+                    "discount_percent": round(random.uniform(25, 50), 1),
+                    "trade_spend_budget": round(random.uniform(50000, 200000), 2),
+                    "status": "completed" if end < date.today() else "active",
+                    "notes": None,
+                    "created_at": now,
+                    "updated_at": now,
+                    "_promo_class": "bogo",
+                    "_target_sku_count": num_skus,
+                    "_target_account_count": num_accounts,
                 }
             )
             promo_id += 1
 
         # --- PROMOTION_SKUS (link promotions to SKUs) ---
-        sku_ids_list = list(self.sku_ids.values())
+        # Use _target_sku_count from promo or default
         for promo in self.data["promotions"]:
-            # Each promotion applies to 5-50 SKUs
-            num_skus = random.randint(5, 50)
+            num_skus = promo.get("_target_sku_count", random.randint(20, 100))
             promo_skus = random.sample(sku_ids_list, min(num_skus, len(sku_ids_list)))
             for sku_id in promo_skus:
                 self.data["promotion_skus"].append(
@@ -4336,13 +4446,33 @@ class FMCGDataGenerator:
                 )
 
         # --- PROMOTION_ACCOUNTS (link promotions to retail accounts) ---
-        account_ids_list = list(self.retail_account_ids.values())
+        # Use promo class to determine account targeting
         for promo in self.data["promotions"]:
-            # Each promotion runs at 10-50 accounts
-            num_accounts = random.randint(10, 50)
-            promo_accounts = random.sample(
-                account_ids_list, min(num_accounts, len(account_ids_list))
-            )
+            promo_class = promo.get("_promo_class", "default")
+
+            if promo_class == "tpr":
+                # TPRs target single account
+                target_acct = promo.get("_target_account_id")
+                if target_acct:
+                    promo_accounts = [target_acct]
+                else:
+                    promo_accounts = [random.choice(account_ids_list)]
+            elif promo_class in ("seasonal", "fsi"):
+                # Seasonal and FSI are national - all accounts
+                promo_accounts = account_ids_list
+            elif promo_class == "bogo":
+                # BOGO targets most accounts
+                num_accounts = promo.get("_target_account_count", random.randint(30, 50))
+                promo_accounts = random.sample(
+                    account_ids_list, min(num_accounts, len(account_ids_list))
+                )
+            else:
+                # Default: 10-50 accounts
+                num_accounts = random.randint(10, 50)
+                promo_accounts = random.sample(
+                    account_ids_list, min(num_accounts, len(account_ids_list))
+                )
+
             for acct_id in promo_accounts:
                 self.data["promotion_accounts"].append(
                     {
@@ -4354,6 +4484,13 @@ class FMCGDataGenerator:
                         "created_at": now,
                     }
                 )
+
+        # Clean up internal markers before output (don't persist to SQL)
+        for promo in self.data["promotions"]:
+            promo.pop("_promo_class", None)
+            promo.pop("_target_sku_count", None)
+            promo.pop("_target_account_id", None)
+            promo.pop("_target_account_count", None)
 
         self.generated_levels.add(4)
         print(

@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.34] - 2025-12-19
+
+### Changed
+
+- **Realistic Promo Structure** (`generate_data.py`): Level 4 now generates industry-realistic promotion mix
+  - **Seasonal Events (12)**: All accounts, 300-600 SKUs, 2-4 weeks, 2.0-3.5x lift
+    - Named events: New Year, Valentine's, Easter, Memorial Day, July 4th, Back-to-School, Labor Day, Halloween, Thanksgiving, Black Friday, Christmas, Year End
+  - **National FSI/Circular (52)**: All accounts, 150-400 hero SKUs, weekly, 1.5-2.0x lift
+  - **Account TPRs (150)**: Single retailer, 20-50 SKUs, 1-2 weeks, 2.0-3.0x lift (deep discount)
+  - **BOGO/Multi-Buy (40)**: Most accounts, 10-30 SKUs, 1-2 weeks, 2.5-4.0x lift
+  - Total: ~254 promotions (up from 100)
+  - Promo penetration: **29.0%** (up from 3.2%, target 25-30% per NIQ/IRI benchmarks)
+
+### Technical
+
+- Based on industry research: NIQ UK shows 25% promo sales, IRI Western Europe 28%
+- 110 unique promos appear in POS sales with 2.3x average lift
+- 8/8 validation checks pass
+
 ## [0.9.33] - 2025-12-19
 
 ### Changed
@@ -10,7 +29,7 @@ All notable changes to this project will be documented in this file.
   - Checks unique promo count (expects 50+ of 100)
   - Validates lift ratio (expects 1.5x-3.0x vs baseline)
   - Samples week distribution across promo sales
-  - Output: `65 promos, 1.9x lift, 15,819 sales (3.2%)`
+  - Output: `110 promos, 2.3x lift, 145,043 sales (29.0%)`
 
 ### Technical
 
