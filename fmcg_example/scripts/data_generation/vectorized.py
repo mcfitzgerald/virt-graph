@@ -38,6 +38,11 @@ from numpy.random import Generator
 
 from .realism_monitor import StochasticMode
 
+# Import PromoCalendar for type hints (avoid circular import with TYPE_CHECKING)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .promo_calendar import PromoCalendar
+
 
 # =============================================================================
 # Structured Array Dtypes
@@ -221,9 +226,9 @@ class POSSalesGenerator(VectorizedGenerator):
     location_ids: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.int64))
     sku_weights: np.ndarray | None = None
     sku_prices: dict[int, float] = field(default_factory=dict)
-    promo_sku_ids: set[int] = field(default_factory=set)
-    promo_weeks: set[int] = field(default_factory=set)
-    hangover_weeks: set[int] = field(default_factory=set)
+
+    # Multi-promo calendar for per-(week, account, sku) promo effects
+    promo_calendar: "PromoCalendar | None" = None
 
     # Generation parameters
     base_year: int = 2024
@@ -231,8 +236,6 @@ class POSSalesGenerator(VectorizedGenerator):
     zipf_alpha: float = 1.05
     base_demand_mean: float = 8.0
     demand_cv: float = 0.4
-    promo_lift: float = 2.5
-    promo_hangover: float = 0.7
 
     def configure(
         self,
@@ -240,9 +243,7 @@ class POSSalesGenerator(VectorizedGenerator):
         location_ids: list[int] | np.ndarray,
         sku_weights: np.ndarray | None = None,
         sku_prices: dict[int, float] | None = None,
-        promo_sku_ids: set[int] | None = None,
-        promo_weeks: set[int] | None = None,
-        hangover_weeks: set[int] | None = None,
+        promo_calendar: "PromoCalendar | None" = None,
     ) -> "POSSalesGenerator":
         """
         Configure generator with SKU and location data.
@@ -252,9 +253,7 @@ class POSSalesGenerator(VectorizedGenerator):
             location_ids: Array of valid location IDs
             sku_weights: Optional pre-computed Zipf weights
             sku_prices: Optional dict mapping SKU ID to unit price
-            promo_sku_ids: Set of SKU IDs that are promotional
-            promo_weeks: Set of week numbers that are promo weeks
-            hangover_weeks: Set of week numbers that are hangover weeks
+            promo_calendar: PromoCalendar for multi-promo effects
 
         Returns:
             Self for method chaining
@@ -268,19 +267,16 @@ class POSSalesGenerator(VectorizedGenerator):
             self.sku_weights = zipf_weights(len(self.sku_ids), self.zipf_alpha)
 
         self.sku_prices = sku_prices or {}
-        self.promo_sku_ids = promo_sku_ids or set()
-        self.promo_weeks = promo_weeks or {47, 48}  # Black Friday default
-        self.hangover_weeks = hangover_weeks or {49}
+        self.promo_calendar = promo_calendar
 
         return self
 
-    def generate_batch(self, batch_size: int, promo_id: int | None = None) -> np.ndarray:
+    def generate_batch(self, batch_size: int) -> np.ndarray:
         """
         Generate a batch of POS sales records.
 
         Args:
             batch_size: Number of records to generate
-            promo_id: Optional promo ID to assign to promotional sales
 
         Returns:
             Structured NumPy array with POS_SALES_DTYPE
@@ -312,31 +308,33 @@ class POSSalesGenerator(VectorizedGenerator):
         day_offsets = self.rng.integers(0, 7, size=batch_size).astype("timedelta64[D]")
         batch["sale_date"] = week_starts + day_offsets
 
-        # Determine promo status
-        is_promo_sku = np.isin(batch["sku_id"], list(self.promo_sku_ids))
-        is_promo_week = np.isin(weeks, list(self.promo_weeks))
-        batch["is_promotional"] = is_promo_sku & is_promo_week
-
-        # Promo IDs
-        batch["promo_id"] = np.where(batch["is_promotional"], promo_id or 0, 0)
-
-        # Generate lumpy demand (quantity_eaches)
+        # Generate base lumpy demand (quantity_eaches)
         base_quantities = lumpy_demand(
             self.rng, batch_size, self.base_demand_mean, self.demand_cv
         )
 
-        # Apply promo effects
-        promo_week_mask = np.zeros(batch_size, dtype=np.int8)
-        promo_week_mask[is_promo_week] = 1
-        promo_week_mask[np.isin(weeks, list(self.hangover_weeks))] = 2
+        # Apply promo effects from calendar
+        if self.promo_calendar is not None:
+            lifts, hangovers, is_promo, promo_ids = (
+                self.promo_calendar.get_effects_vectorized(
+                    weeks,
+                    batch["sku_id"],
+                    batch["retail_location_id"],
+                )
+            )
 
-        quantity_eaches = apply_promo_effects(
-            base_quantities,
-            is_promo_sku,
-            promo_week_mask,
-            self.promo_lift,
-            self.promo_hangover,
-        )
+            # Apply lift and hangover effects to base quantities
+            quantity_eaches = (base_quantities * lifts * hangovers).astype(np.int32)
+            quantity_eaches = np.maximum(quantity_eaches, 1)
+
+            batch["is_promotional"] = is_promo
+            batch["promo_id"] = promo_ids
+        else:
+            # No promo calendar - no promo effects
+            quantity_eaches = base_quantities.astype(np.int32)
+            batch["is_promotional"] = False
+            batch["promo_id"] = 0
+
         batch["quantity_eaches"] = quantity_eaches
 
         # quantity_cases = quantity_eaches / 12
@@ -365,7 +363,6 @@ class POSSalesGenerator(VectorizedGenerator):
         self,
         total_rows: int,
         batch_size: int = 50000,
-        promo_id: int | None = None,
     ) -> Iterator[np.ndarray]:
         """
         Generate POS sales in batches.
@@ -373,7 +370,6 @@ class POSSalesGenerator(VectorizedGenerator):
         Args:
             total_rows: Total number of rows to generate
             batch_size: Rows per batch
-            promo_id: Optional promo ID to assign to promotional sales
 
         Yields:
             Structured NumPy arrays
@@ -381,7 +377,7 @@ class POSSalesGenerator(VectorizedGenerator):
         remaining = total_rows
         while remaining > 0:
             size = min(batch_size, remaining)
-            yield self.generate_batch(size, promo_id=promo_id)
+            yield self.generate_batch(size)
             remaining -= size
 
 

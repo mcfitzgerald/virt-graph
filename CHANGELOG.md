@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **Multi-Promo Calendar System (Step 1)** - Foundation for all 100 promotions affecting POS demand:
+- **Multi-Promo Calendar System** - All 100 promotions now affect POS demand with account-level targeting:
   - **PromoCalendar** (`promo_calendar.py`): Pre-computed promotion calendar for vectorized lookups
     - O(1) index structure: `(week, account_id, sku_id) → PromoEffect`
     - Overlapping promotions resolved with max-lift strategy
@@ -15,14 +15,22 @@ All notable changes to this project will be documented in this file.
   - **PromoEffect**: Frozen dataclass with lift/hangover multipliers and discount
   - **date_to_week()**: Helper to convert dates to ISO week numbers
   - **Vectorized lookup**: `get_effects_vectorized()` processes 500K rows in <0.1s (10M rows/sec)
-  - **Statistics tracking**: promo_count, active_weeks, targeted_skus, targeted_accounts
+
+### Changed
+
+- **POSSalesGenerator** (`vectorized.py`): Now uses `PromoCalendar` for multi-promo effects
+  - Added `promo_calendar` parameter to `configure()`
+  - Removed legacy single-promo fields (`promo_sku_ids`, `promo_weeks`, `hangover_weeks`)
+  - Removed `promo_id` parameter from `generate_batch()` and `generate_batches()`
+  - No calendar = no promo effects (clean default behavior)
+  - Performance: 500K rows in 0.16s (3.2M rows/sec) with calendar lookup
 
 ### Technical
 
-- Step 1 of multi-promo enhancement plan (typed-waddling-coral.md)
-- Steps 2-4 pending: POSSalesGenerator integration, Level 8 update, validation
-- Performance validated: 10x faster than 1.5s target at 500K rows
-- Module exports added to `data_generation/__init__.py`
+- Steps 1-2 of multi-promo enhancement plan (typed-waddling-coral.md)
+- Steps 3-4 pending: Level 8 integration, validation update
+- Lift effect validated: 2.16x avg promo vs non-promo quantity
+- Industry-validated parameters per NielsenIQ/McKinsey research
 
 ## [0.9.30] - 2025-12-18
 
