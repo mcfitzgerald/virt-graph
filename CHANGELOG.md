@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.33] - 2025-12-19
+
+### Changed
+
+- **Validation Suite** (`generate_data.py`): New `_validate_multi_promo()` replaces `_validate_promo_hangover()`
+  - Checks unique promo count (expects 50+ of 100)
+  - Validates lift ratio (expects 1.5x-3.0x vs baseline)
+  - Samples week distribution across promo sales
+  - Output: `65 promos, 1.9x lift, 15,819 sales (3.2%)`
+
+### Technical
+
+- Step 4 of multi-promo enhancement plan (typed-waddling-coral.md)
+- All 4 steps complete: PromoCalendar, POSSalesGenerator, Level 8, Validation
+- 8/8 validation checks pass
+
 ## [0.9.32] - 2025-12-19
 
 ### Changed
@@ -23,7 +39,7 @@ All notable changes to this project will be documented in this file.
 
 - Step 3 of multi-promo enhancement plan (typed-waddling-coral.md)
 - POS generation with calendar: 0.237s for 500K rows
-- 8/8 validation checks pass including promo_hangover
+- 8/8 validation checks pass
 
 ## [0.9.31] - 2025-12-19
 
