@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.30] - 2025-12-18
+
+### Added
+
+- **Data Generation Performance Refactor Phase 6** - Chaos Injection:
+  - **RiskEventManager** (`risk_events.py`): Chaos injection engine for supply chain disruptions
+    - 5 risk events loaded from BenchmarkManifest.json
+    - Deterministic triggering (all events fire for consistent testing)
+    - RSK-BIO-001: Sorbitol contamination → batch REJECTED status
+    - RSK-LOG-002: LA port strike → 4x delays with Gamma distribution
+    - RSK-SUP-003: Palm Oil SPOF → OTD drops from 92% to 40%
+    - RSK-CYB-004: Chicago DC cyber outage → pick waves ON_HOLD
+    - RSK-ENV-005: Carbon tax spike → 3x CO2 emission multiplier
+  - **QuirksManager** (`quirks.py`): Pathology injection for realistic behavioral anomalies
+    - 6 quirks enabled by default for maximum realism
+    - bullwhip_whip_crack: 3x order batching during promos
+    - phantom_inventory: 2% shrinkage with 14-day detection lag
+    - port_congestion_flicker: AR(1) autoregressive delays (ρ=0.70)
+    - single_source_fragility: 2.5x lead time cascade for SPOF ingredients
+    - human_optimism_bias: 15% over-forecast for new products (<6 months)
+    - data_decay: 8% QC rejection for batches near expiry (vs 2% base)
+  - **Chaos hooks** integrated at multiple generation levels:
+    - Level 0: Carbon tax CO2 multiplier
+    - Level 2: Supplier OTD degradation
+    - Level 6: Batch contamination + data decay
+    - Level 7: Phantom inventory shrinkage
+    - Level 8: Human optimism bias on forecasts
+    - Level 9: DC cyber outage + bullwhip batching
+    - Level 10: Port strike delays + congestion clustering
+  - **Chaos validation** check in validation suite
+
+### Fixed
+
+- **Bullwhip quirk**: Changed field check from `promotion_id` to `promo_id` to match orders schema
+- **Optimism bias quirk**: Changed field check from `forecast_quantity` to `final_forecast` to match forecasts schema
+- **Port strike (RSK-LOG-002)**: Fixed segment lookup to use `origin_id`/`destination_id` with type check instead of non-existent `origin_code`/`destination_code`
+- **Port congestion quirk**: Added `segment_lookup` and `port_ids` parameters to enable proper port matching via segment references
+- **Single source fragility quirk**: Added missing integration at Level 6 using formula→ingredient mapping
+- **Data decay quirk**: Fixed datetime.date vs datetime.datetime comparison error
+- **Chaos output**: Added print statements for all 11 chaos effects (5 risk events + 6 quirks)
+
+### Technical
+
+- Completes Phase 5 of performance refactor plan (robust-frolicking-coral.md)
+- StochasticMode integration for NORMAL vs DISRUPTED delay distributions
+- Named entities ensure deterministic testing (B-2024-RECALL-001, SUP-PALM-MY-001, DC-NAM-CHI-001)
+- All 11 chaos effects verified: 5 risk events + 6 quirks active and validated
+
 ## [0.9.29] - 2025-12-18
 
 ### Added
