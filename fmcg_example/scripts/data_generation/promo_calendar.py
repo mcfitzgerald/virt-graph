@@ -153,10 +153,11 @@ class PromoCalendar:
             if end_week < start_week:
                 end_week = 52  # Clamp to year end
 
-            lift = float(promo.get("lift_multiplier", 1.5))
-            hangover_mult = float(promo.get("hangover_multiplier", 0.7))
-            hangover_weeks_count = int(promo.get("hangover_weeks", 1))
-            discount = float(promo.get("discount_percent", 15.0))
+            # Handle None values explicitly (dict.get() returns None if key exists with None)
+            lift = float(promo.get("lift_multiplier") or 1.5)
+            hangover_mult = float(promo.get("hangover_multiplier") or 0.7)
+            hangover_weeks_count = int(promo.get("hangover_weeks") or 1)
+            discount = float(promo.get("discount_percent") or 15.0)
 
             sku_ids = promo_to_skus.get(promo_id, set())
             account_ids = promo_to_accounts.get(promo_id, set())

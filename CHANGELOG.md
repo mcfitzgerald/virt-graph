@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.32] - 2025-12-19
+
+### Changed
+
+- **Level 8 Integration** (`generate_data.py`): Multi-promo calendar now generates POS sales
+  - `_generate_level_8()` builds `PromoCalendar` from all 100 promotions
+  - Removed legacy Black Friday-only promo handling
+  - Added logging for calendar stats and promo distribution
+  - 65 unique promotions appear in POS sales (65% coverage)
+  - Promo lift validated: 1.9x detected (target ~2x)
+
+### Fixed
+
+- **PromoCalendar** (`promo_calendar.py`): Handle explicit `None` values in promotion fields
+  - Changed `promo.get("field", default)` to `promo.get("field") or default`
+  - Prevents `TypeError: float() argument must be a string or a real number, not 'NoneType'`
+
+### Technical
+
+- Step 3 of multi-promo enhancement plan (typed-waddling-coral.md)
+- POS generation with calendar: 0.237s for 500K rows
+- 8/8 validation checks pass including promo_hangover
+
 ## [0.9.31] - 2025-12-19
 
 ### Added
@@ -28,7 +51,6 @@ All notable changes to this project will be documented in this file.
 ### Technical
 
 - Steps 1-2 of multi-promo enhancement plan (typed-waddling-coral.md)
-- Steps 3-4 pending: Level 8 integration, validation update
 - Lift effect validated: 2.16x avg promo vs non-promo quantity
 - Industry-validated parameters per NielsenIQ/McKinsey research
 

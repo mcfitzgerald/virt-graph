@@ -140,6 +140,8 @@ from data_generation import (
     PooledFaker,
     # Vectorized generators
     POSSalesGenerator,
+    # Phase 6: Multi-promo calendar
+    PromoCalendar,
     QuirksManager,
     RealismMonitor,
     RealismViolationError,
@@ -5132,47 +5134,45 @@ class FMCGDataGenerator:
         for i, sid in enumerate(sku_ids):
             sku_popularity[sid] = zipf_ranks[i]
 
-        # Get Black Friday promo dates
-        bf_promo = next(
-            (p for p in self.data["promotions"] if p["promo_code"] == "PROMO-BF-2024"),
-            None,
+        # --- POS_SALES (~500,000) - Phase 6 Multi-Promo Calendar ---
+        # Build promo calendar from all 100 promotions (replaces single Black Friday)
+        promo_calendar = PromoCalendar.build(
+            promotions=self.data["promotions"],
+            promotion_skus=self.data["promotion_skus"],
+            promotion_accounts=self.data["promotion_accounts"],
+            retail_locations=self.data["retail_locations"],
         )
-        bf_week = 48  # Week 48 is Black Friday week
 
-        # --- POS_SALES (~500,000) - Phase 5 Vectorized Generation ---
-        # Build promo SKU set ONCE (avoids O(N²) list comprehension in loop)
-        bf_promo_sku_ids: set[int] = set()
-        bf_promo_id: int | None = None
-        if bf_promo:
-            bf_promo_id = bf_promo["id"]
-            bf_promo_sku_ids = {
-                ps["sku_id"]
-                for ps in self.data["promotion_skus"]
-                if ps["promo_id"] == bf_promo_id
-            }
+        # Log calendar stats
+        stats = promo_calendar.stats
+        print(
+            f"    [Promo] Built calendar: {stats['promo_count']} promos, "
+            f"~{stats['active_weeks']} active weeks"
+        )
 
         # Build SKU prices dict ONCE (avoids O(N) linear search per row)
         sku_prices = {s["id"]: float(s["list_price"]) for s in self.data["skus"]}
 
-        # Configure vectorized generator
+        # Configure vectorized generator with promo calendar
         pos_gen = POSSalesGenerator(seed=self.seed)
         pos_gen.configure(
             sku_ids=sku_ids,
             location_ids=location_ids,
             sku_prices=sku_prices,
-            promo_sku_ids=bf_promo_sku_ids,
-            promo_weeks={bf_week} if bf_promo else set(),
-            hangover_weeks={bf_week + 1} if bf_promo else set(),
+            promo_calendar=promo_calendar,
         )
 
-        # Set promo effects from the actual promotion
-        if bf_promo:
-            pos_gen.promo_lift = float(bf_promo.get("lift_multiplier", 2.5))
-            pos_gen.promo_hangover = float(bf_promo.get("hangover_multiplier", 0.7))
-
         # Generate 500K rows vectorized (~1 second vs 10+ minutes)
-        pos_sales_array = pos_gen.generate_batch(500000, promo_id=bf_promo_id)
+        pos_sales_array = pos_gen.generate_batch(500000)
         pos_sales_dicts = structured_to_dicts(pos_sales_array)
+
+        # Log promo distribution
+        promo_sales = sum(1 for row in pos_sales_dicts if row["is_promotional"])
+        unique_promo_ids = {row["promo_id"] for row in pos_sales_dicts if row["promo_id"] != 0}
+        print(
+            f"    [Promo] {promo_sales:,} promo sales across "
+            f"{len(unique_promo_ids)} unique promotions"
+        )
 
         # Convert promo_id=0 to None (NULL in DB) for non-promotional rows
         for row in pos_sales_dicts:
