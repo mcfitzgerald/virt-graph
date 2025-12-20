@@ -2,6 +2,35 @@
 
 A **Fast-Moving Consumer Goods (FMCG)** supply chain example for the Virtual Graph project, demonstrating high-velocity, massive-volume patterns inspired by Colgate-Palmolive.
 
+## Company Profile
+
+- **Company**: Prism Consumer Goods (PCG)
+- **Revenue**: ~$15B global CPG
+- **HQ**: Knoxville, TN
+- **Product Lines**:
+  - **PrismWhite** (Oral Care) - Toothpaste
+  - **ClearWave** (Home Care) - Dish Soap
+  - **AquaPure** (Personal Care) - Body Wash
+
+### Global Structure (5 Divisions, 7 Plants)
+
+| Division | HQ | Plants | Markets |
+|----------|-----|--------|---------|
+| NAM | Knoxville | 2 (Tennessee, Texas) | US, Canada |
+| LATAM | São Paulo | 1 (Brazil) | Brazil, Mexico, Andean |
+| APAC | Singapore | 2 (China, India) | China, India, SEA, ANZ |
+| EUR | Paris | 1 (Poland) | Western EU, UK, Nordics |
+| AFR-EUR | Dubai | 1 (Turkey) | MENA, Sub-Saharan, CIS |
+
+### Channel Mix
+
+| Channel | Volume Share | Archetypes |
+|---------|--------------|------------|
+| B&M Large | 40% | MegaMart, ValueClub, UrbanEssential |
+| B&M Distributor | 30% | RegionalGrocers, IndieRetail |
+| E-commerce | 20% | DigitalFirst, OmniRetailer |
+| DTC | 10% | PrismDirect |
+
 ## Quick Start
 
 ```bash
@@ -50,8 +79,6 @@ fmcg_example/
 │   ├── test_spof_risk.py            # Beast mode: supplier criticality
 │   ├── test_osa_analysis.py         # Beast mode: OSA/DC bottlenecks
 │   └── test_ontology.py             # Two-layer validation
-├── docs/
-│   └── prism-fmcg.md                # Domain documentation
 └── FMCG_README.md                   # This file
 ```
 
@@ -65,6 +92,68 @@ fmcg_example/
 | Stress Test | Recursive traversal depth | Horizontal explosion width |
 | Target Metric | BOM cost rollup | Recall trace speed |
 | SCOR Coverage | Partial | Full (Plan/Source/Transform/Order/Fulfill/Return) |
+
+## SCOR-DS Domain Model
+
+PCG implements the full SCOR-DS (Supply Chain Operations Reference - Digital Standard) framework:
+
+```
+                              ┌─────────────────┐
+                              │      PLAN       │
+                              │  demand_forecasts│
+                              │  capacity_plans  │
+                              │  supply_plans    │
+                              └────────┬────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         │                             │                             │
+         ▼                             │                             ▼
+┌─────────────────┐                    │                    ┌─────────────────┐
+│     ORDER       │                    │                    │     SOURCE      │
+│  orders         │◄───── DEMAND ──────┼────── SUPPLY ─────►│  purchase_orders│
+│  promotions     │                    │                    │  suppliers      │
+└────────┬────────┘                    │                    └────────┬────────┘
+         │                    ┌────────┴────────┐                    │
+         │                    │   ORCHESTRATE   │                    │
+         │                    │  kpi_thresholds │                    │
+         │                    │  risk_events    │                    │
+         │                    └────────┬────────┘                    │
+         │                             │                             │
+         ▼                             │                             ▼
+┌─────────────────┐                    │                    ┌─────────────────┐
+│     FULFILL     │                    │                    │    TRANSFORM    │
+│  shipments      │◄───── OUTPUT ──────┼────── INPUT ──────►│  batches        │
+│  inventory      │                    │                    │  formulas       │
+└────────┬────────┘                    │                    └────────┬────────┘
+         │                             │                             │
+         └─────────────────────────────┼─────────────────────────────┘
+                                       │
+                              ┌────────┴────────┐
+                              │     RETURN      │
+                              │  returns        │
+                              │  disposition_logs│
+                              └─────────────────┘
+```
+
+## The Desmet Triangle
+
+Every edge in the PCG model carries three dimensions in constant tension:
+
+| Dimension | Metrics | Tradeoff |
+|-----------|---------|----------|
+| **Service** | OTIF, OSA, Fill Rate | Improving service often increases cost |
+| **Cost** | Landed cost, freight, handling | Cutting cost may hurt service levels |
+| **Cash** | Inventory days, payment terms | Holding inventory ties up working capital |
+
+## FMCG Benchmarks
+
+| Metric | Industrial | FMCG (Target) |
+|--------|-----------|---------------|
+| Inventory Turns | 3-5/year | 8-12/year |
+| Perfect Order (OTIF) | 80-85% | 95-98% |
+| On-Shelf Availability | N/A | 92-95% |
+| Batch Yield | 60-85% | 95-99% |
+| Forecast Accuracy (MAPE) | N/A | 20-30% |
 
 ## Beast Mode Queries
 
@@ -114,12 +203,3 @@ Deterministic fixtures for reproducible benchmarking:
 ## Specification
 
 Full specification: [`magical-launching-forest.md`](../magical-launching-forest.md)
-
-## Domain Documentation
-
-See [`docs/prism-fmcg.md`](docs/prism-fmcg.md) for:
-- Company profile (Prism Consumer Goods)
-- Global structure (5 divisions, 7 plants)
-- SCOR-DS domain model
-- Named entities for testing
-- FMCG benchmarks

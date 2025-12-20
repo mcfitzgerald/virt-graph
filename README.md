@@ -300,7 +300,7 @@ Documentation covers:
 - **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
 - **[Handlers](docs/handlers/overview.md)** - All available graph operations
 - **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
-- **[FMCG Domain](fmcg_example/docs/prism-fmcg.md)** - SCOR-DS model and domain documentation
+- **[FMCG Example](fmcg_example/FMCG_README.md)** - Complete domain documentation and usage
 
 ## Research Validation
 

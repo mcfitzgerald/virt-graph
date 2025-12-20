@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.42] - 2025-12-20
+
+### Changed
+
+- **fmcg_example/FMCG_README.md**: Merged domain documentation from `docs/prism-fmcg.md`
+  - Added Company Profile (revenue, HQ, product lines)
+  - Added Global Structure table (5 divisions, 7 plants)
+  - Added Channel Mix table (B&M Large 40%, Distributor 30%, E-commerce 20%, DTC 10%)
+  - Added SCOR-DS Domain Model ASCII diagram
+  - Added Desmet Triangle section (Service/Cost/Cash tradeoffs)
+  - Added FMCG Benchmarks table (inventory turns, OTIF, OSA targets)
+
+### Removed
+
+- **fmcg_example/docs/prism-fmcg.md**: Merged into FMCG_README.md
+- **fmcg_example/docs/**: Directory removed (now empty)
+
 ## [0.9.41] - 2025-12-20
 
 ### Changed
