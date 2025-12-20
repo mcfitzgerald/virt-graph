@@ -40,6 +40,13 @@ Phase 6 - Multi-Promo Calendar:
 Phase 7 - Modular Generators (see effervescent-shimmying-blum.md):
 - GeneratorContext: Shared state dataclass passed to all generators
 - BaseLevelGenerator: Abstract base class for level-specific generators
+
+Phase B - Constants Package (see effervescent-shimmying-blum.md):
+- constants/reference: DIVISIONS, CHANNELS, PRODUCTS, PLANTS, PACKAGING_TYPES
+- constants/network: DCS, PORTS, CARRIERS
+- constants/materials: INGREDIENTS
+- constants/rules: KPI_THRESHOLDS, BUSINESS_RULES
+- helpers: create_named_entities, TARGET_ROW_COUNTS
 """
 
 from pathlib import Path
@@ -87,6 +94,20 @@ from .vectorized import (
     zipf_weights,
 )
 from .generators import BaseLevelGenerator, GeneratorContext
+from .constants import (
+    BUSINESS_RULES,
+    CARRIERS,
+    CHANNELS,
+    DCS,
+    DIVISIONS,
+    INGREDIENTS,
+    KPI_THRESHOLDS,
+    PACKAGING_TYPES,
+    PLANTS,
+    PORTS,
+    PRODUCTS,
+)
+from .helpers import TARGET_ROW_COUNTS, create_named_entities
 
 # Path to default benchmark manifest
 BENCHMARK_MANIFEST_PATH = Path(__file__).parent / "benchmark_manifest.json"
@@ -147,6 +168,21 @@ __all__ = [
     # Phase 7: Modular Generators
     "GeneratorContext",
     "BaseLevelGenerator",
+    # Phase B: Constants
+    "DIVISIONS",
+    "CHANNELS",
+    "PRODUCTS",
+    "PLANTS",
+    "PACKAGING_TYPES",
+    "DCS",
+    "PORTS",
+    "CARRIERS",
+    "INGREDIENTS",
+    "KPI_THRESHOLDS",
+    "BUSINESS_RULES",
+    # Phase B: Helpers
+    "create_named_entities",
+    "TARGET_ROW_COUNTS",
     # Paths
     "BENCHMARK_MANIFEST_PATH",
 ]
