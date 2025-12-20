@@ -93,7 +93,8 @@ from .vectorized import (
     structured_to_dicts,
     zipf_weights,
 )
-from .generators import BaseLevelGenerator, GeneratorContext
+from .generators import BaseLevelGenerator, GeneratorContext, Level0Generator, Level14Generator
+from .validation import DataValidator
 from .constants import (
     BUSINESS_RULES,
     CARRIERS,
@@ -168,6 +169,10 @@ __all__ = [
     # Phase 7: Modular Generators
     "GeneratorContext",
     "BaseLevelGenerator",
+    "Level0Generator",
+    "Level14Generator",
+    # Phase C: Validation
+    "DataValidator",
     # Phase B: Constants
     "DIVISIONS",
     "CHANNELS",

@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.37] - 2025-12-20
+
+### Added
+
+- **Phase C: Extract Pipeline Ends** (`data_generation/`): Level generators and validation
+  - `generators/level_0_reference.py`: `Level0Generator` class (~300 lines)
+    - Generates 10 Level 0 tables: divisions, channels, products, packaging_types, ports, carriers, emission_factors, kpi_thresholds, business_rules, ingredients
+    - Uses `BaseLevelGenerator` pattern with sub-methods for each table
+  - `generators/level_14_monitoring.py`: `Level14Generator` class (~320 lines)
+    - Generates 4 Level 14 tables: kpi_actuals, osa_metrics, risk_events, audit_log
+    - Leaf level with no downstream dependencies
+  - `validation.py`: `DataValidator` class (~350 lines)
+    - 8 validation methods: row_counts, pareto, hub_concentration, named_entities, spof, multi_promo, referential_integrity, chaos_injection
+    - `run_all_validations()` and `print_validation_report()` convenience methods
+
+### Technical
+
+- Phase C of modularization plan (effervescent-shimmying-blum.md)
+- Extracts pipeline start (Level 0) and finish (Level 14) for testable integration
+- All imports and instantiation tested successfully
+
+## [0.9.36] - 2025-12-20
+
+### Added
+
+- **Phase B: Constants Extraction** (`data_generation/constants/`): ~1,700 lines moved from `generate_data.py`
+  - `constants/reference.py`: DIVISIONS (5), CHANNELS (4), PRODUCTS (3), PLANTS (7), PACKAGING_TYPES (16)
+  - `constants/network.py`: DCS (25), PORTS (20), CARRIERS (20)
+  - `constants/materials.py`: INGREDIENTS (49 with CAS numbers, storage, hazmat info)
+  - `constants/rules.py`: KPI_THRESHOLDS (20), BUSINESS_RULES (15)
+  - `constants/__init__.py`: Re-exports all constants
+- **Helpers Module** (`data_generation/helpers.py`): ~120 lines
+  - `create_named_entities()`: Deterministic test fixtures (recalls, hot nodes, SPOFs)
+  - `TARGET_ROW_COUNTS`: Row targets by generation level (0-14)
+
+### Technical
+
+- Phase B of modularization plan (effervescent-shimmying-blum.md)
+- Constants duplicated temporarily (both in `generate_data.py` and new package)
+- Phase E will update `generate_data.py` to import from new modules
+
 ## [0.9.35] - 2025-12-19
 
 ### Added
