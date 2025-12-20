@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.40] - 2025-12-20
+
+### Changed
+
+- **Level 11 Vectorization** (`data_generation/vectorized.py`): 5.7x speedup for shipment_lines
+  - Added `ShipmentLinesGenerator` class using NumPy structured arrays
+  - Added `SHIPMENT_LINES_DTYPE` and `SHIPMENT_LINES_COLUMNS` for type-safe generation
+  - Replaced 1M+ individual `random.choices()` calls with vectorized `rng.choice()`
+  - Level 11: **148s → 26s** (7K → 40K rows/sec)
+
+### Performance
+
+- **Total generation time**: 254s → **133s** (47% faster, 85K rows/sec)
+- Level 11 now uses same vectorization pattern as Level 8 (POSSalesGenerator) and Level 9 (OrderLinesGenerator)
+
+### Technical
+
+- All 8/8 validation checks pass
+- No changes to output data semantics
+
 ## [0.9.39] - 2025-12-20
 
 ### Changed

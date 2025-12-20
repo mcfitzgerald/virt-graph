@@ -17,8 +17,10 @@ import random
 import time
 from datetime import date, datetime, timedelta
 
+import numpy as np
+
 from .base import BaseLevelGenerator
-from ..vectorized import zipf_weights
+from ..vectorized import zipf_weights, ShipmentLinesGenerator, structured_to_dicts
 
 
 class Level10Generator(BaseLevelGenerator):
@@ -340,88 +342,60 @@ class Level11Generator(BaseLevelGenerator):
         print(f"    Generated: {len(self.data['shipment_lines'])} shipment_lines ({level_elapsed:.1f}s)")
 
     def _generate_shipment_lines(self, now: datetime) -> None:
-        """Generate shipment_lines table (~540K)."""
+        """Generate shipment_lines table (~1M) using vectorized generator."""
         print("    Generating shipment_lines...")
-        sku_ids = list(self.ctx.sku_ids.values())
-        batch_ids = [b["id"] for b in self.data["batches"]]
-        batch_lookup = {b["id"]: b for b in self.data["batches"]}
 
-        # Estimate weight per case from SKU size
-        sku_weights_kg = {}
+        # Prepare SKU data
+        sku_ids = list(self.ctx.sku_ids.values())
+        sku_weight_kg = {}
         for sku in self.data["skus"]:
             size_str = sku.get("size", "6oz")
             try:
                 size_val = float(size_str.replace("oz", "").replace("ml", "").replace("g", ""))
                 if "oz" in size_str:
-                    sku_weights_kg[sku["id"]] = round(size_val * 0.028 * 24, 2)
+                    sku_weight_kg[sku["id"]] = round(size_val * 0.028 * 24, 2)
                 elif "ml" in size_str:
-                    sku_weights_kg[sku["id"]] = round(size_val * 0.001 * 24, 2)
+                    sku_weight_kg[sku["id"]] = round(size_val * 0.001 * 24, 2)
                 else:
-                    sku_weights_kg[sku["id"]] = 5.0
+                    sku_weight_kg[sku["id"]] = 5.0
             except ValueError:
-                sku_weights_kg[sku["id"]] = 5.0
+                sku_weight_kg[sku["id"]] = 5.0
 
-        # Create Zipf weights for SKU selection
-        sku_weights_dist = zipf_weights(len(sku_ids), alpha=0.8)
+        # Prepare batch data
+        batch_ids = [b["id"] for b in self.data["batches"]]
+        batch_output_cases = {b["id"]: b.get("output_cases", 1000) for b in self.data["batches"]}
+        batch_numbers = {b["id"]: b.get("batch_number", f"LOT-{b['id']:08d}") for b in self.data["batches"]}
+        batch_expiry = {b["id"]: b.get("expiry_date") for b in self.data["batches"]}
 
-        line_count = 0
-        for shipment in self.data["shipments"]:
-            ship_id = shipment["id"]
-            total_cases = shipment.get("total_cases", 100)
-            ship_date = shipment.get("ship_date", date(self.ctx.base_year, 6, 15))
+        # Extract shipment arrays
+        shipments = self.data["shipments"]
+        shipment_ids = np.array([s["id"] for s in shipments], dtype=np.int64)
+        total_cases = np.array([s.get("total_cases", 100) for s in shipments], dtype=np.int32)
+        ship_dates = np.array([
+            np.datetime64(s.get("ship_date", date(self.ctx.base_year, 6, 15)), "D")
+            for s in shipments
+        ], dtype="datetime64[D]")
 
-            # Number of lines based on shipment size
-            if total_cases < 100:
-                num_lines = random.randint(1, 3)
-            elif total_cases < 500:
-                num_lines = random.randint(2, 5)
-            else:
-                num_lines = random.randint(3, 10)
+        # Create and configure vectorized generator
+        generator = ShipmentLinesGenerator(seed=self.ctx.seed, base_year=self.ctx.base_year)
+        generator.configure(
+            sku_ids=sku_ids,
+            batch_ids=batch_ids,
+            sku_weight_kg=sku_weight_kg,
+            batch_output_cases=batch_output_cases,
+            batch_numbers=batch_numbers,
+            batch_expiry=batch_expiry,
+        )
 
-            remaining_cases = total_cases
-            for line_num in range(1, num_lines + 1):
-                # Select SKU using Zipf distribution
-                sku_idx = random.choices(range(len(sku_ids)), weights=sku_weights_dist)[0]
-                sku_id = sku_ids[sku_idx]
+        # Generate all shipment lines in one vectorized call
+        lines_array = generator.generate_for_shipments(
+            shipment_ids=shipment_ids,
+            total_cases=total_cases,
+            ship_dates=ship_dates,
+            now=now,
+        )
 
-                batch_id = random.choice(batch_ids) if batch_ids else 1
-                batch = batch_lookup.get(batch_id, {})
+        # Convert to list of dicts
+        self.data["shipment_lines"] = structured_to_dicts(lines_array)
 
-                # Cases for this line
-                if line_num == num_lines:
-                    qty_cases = max(1, remaining_cases)
-                else:
-                    qty_cases = random.randint(1, max(1, remaining_cases - (num_lines - line_num)))
-                    remaining_cases -= qty_cases
-
-                # Batch fraction
-                batch_size = batch.get("output_cases", 1000)
-                batch_fraction = min(1.0, round(qty_cases / batch_size, 4))
-
-                # Weight
-                weight_per_case = sku_weights_kg.get(sku_id, 5.0)
-                weight_kg = round(qty_cases * weight_per_case, 2)
-
-                lot_number = batch.get("batch_number", f"LOT-{batch_id:08d}")
-                expiry_date = batch.get("expiry_date")
-                if not expiry_date:
-                    expiry_date = ship_date + timedelta(days=random.randint(90, 365))
-
-                self.data["shipment_lines"].append(
-                    {
-                        "shipment_id": ship_id,
-                        "line_number": line_num,
-                        "sku_id": sku_id,
-                        "batch_id": batch_id,
-                        "quantity_cases": qty_cases,
-                        "quantity_eaches": qty_cases * 24,
-                        "batch_fraction": batch_fraction,
-                        "weight_kg": weight_kg,
-                        "lot_number": lot_number,
-                        "expiry_date": expiry_date,
-                        "created_at": now,
-                    }
-                )
-                line_count += 1
-
-        print(f"      Generated {line_count:,} shipment_lines")
+        print(f"      Generated {len(self.data['shipment_lines']):,} shipment_lines")

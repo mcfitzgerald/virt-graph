@@ -91,6 +91,27 @@ SHIPMENT_LEGS_DTYPE = np.dtype([
     ("status", "U12"),
 ])
 
+SHIPMENT_LINES_DTYPE = np.dtype([
+    # Note: shipment_lines uses composite PK (shipment_id, line_number), no separate id
+    ("shipment_id", "i8"),
+    ("line_number", "i4"),
+    ("sku_id", "i8"),
+    ("batch_id", "i8"),
+    ("quantity_cases", "i4"),
+    ("quantity_eaches", "i4"),
+    ("batch_fraction", "f4"),
+    ("weight_kg", "f4"),
+    ("lot_number", "U20"),
+    ("expiry_date", "datetime64[D]"),
+    ("created_at", "datetime64[s]"),
+])
+
+SHIPMENT_LINES_COLUMNS = [
+    "shipment_id", "line_number", "sku_id", "batch_id",
+    "quantity_cases", "quantity_eaches", "batch_fraction", "weight_kg",
+    "lot_number", "expiry_date", "created_at",
+]
+
 
 # =============================================================================
 # Distribution Helpers
@@ -702,6 +723,167 @@ class ShipmentLegsGenerator(VectorizedGenerator):
             np.where(delays < 24, "delayed", "severely_delayed")
         )
         batch["status"] = status
+
+        return batch
+
+
+# =============================================================================
+# Shipment Lines Generator
+# =============================================================================
+
+@dataclass
+class ShipmentLinesGenerator(VectorizedGenerator):
+    """
+    Vectorized generator for shipment lines (~1M rows).
+
+    Generates shipment line items with:
+    - Zipf-distributed SKU selection
+    - Batch assignment with traceability
+    - Weight calculation based on SKU size
+    """
+
+    # Base parameters
+    base_year: int = 2024
+
+    # Configuration
+    sku_ids: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.int64))
+    sku_weights: np.ndarray | None = None
+    sku_weight_kg: dict[int, float] = field(default_factory=dict)  # sku_id -> weight per case
+    batch_ids: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.int64))
+    batch_output_cases: dict[int, int] = field(default_factory=dict)  # batch_id -> output_cases
+    batch_numbers: dict[int, str] = field(default_factory=dict)  # batch_id -> batch_number
+    batch_expiry: dict[int, date] = field(default_factory=dict)  # batch_id -> expiry_date
+
+    # Generation parameters
+    zipf_alpha: float = 0.8
+
+    def configure(
+        self,
+        sku_ids: list[int] | np.ndarray,
+        batch_ids: list[int] | np.ndarray,
+        sku_weights: np.ndarray | None = None,
+        sku_weight_kg: dict[int, float] | None = None,
+        batch_output_cases: dict[int, int] | None = None,
+        batch_numbers: dict[int, str] | None = None,
+        batch_expiry: dict[int, date] | None = None,
+    ) -> "ShipmentLinesGenerator":
+        """Configure generator with SKU and batch data."""
+        self.sku_ids = np.asarray(sku_ids, dtype=np.int64)
+        self.batch_ids = np.asarray(batch_ids, dtype=np.int64)
+
+        if sku_weights is not None:
+            self.sku_weights = np.asarray(sku_weights, dtype=np.float64)
+        else:
+            self.sku_weights = zipf_weights(len(self.sku_ids), self.zipf_alpha)
+
+        self.sku_weight_kg = sku_weight_kg or {}
+        self.batch_output_cases = batch_output_cases or {}
+        self.batch_numbers = batch_numbers or {}
+        self.batch_expiry = batch_expiry or {}
+
+        return self
+
+    def generate_for_shipments(
+        self,
+        shipment_ids: np.ndarray,
+        total_cases: np.ndarray,
+        ship_dates: np.ndarray,
+        now: datetime | None = None,
+    ) -> np.ndarray:
+        """
+        Generate shipment lines for a batch of shipments.
+
+        Args:
+            shipment_ids: Array of shipment IDs
+            total_cases: Array of total cases per shipment
+            ship_dates: Array of ship dates (datetime64[D])
+            now: Timestamp for created_at
+
+        Returns:
+            Structured NumPy array with SHIPMENT_LINES_DTYPE
+        """
+        if now is None:
+            now = datetime.now()
+        now_dt = np.datetime64(now, "s")
+
+        n_shipments = len(shipment_ids)
+
+        # Calculate lines per shipment based on total_cases
+        lines_per_shipment = np.where(
+            total_cases < 100,
+            self.rng.integers(1, 4, size=n_shipments),
+            np.where(
+                total_cases < 500,
+                self.rng.integers(2, 6, size=n_shipments),
+                self.rng.integers(3, 11, size=n_shipments),
+            ),
+        ).astype(np.int32)
+
+        total_lines = int(lines_per_shipment.sum())
+        batch = np.zeros(total_lines, dtype=SHIPMENT_LINES_DTYPE)
+
+        # Expand shipment IDs to match line counts
+        batch["shipment_id"] = np.repeat(shipment_ids, lines_per_shipment)
+
+        # Line numbers within each shipment (1, 2, 3, ... per shipment)
+        line_nums = []
+        for count in lines_per_shipment:
+            line_nums.extend(range(1, int(count) + 1))
+        batch["line_number"] = np.array(line_nums, dtype=np.int32)
+
+        # Zipf-weighted SKU selection
+        sku_indices = self.rng.choice(
+            len(self.sku_ids), size=total_lines, p=self.sku_weights
+        )
+        batch["sku_id"] = self.sku_ids[sku_indices]
+
+        # Random batch selection
+        batch_indices = self.rng.integers(0, len(self.batch_ids), size=total_lines)
+        batch["batch_id"] = self.batch_ids[batch_indices]
+
+        # Distribute cases across lines within each shipment
+        # Expand total_cases to match lines
+        expanded_total = np.repeat(total_cases, lines_per_shipment)
+        expanded_line_counts = np.repeat(lines_per_shipment, lines_per_shipment)
+
+        # Divide cases roughly equally with some variation
+        base_qty = expanded_total // expanded_line_counts
+        # Add random variation (±20%)
+        variation = self.rng.uniform(0.8, 1.2, size=total_lines)
+        quantities = (base_qty * variation).astype(np.int32)
+        quantities = np.maximum(quantities, 1)  # At least 1 case
+        batch["quantity_cases"] = quantities
+        batch["quantity_eaches"] = quantities * 24
+
+        # Batch fraction (qty / batch output cases)
+        batch_output = np.array([
+            self.batch_output_cases.get(int(bid), 1000)
+            for bid in batch["batch_id"]
+        ], dtype=np.float32)
+        batch["batch_fraction"] = np.minimum(1.0, quantities / batch_output).astype(np.float32)
+
+        # Weight calculation
+        weights_per_case = np.array([
+            self.sku_weight_kg.get(int(sku), 5.0)
+            for sku in batch["sku_id"]
+        ], dtype=np.float32)
+        batch["weight_kg"] = (quantities * weights_per_case).astype(np.float32)
+
+        # Lot numbers from batch
+        batch["lot_number"] = np.array([
+            self.batch_numbers.get(int(bid), f"LOT-{bid:08d}")[:20]
+            for bid in batch["batch_id"]
+        ], dtype="U20")
+
+        # Expiry dates - expand ship_dates and add default if no batch expiry
+        expanded_ship_dates = np.repeat(ship_dates, lines_per_shipment)
+        default_expiry = expanded_ship_dates + np.timedelta64(180, "D")
+        batch["expiry_date"] = np.array([
+            np.datetime64(self.batch_expiry.get(int(bid), None) or default_expiry[i], "D")
+            for i, bid in enumerate(batch["batch_id"])
+        ], dtype="datetime64[D]")
+
+        batch["created_at"] = now_dt
 
         return batch
 
