@@ -6,10 +6,10 @@ A **Fast-Moving Consumer Goods (FMCG)** supply chain example for the Virtual Gra
 
 ```bash
 # Start PostgreSQL (port 5433)
-docker-compose -f fmcg_example/postgres/docker-compose.yml up -d
+make fmcg-db-up
 
-# Generate and load data (after schema is implemented)
-# poetry run python fmcg_example/scripts/generate_data.py
+# Generate seed data (~11.4M rows in ~2-3 minutes)
+make fmcg-generate
 
 # Run tests
 poetry run pytest fmcg_example/tests/ -v
@@ -23,26 +23,36 @@ docker-compose -f fmcg_example/neo4j/docker-compose.yml up -d
 ```
 fmcg_example/
 ├── ontology/
-│   └── prism_fmcg.yaml          # LinkML ontology with VG extensions
+│   └── prism_fmcg.yaml              # LinkML ontology with VG extensions (71 classes)
 ├── postgres/
-│   ├── docker-compose.yml       # PostgreSQL container (port 5433)
-│   ├── schema.sql               # ~60 tables DDL
-│   └── seed.sql                 # Generated data (~4M rows)
+│   ├── docker-compose.yml           # PostgreSQL container (port 5433)
+│   ├── schema.sql                   # 70 tables + 8 views DDL
+│   ├── seed.sql                     # Generated data (~11.4M rows)
+│   └── BenchmarkManifest.json       # Ground truth for validation
 ├── neo4j/
-│   ├── docker-compose.yml       # Neo4j container (port 7475/7688)
-│   └── migrate.py               # Ontology-driven migration
+│   ├── docker-compose.yml           # Neo4j container (port 7475/7688)
+│   └── migrate.py                   # Ontology-driven migration
 ├── scripts/
-│   ├── generate_data.py         # Data generator
-│   └── validate_realism.sql     # Validation queries
+│   ├── generate_data.py             # Orchestrator (644 lines after refactor)
+│   ├── validate_realism.sql         # Validation queries
+│   └── data_generation/             # Modular generation system
+│       ├── generators/              # 15 level generators (Level 0-14)
+│       ├── constants/               # Reference data (divisions, ingredients, etc.)
+│       ├── vectorized.py            # NumPy-based high-speed generators
+│       ├── promo_calendar.py        # Multi-promo effects system
+│       ├── risk_events.py           # Chaos injection (5 risk events)
+│       ├── quirks.py                # Behavioral quirks (6 patterns)
+│       ├── realism_monitor.py       # Online validation (Welford, Pareto)
+│       └── streaming_writer.py      # Memory-efficient COPY output
 ├── tests/
-│   ├── test_recall_trace.py     # Beast mode: lot genealogy
-│   ├── test_landed_cost.py      # Beast mode: cost rollup
-│   ├── test_spof_risk.py        # Beast mode: supplier criticality
-│   ├── test_osa_analysis.py     # Beast mode: OSA/DC bottlenecks
-│   └── test_ontology.py         # Two-layer validation
+│   ├── test_recall_trace.py         # Beast mode: lot genealogy
+│   ├── test_landed_cost.py          # Beast mode: cost rollup
+│   ├── test_spof_risk.py            # Beast mode: supplier criticality
+│   ├── test_osa_analysis.py         # Beast mode: OSA/DC bottlenecks
+│   └── test_ontology.py             # Two-layer validation
 ├── docs/
-│   └── prism-fmcg.md            # Domain documentation
-└── FMCG_README.md               # This file
+│   └── prism-fmcg.md                # Domain documentation
+└── FMCG_README.md                   # This file
 ```
 
 ## Key Differences from supply_chain_example
@@ -50,19 +60,33 @@ fmcg_example/
 | Aspect | supply_chain_example | fmcg_example |
 |--------|---------------------|--------------|
 | Domain | Aerospace/Industrial | Consumer Goods |
-| Graph Shape | Deep (25+ level BOM) | Wide (1 → 50,000 fan-out) |
+| Scale | ~1.7M rows, 20 tables | ~11.4M rows, 70 tables |
+| Graph Shape | Deep (25+ level BOM) | Wide (1 batch → 47K orders) |
 | Stress Test | Recursive traversal depth | Horizontal explosion width |
 | Target Metric | BOM cost rollup | Recall trace speed |
-| SCOR Coverage | Partial | Full (all 7 domains) |
+| SCOR Coverage | Partial | Full (Plan/Source/Transform/Order/Fulfill/Return) |
 
 ## Beast Mode Queries
 
-| Query | Target | Handler |
-|-------|--------|---------|
-| **Recall Trace** | 1 batch → 47,500 orders in <5s | `traverse()` |
-| **Landed Cost** | Full path aggregation in <2s | `path_aggregate()` |
-| **SPOF Detection** | Find single-source ingredients in <1s | `resilience_analysis()` |
-| **OSA Root Cause** | Correlate low-OSA with DC bottlenecks in <3s | `centrality()` |
+| Query | Description | Handler |
+|-------|-------------|---------|
+| **Recall Trace** | 1 batch (`B-2024-RECALL-001`) → 47K orders | `traverse()` |
+| **Landed Cost** | Full margin calculation through supply chain | `path_aggregate()` |
+| **SPOF Detection** | Find single-source ingredients (`SUP-PALM-MY-001`) | `resilience_analysis()` |
+| **OSA Root Cause** | Correlate low-OSA with DC bottlenecks (`DC-NAM-CHI-001`) | `centrality()` |
+
+## Named Test Entities
+
+Deterministic fixtures for reproducible benchmarking:
+
+| Entity ID | Type | Purpose |
+|-----------|------|---------|
+| `B-2024-RECALL-001` | Batch | Contaminated batch for recall trace |
+| `ACCT-MEGA-001` | Account | MegaMart hub (4,500 stores, 25% of orders) |
+| `SUP-PALM-MY-001` | Supplier | Single-source Palm Oil (SPOF) |
+| `DC-NAM-CHI-001` | DC | Chicago bottleneck (40% NAM volume) |
+| `PROMO-BF-2024` | Promotion | Black Friday (bullwhip effect) |
+| `LANE-SH-LA-001` | Route | Seasonal Shanghai→LA lane |
 
 ## Connection Settings
 
@@ -79,11 +103,13 @@ fmcg_example/
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Directory Structure | ✅ Complete |
-| 2 | Schema (67 tables + 8 views) | ✅ Complete |
-| 3 | Ontology (LinkML + VG) | ✅ Complete |
-| 4 | Data Generator (~4M rows) | 📋 TODO |
-| 5 | Beast Mode Tests | 📋 TODO |
-| 6 | Neo4j Comparison | 📋 TODO |
+| 2 | Schema (70 tables + 8 views) | ✅ Complete |
+| 3 | Ontology (71 classes, ~50 relationships) | ✅ Complete |
+| 4 | Data Generator (~11.4M rows, 85K rows/sec) | ✅ Complete (v0.9.40) |
+| 5 | Chaos Injection (5 risk events, 6 quirks) | ✅ Complete |
+| 6 | Validation Suite (8 automated checks) | ✅ Complete |
+| 7 | Beast Mode Tests | 📋 TODO |
+| 8 | Neo4j Comparison | 📋 TODO |
 
 ## Specification
 

@@ -12,16 +12,14 @@
 
 This work extends the previously introduced [virtual-ontology](https://github.com/mcfitzgerald/virtual-ontology) concept by adopting LinkML for standardized, validatable ontology definitions and adding handlers for full graph operations.
 
-**Proof of concept**: We share a toy example from supply chain domain to demonstrate the approach; the pattern generalizes to any relational schema
+**Proof of concept**: We share an FMCG (Fast-Moving Consumer Goods) supply chain example to demonstrate the approach; the pattern generalizes to any relational schema
 
 ## Quick Start
 
-**FIRST:Launch Claude Code session**
-
 ```bash
 make install          # Install Python dependencies
-make db-up            # Start PostgreSQL
-make neo4j-up         # Start Neo4j (for benchmarking)
+make fmcg-db-up       # Start FMCG PostgreSQL (port 5433)
+make neo4j-up         # Start Neo4j (optional, for benchmarking)
 ```
 
 ## Database Setup
@@ -37,10 +35,10 @@ While the general use case is on realtional SQL data, we compare two databases: 
 ### Starting the Databases
 
 ```bash
-# Start PostgreSQL
-make db-up
+# Start FMCG PostgreSQL (port 5433)
+make fmcg-db-up
 
-# Start Neo4j
+# Start Neo4j (optional, for benchmarking)
 make neo4j-up
 ```
 
@@ -48,38 +46,38 @@ make neo4j-up
 
 ```bash
 # Check running containers
-docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(postgres|neo4j)"
+docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(fmcg|neo4j)"
 ```
 
-Expected output shows both as "healthy":
+Expected output shows containers as "healthy":
 ```
 virt-graph-neo4j      Up X minutes (healthy)
-postgres-postgres-1   Up X minutes (healthy)
+fmcg-postgres-1       Up X minutes (healthy)
 ```
 
 ### Stopping the Databases
 
 ```bash
-# Stop PostgreSQL
-make db-down
+# Stop FMCG PostgreSQL
+make fmcg-db-down
 
 # Stop Neo4j
 make neo4j-down
 ```
 
-### Resetting PostgreSQL
+### Resetting FMCG Database
 
-To wipe and recreate the PostgreSQL database (re-runs schema and seed scripts):
+To wipe and recreate the FMCG database (re-runs schema and seed scripts):
 
 ```bash
-make db-reset
+make fmcg-db-reset
 ```
 
 ### Viewing Logs
 
 ```bash
-# PostgreSQL logs
-make db-logs
+# FMCG PostgreSQL logs
+docker-compose -f fmcg_example/postgres/docker-compose.yml logs -f
 
 # Neo4j logs
 make neo4j-logs
@@ -103,10 +101,10 @@ make neo4j-stop
 
 ### Database Credentials
 
-| Database   | Host      | Port | User        | Password     | Database/DB   |
-|------------|-----------|------|-------------|--------------|---------------|
-| PostgreSQL | localhost | 5432 | virt_graph  | dev_password | supply_chain  |
-| Neo4j      | localhost | 7687 | neo4j       | dev_password | neo4j         |
+| Database        | Host      | Port | User        | Password     | Database      |
+|-----------------|-----------|------|-------------|--------------|---------------|
+| FMCG PostgreSQL | localhost | 5433 | virt_graph  | dev_password | prism_fmcg    |
+| Neo4j           | localhost | 7687 | neo4j       | dev_password | neo4j         |
 
 Neo4j also exposes a browser UI at http://localhost:7474
 
@@ -121,7 +119,8 @@ import psycopg2
 
 conn = psycopg2.connect(
     host='localhost',
-    database='supply_chain',
+    port=5433,
+    database='prism_fmcg',
     user='virt_graph',
     password='dev_password'
 )
@@ -171,9 +170,10 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Resource | Location | Purpose |
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
-| Example Ontology | `supply_chain_example/ontology/supply_chain.yaml` | Supply chain domain ontology |
+| FMCG Ontology | `fmcg_example/ontology/prism_fmcg.yaml` | FMCG domain ontology (71 classes, ~50 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
-| Example | `supply_chain_example/` | Complete supply chain use case with tests |
+| FMCG Example | `fmcg_example/` | Complete FMCG use case with tests and data generation |
+| Data Generation | `fmcg_example/scripts/data_generation/` | Modular generators with chaos injection |
 
 ### Metamodel Features (v2.1)
 
@@ -199,115 +199,77 @@ The ontology classifies relationships by what operations they support:
 | **Algorithm** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
 
 
-# Supply Chain Use Case
+# FMCG Use Case: Prism Consumer Goods
 
 ### Data Overview
 
-**PostgreSQL** contains 20 relational tables (~1.6M rows total):
-`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `material_transactions`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `production_routings`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`, `work_centers`, `work_order_steps`, `work_orders`
+**PostgreSQL** contains 70 tables + 8 views (~11.4M rows total) organized by SCOR-DS domains:
 
-| Entity | Rows | Notes |
-|--------|------|-------|
-| Orders | 80,000 | Customer orders |
-| Order Items | 239,985 | Composite key (order_id, line_number) |
-| Shipments | 45,737 | 70% fulfillment, 20% transfer, 10% replenishment |
-| BOM Entries | 42,706 | With effectivity dates (80% current, 15% superseded, 5% future) |
-| Inventory | 30,054 | Part × Facility |
-| Parts | 15,008 | 5-level BOM hierarchy |
-| Customers | 5,000 | Retail, wholesale, enterprise |
-| Suppliers | 1,000 | Tiered (T1/T2/T3) |
-| Facilities | 100 | Warehouses, factories, distribution centers |
-| Products | 500 | Finished goods |
-| Material Transactions | 639,666 | WIP, consumption, scrap tracking |
-| Work Order Steps | 480,352 | Execution progress through routing |
-| Work Orders | 120,000 | Make-to-order and make-to-stock |
-| Production Routings | 2,002 | Process steps per product |
-| Work Centers | 126 | Manufacturing capacity at factories |
+| Domain | Tables | Description |
+|--------|--------|-------------|
+| **SOURCE** | 8 | Ingredients, suppliers, certifications, purchase orders, goods receipts |
+| **TRANSFORM** | 9 | Plants, production lines, formulas, work orders, batches |
+| **PRODUCT** | 5 | Products, packaging, SKUs (~2,000), substitutes |
+| **ORDER** | 7 | Channels, promotions, orders (~200K), order lines (~3.2M) |
+| **FULFILL** | 11 | Divisions, DCs, retail locations (~10K), shipments, inventory |
+| **LOGISTICS** | 7 | Carriers, contracts, routes, shipment legs |
+| **ESG** | 5 | Emission factors, sustainability targets, supplier ESG scores |
+| **PLAN** | 9 | POS sales (~500K), demand forecasts, supply plans |
+| **RETURN** | 4 | RMA authorizations, returns, disposition logs |
+| **ORCHESTRATE** | 6 | KPI thresholds/actuals, OSA metrics, risk events, audit log |
 
-**Schema Enhancements (v0.9.9)**:
-- `order_items`: SAP-style composite key `(order_id, line_number)`
-- `shipments`: Polymorphic `shipment_type` (order_fulfillment, transfer, replenishment)
-- `bill_of_materials`: Effectivity dates (`effective_from`, `effective_to`)
-- `supplier_relationships`: Status tracking (`is_active`, `relationship_status`)
-- `transport_routes`: Route status (`route_status`)
+**Key Scale Points**:
+- ~11.4M rows across 70 tables
+- ~3.2M order lines (vectorized generation)
+- ~1M shipment lines
+- ~500K POS sales with multi-promo effects
+- ~10K retail locations with hub concentration (MegaMart = 25% of orders)
+
+### Named Test Entities
+
+Deterministic fixtures for reproducible benchmarking:
+
+| Entity ID | Description | Tests |
+|-----------|-------------|-------|
+| `B-2024-RECALL-001` | Contaminated batch | Recall trace (1 batch → 47K orders) |
+| `ACCT-MEGA-001` | MegaMart hub (4,500 stores) | Hub concentration, 25% of orders |
+| `SUP-PALM-MY-001` | Single-source Palm Oil supplier | SPOF detection, resilience analysis |
+| `DC-NAM-CHI-001` | Chicago DC (40% NAM volume) | Bottleneck analysis, centrality |
+| `PROMO-BF-2024` | Black Friday promotion | Bullwhip effect, promo lift |
+| `LANE-SH-LA-001` | Seasonal Shanghai→LA lane | Temporal route queries |
 
 
-### Example Queries
+### Data Generation
 
-These are real queries generated by Claude Code during benchmarking. See `supply_chain_example/questions.md` for the 60 benchmark questions.
+The FMCG example includes a modular data generation system (`fmcg_example/scripts/data_generation/`) that produces realistic supply chain data:
 
-**Direct SQL** (Q05: Which suppliers have ISO9001 certification?)
-```sql
-SELECT DISTINCT s.supplier_code, s.name, sc.certification_number
-FROM suppliers s
-JOIN supplier_certifications sc ON s.id = sc.supplier_id
-WHERE sc.certification_type = 'ISO9001' AND sc.is_valid = true;
+```bash
+# Generate seed data (~11.4M rows in ~2-3 minutes)
+poetry run python fmcg_example/scripts/generate_data.py
 ```
 
-**Recursive Traversal** (Q12: Find all upstream suppliers of 'Acme Corp')
-```python
-result = traverse(
-    conn,
-    nodes_table="suppliers",
-    edges_table="supplier_relationships",
-    edge_from_col="seller_id",
-    edge_to_col="buyer_id",
-    start_id=acme_id,
-    direction="inbound",  # Who sells TO Acme
-    max_depth=10,
-    include_start=False,
-)
-# Result: 33 upstream suppliers (7 tier 2, 26 tier 3)
-```
+**Architecture** (v0.9.40):
+- **15 Level Generators** (Level 0-14): Each level generates tables with proper FK dependencies
+- **Vectorized Generation**: NumPy-based generators for high-volume tables (85K rows/sec)
+- **Streaming Writer**: Memory-efficient PostgreSQL COPY output with 10MB buffer
 
-**Path Aggregation - BOM Explosion** (Q19: Full BOM for 'Turbo Encabulator')
-```python
-result = path_aggregate(
-    conn,
-    nodes_table="parts",
-    edges_table="bill_of_materials",
-    edge_from_col="parent_part_id",
-    edge_to_col="child_part_id",
-    start_id=part_id,
-    value_col="quantity",
-    operation="multiply",  # Propagate quantities through hierarchy
-    max_depth=20,
-)
-# Result: 1,024 unique parts with aggregated quantities
-```
+**Chaos Injection** - Realistic supply chain disruptions:
 
-**Shortest Path** (Q29: Shortest route from Chicago to LA)
-```python
-result = shortest_path(
-    conn,
-    nodes_table="facilities",
-    edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
-    start_id=chicago_id,
-    end_id=la_id,
-    weight_col="distance_km",
-)
-# Result: 3,388.3 km, 3 hops
-```
+| Component | Description |
+|-----------|-------------|
+| **RiskEventManager** | 5 risk events (contamination, port strike, cyber outage, SPOF failure, carbon tax) |
+| **QuirksManager** | 6 behavioral quirks (bullwhip, phantom inventory, port congestion, optimism bias) |
+| **PromoCalendar** | Multi-promo system with 29% penetration, lift effects, hangover periods |
 
-**Centrality** (Q36: Which facility is most central?)
-```python
-result = centrality(
-    conn,
-    nodes_table="facilities",
-    edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
-    centrality_type="betweenness",
-    top_n=10,
-)
-# Result: New York Factory (score=0.2327)
-```
+**Validation Suite** - 8 automated checks ensure data realism:
+- Pareto distribution (top 20% SKUs = 80% volume)
+- Hub concentration (MegaMart = 25% of orders)
+- Referential integrity across all 70 tables
+- Chaos injection verification
 
 ### Workflow (with Claude Code)
 
-1. **Read the ontology** (e.g., `supply_chain_example/ontology/supply_chain.yaml`) to understand available entities and relationships
+1. **Read the ontology** (`fmcg_example/ontology/prism_fmcg.yaml`) to understand available entities and relationships
 2. **Dispatch** the question: determine if a handler is needed based on operation types
 3. **Generate query on-the-fly**: Direct SQL for simple joins, handler call for traversals/algorithms
 4. **Execute and return results**
@@ -338,16 +300,15 @@ Documentation covers:
 - **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
 - **[Handlers](docs/handlers/overview.md)** - All available graph operations
 - **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
-- **[Supply Chain Tutorial](docs/examples/supply-chain.md)** - Complete worked example
+- **[FMCG Domain](fmcg_example/docs/prism-fmcg.md)** - SCOR-DS model and domain documentation
 
 ## Research Validation
 
 *Validation methodology (benchmark results to be updated):*
 
-- 60 benchmark questions across different operation categories
-- GOLD questions test cross-domain polymorphism (BOM + Supplier + Logistics traversals)
+- Benchmark questions across different operation categories
 - Same ontology defines BOTH VG/SQL handlers AND Neo4j schema
 - Both systems queried with on-the-fly generated queries
-- Supply chain domain proves the concept; approach generalizes
+- FMCG domain proves the concept; approach generalizes to any relational schema
 
 See `benchmark_comparison.md` for detailed results.

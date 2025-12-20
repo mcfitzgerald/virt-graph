@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.41] - 2025-12-20
+
+### Changed
+
+- **README.md**: Complete overhaul to reflect FMCG example as primary demo
+  - Updated Quick Start to use `make fmcg-db-up` (port 5433)
+  - Updated Database Credentials for `prism_fmcg` database
+  - Replaced "Supply Chain Use Case" with "FMCG Use Case: Prism Consumer Goods"
+  - Added Data Overview table by SCOR-DS domain (70 tables + 8 views, ~11.4M rows)
+  - Added Named Test Entities section (6 deterministic fixtures)
+  - Added Data Generation section with architecture, chaos injection, and validation suite
+  - Removed example queries section
+  - Updated Key Resources table to point to `fmcg_example/`
+
+- **fmcg_example/FMCG_README.md**: Updated to reflect current implementation status
+  - Updated Quick Start with `make fmcg-db-up` and `make fmcg-generate`
+  - Added full `data_generation/` module tree to directory structure
+  - Updated Implementation Status: Phases 4-6 marked complete (v0.9.40)
+  - Added Named Test Entities section
+  - Updated scale comparison (~11.4M rows vs ~1.7M)
+
 ## [0.9.40] - 2025-12-20
 
 ### Changed
