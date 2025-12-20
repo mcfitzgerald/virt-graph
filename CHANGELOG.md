@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.39] - 2025-12-20
+
+### Changed
+
+- **Phase E+F: Slim Orchestrator** (`fmcg_example/scripts/generate_data.py`): 92% code reduction
+  - Reduced from **8,237 lines to 644 lines** by using modular generators
+  - Imports all 15 level generators (Level0Generator through Level14Generator) from `data_generation.generators`
+  - Uses `GeneratorContext` pattern for shared state across generators
+  - Keeps only orchestration logic: CLI (argparse), `generate_all()`, `write_sql()`, `validate_realism()`
+  - Removed ~7,600 lines of duplicated code:
+    - Constants (~1,400 lines) - now in `data_generation/constants/`
+    - SQL helpers (80 lines) - already in `streaming_writer.py`
+    - Unused stub classes (120 lines) - DivisionGenerator, PlantGenerator, etc.
+    - `_generate_level_*` methods (~4,500 lines) - now in `generators/level_*.py`
+    - `_validate_*` methods (~350 lines) - now in `validation.py`
+
+### Fixed
+
+- **RSK-BIO-001 risk event handling** in `level_5_7_manufacturing.py`:
+  - Recall batch B-2024-RECALL-001 now correctly set to `qc_status: "REJECTED"` when risk event is triggered
+  - Previously hardcoded to "hold", now checks `risk_manager.is_triggered("RSK-BIO-001")`
+
+### Technical
+
+- Phase E+F of modularization plan (effervescent-shimmying-blum.md)
+- All 8 validation checks pass: row_counts, pareto, hub_concentration, named_entities, spof, multi_promo, referential_integrity, chaos_injection
+- Full generation: **11.4M rows** across **65 tables** in ~254 seconds (~45K rows/sec)
+- SQL output: seed.sql written successfully in ~278 seconds
+
 ## [0.9.38] - 2025-12-20
 
 ### Added

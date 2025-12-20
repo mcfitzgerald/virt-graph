@@ -303,10 +303,17 @@ class Level6Generator(BaseLevelGenerator):
         qc_weights = [5, 5, 80, 7, 3]
 
         # Named entity: Contaminated Sorbitol batch
+        # RSK-BIO-001 risk event: When triggered, batch should be REJECTED
         if completed_wos:
             wo = completed_wos[0]
             sorb_ing_id = self.ctx.ingredient_ids.get("ING-SORB-001", 1)
             self.ctx.batch_ids["B-2024-RECALL-001"] = batch_id
+
+            # Check if RSK-BIO-001 (contamination) risk event is triggered
+            recall_status = "hold"
+            if self.ctx.risk_manager and self.ctx.risk_manager.is_triggered("RSK-BIO-001"):
+                recall_status = "REJECTED"
+
             self.data["batches"].append(
                 {
                     "id": batch_id,
@@ -319,7 +326,7 @@ class Level6Generator(BaseLevelGenerator):
                     "quantity_kg": wo.get("actual_quantity_kg") or wo["planned_quantity_kg"],
                     "output_cases": (wo.get("actual_quantity_kg") or wo["planned_quantity_kg"]) // 10,
                     "yield_percent": round(random.uniform(96, 99), 2),
-                    "qc_status": "hold",  # Recall status
+                    "qc_status": recall_status,
                     "qc_inspector": "QC Dept",
                     "qc_date": wo.get("actual_end_date"),
                     "notes": "RECALL: Contaminated sorbitol detected - isolate and quarantine",

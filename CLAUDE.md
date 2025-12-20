@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Python environment and dependencies managed by poetry
+
+Always use poetry to run python for this project
+
 ## Coding and Engineering Standards
 
 Employ a judicious but robust testing strategy, and prefer integration tests versus unit tests unless unit test is critical
