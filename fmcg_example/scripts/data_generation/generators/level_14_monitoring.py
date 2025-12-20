@@ -5,7 +5,7 @@ Tables generated:
 - kpi_actuals (~50K rows) - Weekly KPI measurements
 - osa_metrics (~500K rows) - On-shelf availability tracking
 - risk_events (~500 rows) - Supply chain disruptions
-- audit_log (~50K rows) - Change tracking for key tables
+- audit_logs (~50K rows) - Change tracking for key tables
 
 This is the final generation level - it has no downstream dependencies.
 """
@@ -35,7 +35,7 @@ class Level14Generator(BaseLevelGenerator):
         """
         Generate all Level 14 tables.
 
-        Tables: kpi_actuals, osa_metrics, risk_events, audit_log
+        Tables: kpi_actuals, osa_metrics, risk_events, audit_logs
         """
         print("  Level 14: Monitoring (KPIs, OSA, risk_events...)")
         level_start = time.time()
@@ -52,7 +52,7 @@ class Level14Generator(BaseLevelGenerator):
 
     def _report_level_stats(self, elapsed: float) -> None:
         """Report generation statistics for this level."""
-        tables = ["kpi_actuals", "osa_metrics", "risk_events", "audit_log"]
+        tables = ["kpi_actuals", "osa_metrics", "risk_events", "audit_logs"]
         total_rows = sum(len(self.data.get(t, [])) for t in tables)
         rows_per_sec = total_rows / elapsed if elapsed > 0 else 0
         print(f"    Level 14 completed: {total_rows:,} rows in {elapsed:.2f}s ({rows_per_sec:,.0f} rows/sec)")
@@ -392,7 +392,7 @@ class Level14Generator(BaseLevelGenerator):
                     start_date=datetime(self.ctx.base_year, 1, 1), end_date=now
                 )
 
-                self.data["audit_log"].append(
+                self.data["audit_logs"].append(
                     {
                         "id": audit_id,
                         "table_name": table_name,
@@ -411,4 +411,4 @@ class Level14Generator(BaseLevelGenerator):
                 )
                 audit_id += 1
 
-        print(f"      Generated {audit_id - 1:,} audit_log entries")
+        print(f"      Generated {audit_id - 1:,} audit_logs entries")

@@ -41,6 +41,21 @@ Phase 7 - Modular Generators (see effervescent-shimmying-blum.md):
 - GeneratorContext: Shared state dataclass passed to all generators
 - BaseLevelGenerator: Abstract base class for level-specific generators
 
+Phase D - Level Generators 1-13 (see effervescent-shimmying-blum.md):
+- Level1Generator: Suppliers, plants, production_lines
+- Level2Generator: Supplier_ingredients, formulas
+- Level3Generator: Retail_accounts, retail_locations, DCs
+- Level4Generator: SKUs, promotions
+- Level5Generator: POs, work_orders, goods_receipts
+- Level6Generator: PO_lines, batches
+- Level7Generator: Batch_ingredients, inventory
+- Level8Generator: POS_sales, orders, forecasts
+- Level9Generator: Order_lines, allocations, pick_waves
+- Level10Generator: Shipments, shipment_legs
+- Level11Generator: Shipment_lines
+- Level12Generator: Returns, RMAs
+- Level13Generator: Disposition_logs
+
 Phase B - Constants Package (see effervescent-shimmying-blum.md):
 - constants/reference: DIVISIONS, CHANNELS, PRODUCTS, PLANTS, PACKAGING_TYPES
 - constants/network: DCS, PORTS, CARRIERS
@@ -93,8 +108,27 @@ from .vectorized import (
     structured_to_dicts,
     zipf_weights,
 )
-from .generators import BaseLevelGenerator, GeneratorContext, Level0Generator, Level14Generator
+from .generators import (
+    BaseLevelGenerator,
+    GeneratorContext,
+    Level0Generator,
+    Level1Generator,
+    Level2Generator,
+    Level3Generator,
+    Level4Generator,
+    Level5Generator,
+    Level6Generator,
+    Level7Generator,
+    Level8Generator,
+    Level9Generator,
+    Level10Generator,
+    Level11Generator,
+    Level12Generator,
+    Level13Generator,
+    Level14Generator,
+)
 from .validation import DataValidator
+from .helpers import barabasi_albert_attachment
 from .constants import (
     BUSINESS_RULES,
     CARRIERS,
@@ -171,6 +205,20 @@ __all__ = [
     "BaseLevelGenerator",
     "Level0Generator",
     "Level14Generator",
+    # Phase D: Level Generators 1-13
+    "Level1Generator",
+    "Level2Generator",
+    "Level3Generator",
+    "Level4Generator",
+    "Level5Generator",
+    "Level6Generator",
+    "Level7Generator",
+    "Level8Generator",
+    "Level9Generator",
+    "Level10Generator",
+    "Level11Generator",
+    "Level12Generator",
+    "Level13Generator",
     # Phase C: Validation
     "DataValidator",
     # Phase B: Constants
@@ -186,6 +234,7 @@ __all__ = [
     "KPI_THRESHOLDS",
     "BUSINESS_RULES",
     # Phase B: Helpers
+    "barabasi_albert_attachment",
     "create_named_entities",
     "TARGET_ROW_COUNTS",
     # Paths

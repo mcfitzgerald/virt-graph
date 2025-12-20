@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.38] - 2025-12-20
+
+### Added
+
+- **Phase D: Extract Transactional Middle** (`data_generation/generators/`): Complete level generators 1-13
+  - `level_1_2_source.py`: Level1Generator + Level2Generator (~600 lines)
+    - Level 1: suppliers (200), plants (7), production_lines (35), carrier_contracts (100), route_segments (200)
+    - Level 2: supplier_ingredients (~130), certifications (~600), formulas (~45), carrier_rates (~1000), routes (~50)
+    - Named entities: SUP-PALM-MY-001 (single-source Palm Oil), LANE-SH-LA-001 (seasonal Shanghai-LA lane)
+  - `level_3_network.py`: Level3Generator (~200 lines)
+    - distribution_centers (25), retail_accounts (~100), retail_locations (~10,000)
+    - Named entities: DC-NAM-CHI-001 (bottleneck DC), ACCT-MEGA-001 (MegaMart with 4,500 stores)
+    - Uses preferential attachment for realistic hub concentration
+  - `level_4_product.py`: Level4Generator (~350 lines)
+    - skus (~2000), sku_costs, sku_substitutes, promotions (~362), promotion_skus, promotion_accounts
+    - Named entity: PROMO-BF-2024 (Black Friday promotion)
+    - Complex promotion mix: seasonal, FSI, TPR, BOGO
+  - `level_5_7_manufacturing.py`: Level5Generator + Level6Generator + Level7Generator (~400 lines)
+    - Level 5: purchase_orders (~25K), work_orders (~50K), goods_receipts (~20K)
+    - Level 6: purchase_order_lines (~75K), goods_receipt_lines, batches (~48K), batch_cost_ledger
+    - Level 7: batch_ingredients (~150K), inventory (~50K)
+    - Named entity: B-2024-RECALL-001 (contaminated batch)
+  - `level_8_9_demand.py`: Level8Generator + Level9Generator (~700 lines)
+    - Level 8: pos_sales (~500K vectorized), demand_forecasts (~100K), orders (~200K)
+    - Level 9: order_lines (~3.2M vectorized), order_allocations (~3.7M), pick_waves (~25K)
+    - Integrates PromoCalendar for multi-promo support
+    - Uses POSSalesGenerator and OrderLinesGenerator for vectorized generation
+  - `level_10_11_fulfillment.py`: Level10Generator + Level11Generator (~400 lines)
+    - Level 10: pick_wave_orders (~737K), shipments (~180K), shipment_legs (~261K)
+    - Level 11: shipment_lines (~1M)
+    - Chicago DC bottleneck (40% NAM volume)
+  - `level_12_13_returns.py`: Level12Generator + Level13Generator (~300 lines)
+    - Level 12: rma_authorizations (~10K), returns (~10K), return_lines (~30K)
+    - Level 13: disposition_logs (~30K)
+    - Condition-based disposition: sellable→restock, damaged→liquidate/scrap
+
+- **Helpers** (`data_generation/helpers.py`):
+  - `barabasi_albert_attachment()`: Preferential attachment for scale-free network topology
+
+### Technical
+
+- Phase D of modularization plan (effervescent-shimmying-blum.md)
+- All 15 level generators (0-14) now operational as modular classes
+- Full test run: **11.4M rows** across **65 tables** in ~250 seconds
+- Fixes applied: table name pluralization (demand_allocations, audit_logs), zipf_weights parameter (alpha vs s)
+
 ## [0.9.37] - 2025-12-20
 
 ### Added
@@ -11,7 +57,7 @@ All notable changes to this project will be documented in this file.
     - Generates 10 Level 0 tables: divisions, channels, products, packaging_types, ports, carriers, emission_factors, kpi_thresholds, business_rules, ingredients
     - Uses `BaseLevelGenerator` pattern with sub-methods for each table
   - `generators/level_14_monitoring.py`: `Level14Generator` class (~320 lines)
-    - Generates 4 Level 14 tables: kpi_actuals, osa_metrics, risk_events, audit_log
+    - Generates 4 Level 14 tables: kpi_actuals, osa_metrics, risk_events, audit_logs
     - Leaf level with no downstream dependencies
   - `validation.py`: `DataValidator` class (~350 lines)
     - 8 validation methods: row_counts, pareto, hub_concentration, named_entities, spof, multi_promo, referential_integrity, chaos_injection

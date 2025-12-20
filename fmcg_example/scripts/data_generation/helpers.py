@@ -2,11 +2,43 @@
 Helper functions and configuration for FMCG data generation.
 
 Contains:
+- barabasi_albert_attachment(): Preferential attachment for realistic network topology
 - create_named_entities(): Deterministic testing entities (recalls, hot nodes, SPOFs)
 - TARGET_ROW_COUNTS: Row count targets by generation level
 """
 
 from typing import Any
+
+import numpy as np
+
+
+def barabasi_albert_attachment(
+    existing_degrees: list[int], m: int = 1, rng: np.random.Generator | None = None
+) -> list[int]:
+    """
+    Barabasi-Albert preferential attachment.
+
+    Section 4.1: "Rich get richer" - big DCs get more stores.
+
+    Args:
+        existing_degrees: Current degree count for each node
+        m: Number of connections to make
+        rng: numpy random generator (uses global if None)
+
+    Returns:
+        Indices of nodes to connect to
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    # Add 1 to avoid division by zero for new nodes
+    weights = np.array([d + 1 for d in existing_degrees], dtype=float)
+    probs = weights / weights.sum()
+
+    # Use numpy for efficient weighted selection
+    m = min(m, len(weights))  # Can't select more than available
+    selected = rng.choice(len(weights), size=m, replace=False, p=probs)
+    return selected.tolist()
 
 
 def create_named_entities() -> dict[str, Any]:
