@@ -77,7 +77,7 @@ make fmcg-db-reset
 
 ```bash
 # FMCG PostgreSQL logs
-docker-compose -f fmcg_example/postgres/docker-compose.yml logs -f
+make fmcg-db-logs
 
 # Neo4j logs
 make neo4j-logs

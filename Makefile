@@ -6,7 +6,7 @@
         show-ontology show-tbox show-rbox gen-jsonschema serve-docs \
         db-up db-down db-reset db-logs \
         neo4j-up neo4j-down neo4j-stop neo4j-reset neo4j-cycle neo4j-logs validate-neo4j \
-        fmcg-generate fmcg-validate fmcg-db-up fmcg-db-down fmcg-db-reset
+        fmcg-generate fmcg-validate fmcg-db-up fmcg-db-down fmcg-db-reset fmcg-db-logs fmcg-test
 
 # Default target
 help:
@@ -16,44 +16,23 @@ help:
 	@echo "Setup:"
 	@echo "  make install          Install dependencies"
 	@echo ""
-	@echo "Testing (supply chain example):"
-	@echo "  make test             Run all tests"
-	@echo "  make test-handlers    Run handler safety tests"
-	@echo "  make test-ontology    Run ontology validation tests"
-	@echo ""
-	@echo "Ontology (supply chain example):"
-	@echo "  make validate-ontology   Run full two-layer validation"
-	@echo "  make validate-linkml     Run LinkML structure validation only"
-	@echo "  make validate-vg         Run VG annotation validation only"
-	@echo "  make show-ontology       Show TBox/RBox definitions"
-	@echo "  make show-tbox           Show entity classes only"
-	@echo "  make show-rbox           Show relationships only"
-	@echo ""
-	@echo "Code Generation:"
-	@echo "  make gen-jsonschema   Generate JSON-Schema from ontology"
-	@echo ""
-	@echo "Database (supply chain example):"
-	@echo "  make db-up            Start PostgreSQL"
-	@echo "  make db-down          Stop PostgreSQL"
-	@echo "  make db-reset         Reset PostgreSQL (regenerate data)"
-	@echo ""
-	@echo "Neo4j (supply chain benchmarking):"
-	@echo "  make neo4j-up         Start Neo4j"
-	@echo "  make neo4j-down       Stop Neo4j"
-	@echo "  make neo4j-stop       Stop Neo4j and wait for clean shutdown"
-	@echo "  make neo4j-reset      Reset Neo4j (wipe data)"
-	@echo "  make neo4j-cycle      Full cycle: stop, wipe, restart (fixes PID issues)"
-	@echo "  make validate-neo4j   Validate Neo4j graph against ontology"
+	@echo "FMCG Example (Prism Consumer Goods) - Primary:"
+	@echo "  make fmcg-db-up       Start FMCG PostgreSQL (port 5433)"
+	@echo "  make fmcg-db-down     Stop FMCG PostgreSQL"
+	@echo "  make fmcg-db-reset    Reset FMCG PostgreSQL (wipe and reload)"
+	@echo "  make fmcg-db-logs     View FMCG PostgreSQL logs"
+	@echo "  make fmcg-generate    Generate ~11.4M rows of FMCG data"
+	@echo "  make fmcg-validate    Validate data without writing SQL"
+	@echo "  make fmcg-test        Run FMCG tests"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make serve-docs       Serve documentation locally"
 	@echo ""
-	@echo "FMCG Example (Prism Consumer Goods):"
-	@echo "  make fmcg-generate    Generate ~7.5M rows of FMCG data"
-	@echo "  make fmcg-validate    Validate data without writing SQL"
-	@echo "  make fmcg-db-up       Start FMCG PostgreSQL"
-	@echo "  make fmcg-db-down     Stop FMCG PostgreSQL"
-	@echo "  make fmcg-db-reset    Reset FMCG PostgreSQL (wipe and reload)"
+	@echo "Legacy (supply_chain_example - archived):"
+	@echo "  make test             Run supply chain tests"
+	@echo "  make db-up/down/reset Start/stop/reset supply chain PostgreSQL"
+	@echo "  make neo4j-up/down    Start/stop Neo4j for benchmarking"
+	@echo "  make validate-ontology   Run full two-layer validation"
 
 # Setup
 install:
@@ -141,14 +120,17 @@ validate-neo4j:  ## Validate Neo4j graph against ontology
 serve-docs:
 	poetry run mkdocs serve
 
-# FMCG Example (Prism Consumer Goods)
-fmcg-generate:  ## Generate FMCG seed data (~7.5M rows)
+# FMCG Example (Prism Consumer Goods) - Primary example
+fmcg-generate:  ## Generate FMCG seed data (~11.4M rows)
 	poetry run python fmcg_example/scripts/generate_data.py --output fmcg_example/postgres/seed.sql
 
 fmcg-validate:  ## Validate FMCG data generation without writing SQL
 	poetry run python fmcg_example/scripts/generate_data.py --validate-only
 
-fmcg-db-up:  ## Start FMCG PostgreSQL
+fmcg-test:  ## Run FMCG tests
+	poetry run pytest fmcg_example/tests/ -v
+
+fmcg-db-up:  ## Start FMCG PostgreSQL (port 5433)
 	docker-compose -f fmcg_example/postgres/docker-compose.yml up -d
 
 fmcg-db-down:  ## Stop FMCG PostgreSQL
@@ -157,3 +139,6 @@ fmcg-db-down:  ## Stop FMCG PostgreSQL
 fmcg-db-reset:  ## Reset FMCG PostgreSQL (wipe and reload)
 	docker-compose -f fmcg_example/postgres/docker-compose.yml down -v
 	docker-compose -f fmcg_example/postgres/docker-compose.yml up -d
+
+fmcg-db-logs:  ## View FMCG PostgreSQL logs
+	docker-compose -f fmcg_example/postgres/docker-compose.yml logs -f
