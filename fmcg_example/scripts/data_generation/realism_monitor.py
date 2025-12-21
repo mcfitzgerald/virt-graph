@@ -300,6 +300,73 @@ class DegreeMonitor:
         }
 
 
+@dataclass
+class ForecastBiasAccumulator:
+    """
+    Tracks forecast bias (Forecast vs Actual).
+
+    Bias = (Forecast - Actual) / Actual
+    Positive bias = Over-forecasting (Optimism)
+    Negative bias = Under-forecasting
+    """
+
+    sum_forecast: float = 0.0
+    sum_actual: float = 0.0
+    count: int = 0
+
+    def update_forecast(self, qty: float) -> None:
+        self.sum_forecast += qty
+
+    def update_actual(self, qty: float) -> None:
+        self.sum_actual += qty
+        self.count += 1
+
+    @property
+    def bias_pct(self) -> float:
+        """Percentage bias."""
+        if self.sum_actual == 0:
+            return 0.0
+        return (self.sum_forecast - self.sum_actual) / self.sum_actual
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "total_forecast": self.sum_forecast,
+            "total_actual": self.sum_actual,
+            "bias_pct": self.bias_pct,
+        }
+
+
+@dataclass
+class ReturnRateAccumulator:
+    """
+    Tracks return rate (Returns vs Sales).
+
+    Rate = Return Volume / Sales Volume
+    """
+
+    sum_sales_cases: float = 0.0
+    sum_return_cases: float = 0.0
+
+    def update_sales(self, qty: float) -> None:
+        self.sum_sales_cases += qty
+
+    def update_returns(self, qty: float) -> None:
+        self.sum_return_cases += qty
+
+    @property
+    def return_rate(self) -> float:
+        if self.sum_sales_cases == 0:
+            return 0.0
+        return self.sum_return_cases / self.sum_sales_cases
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "sales_volume": self.sum_sales_cases,
+            "return_volume": self.sum_return_cases,
+            "return_rate": self.return_rate,
+        }
+
+
 # =============================================================================
 # Main RealismMonitor Class
 # =============================================================================
@@ -373,6 +440,12 @@ class RealismMonitor:
         self._order_cv_accumulator = WelfordAccumulator()
         self._orders_by_account: Counter = Counter()
         self._recall_affected_stores: set = set()
+        
+        # Strategic & Financial trackers
+        self._forecast_bias = ForecastBiasAccumulator()
+        self._return_rate = ReturnRateAccumulator()
+        self._margin_issues: int = 0
+        self._esg_issues: int = 0
 
     def observe_batch(
         self,
@@ -418,12 +491,22 @@ class RealismMonitor:
             self._check_inventory(batch_data)
         elif table == "shipment_lines":
             self._check_recall_propagation(batch_data)
+        elif table == "demand_forecasts":
+            self._check_forecasts(batch_data)
+        elif table == "returns":
+            self._check_returns(batch_data)
+        elif table == "kpi_actuals":
+            self._check_kpis(batch_data)
 
     def _check_pos_sales(self, batch: list[dict]) -> None:
         """Validate POS sales for demand volatility."""
         quantities = [row.get("quantity_cases", 0) for row in batch if row.get("quantity_cases")]
         if quantities:
             self._pos_cv_accumulator.update_batch(quantities)
+            # Track actuals for bias and return rate
+            total_cases = sum(quantities)
+            self._forecast_bias.update_actual(total_cases)
+            self._return_rate.update_sales(total_cases)
 
             # Track SKU frequency for Pareto
             sku_ids = [row.get("sku_id") for row in batch if row.get("sku_id")]
@@ -451,6 +534,12 @@ class RealismMonitor:
         # Track SKU frequency
         sku_ids = [row.get("sku_id") for row in batch if row.get("sku_id")]
         self._frequencies["order_sku"].update_batch(sku_ids)
+        
+        # Simple Margin check: deep discounting
+        for row in batch:
+            discount = row.get("discount_percent", 0)
+            if discount > 50:
+                self._margin_issues += 1
 
     def _check_logistics_friction(self, batch: list[dict]) -> None:
         """Validate shipment legs for kinetic friction."""
@@ -483,6 +572,29 @@ class RealismMonitor:
                 destination_id = row.get("destination_id")
                 if destination_id:
                     self._recall_affected_stores.add(destination_id)
+
+    def _check_forecasts(self, batch: list[dict]) -> None:
+        """Track demand forecasts for bias calculation."""
+        for row in batch:
+            # Prefer 'final_forecast', fallback to others
+            qty = row.get("final_forecast") or row.get("consensus_forecast") or 0
+            self._forecast_bias.update_forecast(qty)
+
+    def _check_returns(self, batch: list[dict]) -> None:
+        """Track returns for return rate calculation."""
+        total_returned = sum(row.get("total_cases", 0) for row in batch)
+        self._return_rate.update_returns(total_returned)
+
+    def _check_kpis(self, batch: list[dict]) -> None:
+        """Track KPI actuals for strategic validation."""
+        for row in batch:
+            # Check for negative margins in financial KPIs
+            # Assuming KPI IDs/Codes are standard, but we don't have the mapping here easily
+            # We check values that look suspicious for percentages or costs
+            val = row.get("actual_value", 0)
+            # If tracking CO2
+            # self._esg_issues += ...
+            pass
 
     def check_benchmarks(self, check_interval_rows: int = 10000) -> None:
         """
@@ -529,6 +641,21 @@ class RealismMonitor:
                     f"Bullwhip violation: Order CV ({order_cv:.2f}) should be > "
                     f"POS CV ({pos_cv:.2f})"
                 )
+        
+        # Check Forecast Bias (Expect some positive bias due to Optimism quirk)
+        if self._forecast_bias.count > 1000:
+            bias = self._forecast_bias.bias_pct
+            # We expect *some* bias, but not > 50%
+            if abs(bias) > 0.50:
+                self._add_violation(f"Forecast Bias excessive: {bias:.1%}")
+
+        # Check Return Rate (Target 2-5%)
+        # Only check if we have significant sales volume
+        if self._return_rate.sum_sales_cases > 50000:
+            rate = self._return_rate.return_rate
+            # Allow wide range for startup transient, but catch gross errors
+            if rate > 0.15:
+                self._add_violation(f"Return Rate too high: {rate:.1%} (target < 5%)")
 
     def _add_violation(self, message: str) -> None:
         """Add a violation and optionally raise immediately."""

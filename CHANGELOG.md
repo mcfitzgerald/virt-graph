@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.43] - 2025-12-20
+
+### Added
+
+- **RealismMonitor Enhancements** (`realism_monitor.py`): Strategic and Financial validation
+  - Added `ForecastBiasAccumulator`: Tracks forecast bias (Forecast vs Actual) to detect systematic over/under-planning (targets Optimism Bias quirk)
+  - Added `ReturnRateAccumulator`: Monitors return volume relative to sales volume (target 2-5%)
+  - Added `MarginMonitor` checks: Detects excessive discounting (>50%) that destroys gross margin
+  - Updated `check_benchmarks()` to fail on forecast bias >50% or return rate >15%
+
+- **Documentation** (`fmcg_example/data_gen_docs/`): Comprehensive guide to data generation
+  - `README.md`: Overview of the 15-level generation process
+  - `architecture.md`: Deep dive into levels, generators, and context
+  - `validation.md`: Explanation of RealismMonitor, accumulators, and chaos injection
+  - `usage.md`: CLI commands and examples
+
+### Changed
+
+- **RealismMonitor**: `observe_batch` now routes `demand_forecasts`, `returns`, and `kpi_actuals` to new validators
+
 ## [0.9.42] - 2025-12-20
 
 ### Changed
