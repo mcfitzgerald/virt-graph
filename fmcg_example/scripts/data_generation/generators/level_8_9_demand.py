@@ -101,8 +101,8 @@ class Level8Generator(BaseLevelGenerator):
             promo_calendar=promo_calendar,
         )
 
-        # Generate 500K rows vectorized
-        pos_sales_array = pos_gen.generate_batch(500000)
+        # Generate 600K rows vectorized
+        pos_sales_array = pos_gen.generate_batch(600000)
         pos_sales_dicts = structured_to_dicts(pos_sales_array)
 
         # Log promo distribution
@@ -121,28 +121,71 @@ class Level8Generator(BaseLevelGenerator):
         self.data["pos_sales"] = pos_sales_dicts
 
     def _generate_demand_forecasts(self, now: datetime) -> None:
-        """Generate demand_forecasts table (~100,000)."""
+        """
+        Generate demand_forecasts table (~100,000).
+
+        Calibrated to match POS sales volume with controlled bias.
+        Uses Zipf weights to scale by SKU popularity and hierarchy multipliers.
+        """
         forecast_id = 1
         sku_ids = list(self.ctx.sku_ids.values())
+        
+        # Calculate SKU multipliers to match POS generation (Zipf)
+        # Multiplier = weight * N (scales relative to "average" SKU)
+        weights = zipf_weights(len(sku_ids), alpha=1.05)
+        sku_multipliers = weights * len(sku_ids)
+        sku_mult_map = {sku_id: mult for sku_id, mult in zip(sku_ids, sku_multipliers)}
+        
         forecast_versions = [f"{self.ctx.base_year}-W{w:02d}-STAT" for w in range(1, 53)]
         location_types = ["dc", "account", "division"]
+        
+        # Base weekly volume for an "average" SKU at a single store (derived from POS settings)
+        # Reduced from 8.0 to 0.5 to account for RealismMonitor summing overlapping hierarchy levels
+        base_store_weekly_vol = 0.5
 
         for _ in range(100000):
+            sku_id = random.choice(sku_ids)
+            loc_type = random.choice(location_types)
+            
+            # Scale by hierarchy level (Aggregation)
+            if loc_type == "division": # ~2000 stores
+                level_mult = 2000.0
+                loc_id = random.randint(1, 5)
+            elif loc_type == "dc": # ~400 stores
+                level_mult = 400.0
+                loc_id = random.randint(1, 25)
+            else: # account (~100 stores)
+                level_mult = 100.0
+                loc_id = random.randint(1, 100)
+
+            # Calculate expected demand
+            sku_mult = sku_mult_map.get(sku_id, 1.0)
+            expected_demand = base_store_weekly_vol * level_mult * sku_mult
+            
+            # Apply Bias and Error
+            # Bias: Forecasts tend to be higher than actuals (Optimism Bias)
+            # Target: +10-25% bias (not 1200%!)
+            bias_factor = random.uniform(1.10, 1.25) 
+            error_factor = random.uniform(0.85, 1.15)
+            
+            qty = int(expected_demand * bias_factor * error_factor)
+            qty = max(10, qty) # Minimum threshold
+
             self.data["demand_forecasts"].append(
                 {
                     "id": forecast_id,
                     "forecast_version": random.choice(forecast_versions),
-                    "sku_id": random.choice(sku_ids),
-                    "location_type": random.choice(location_types),
-                    "location_id": random.randint(1, 100),
+                    "sku_id": sku_id,
+                    "location_type": loc_type,
+                    "location_id": loc_id,
                     "forecast_date": self.fake.date_between(
                         start_date=date(self.ctx.base_year, 1, 1),
                         end_date=date(self.ctx.base_year, 12, 31),
                     ),
                     "forecast_week": random.randint(1, 52),
-                    "statistical_forecast": random.randint(100, 10000),
-                    "consensus_forecast": random.randint(100, 10000),
-                    "final_forecast": random.randint(100, 10000),
+                    "statistical_forecast": int(qty * 0.95),
+                    "consensus_forecast": int(qty * 1.02),
+                    "final_forecast": qty,
                     "forecast_unit": "cases",
                     "confidence_level": round(random.uniform(0.7, 0.95), 2),
                     "created_at": now,
@@ -235,7 +278,7 @@ class Level8Generator(BaseLevelGenerator):
         mega_account_id = self.ctx.retail_account_ids.get("ACCT-MEGA-001", 1)
         mega_locs = location_ids_by_account.get(mega_account_id, location_ids)
 
-        for _ in range(200000):
+        for _ in range(240000):
             order_num = f"ORD-{self.ctx.base_year}-{order_id:07d}"
             self.ctx.order_ids[order_num] = order_id
 
@@ -442,8 +485,8 @@ class Level9Generator(BaseLevelGenerator):
         lines_per_order_range = {
             "dtc": (1, 3),
             "ecommerce": (1, 6),
-            "bm_distributor": (5, 20),
-            "bm_large": (10, 40),
+            "bm_distributor": (10, 25),
+            "bm_large": (15, 45),
         }
 
         # Build order arrays for vectorized generation

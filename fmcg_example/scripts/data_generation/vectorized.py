@@ -427,6 +427,8 @@ class OrderLinesGenerator(VectorizedGenerator):
     # Generation parameters
     zipf_alpha: float = 1.05
     quantity_mean: int = 12
+    quantity_cv: float = 0.8  # High CV for Bullwhip Effect (0.8 > 0.67 POS CV)
+    promo_lift_multiplier: float = 3.0  # Forward buying effect
     discount_rate: float = 0.05
 
     def configure(
@@ -490,8 +492,26 @@ class OrderLinesGenerator(VectorizedGenerator):
         )
         batch["sku_id"] = self.sku_ids[sku_indices]
 
-        # Quantity cases - base Poisson, scale by channel if provided
-        quantities = self.rng.poisson(self.quantity_mean, size=total_lines)
+        # Quantity cases - Lumpy demand for Bullwhip Effect
+        # Use lumpy_demand instead of poisson to achieve higher CV
+        quantities = lumpy_demand(
+            self.rng,
+            size=total_lines,
+            base_mean=float(self.quantity_mean),
+            cv=self.quantity_cv
+        )
+
+        # Apply promo lift (Forward Buying / Batching)
+        if order_is_promo is not None:
+            # Expand promo flag to match lines
+            is_promo_expanded = np.repeat(order_is_promo, lines_per_order)
+            # Apply multiplier to promo orders
+            quantities = np.where(
+                is_promo_expanded,
+                quantities * self.promo_lift_multiplier,
+                quantities
+            ).astype(np.int64)
+
         quantities = np.maximum(quantities, 1)  # At least 1
         batch["quantity_cases"] = quantities.astype(np.int32)
 

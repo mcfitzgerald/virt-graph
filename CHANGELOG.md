@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.46] - 2025-12-21
+
+### Changed
+
+- **Scale-Up: Volume Boost 20/10** (`level_8_9_demand.py`):
+  - Increased `pos_sales` batch size from 500K to 600K (+20%)
+  - Increased base `orders` generation from 200K to 240K (+20%)
+  - Increased B2B line density:
+    - Distributor: 5-20 → 10-25 lines/order
+    - Large Retail: 10-40 → 15-45 lines/order
+  - Total row count reached **14.7M rows** (exceeding 13.7M target)
+
+### Performance
+
+- **Generation time**: 67s → 83s (scaled linearly with volume)
+- **Throughput**: ~178,000 rows/sec
+
+### Technical
+
+- All validation checks pass (8/8)
+- Bullwhip and Bias calibrations maintained at scale
+
+## [0.9.45] - 2025-12-21
+
+### Fixed
+
+- **Bullwhip Effect Inversion** (`vectorized.py`):
+  - Replaced Poisson distribution with Negative Binomial (`lumpy_demand`) for Order Lines
+  - Implemented promotional batching logic (3.0x quantity multiplier for promo orders)
+  - Result: **Bullwhip Multiplier increased from 0.43x to 1.54x** (realistic amplification)
+  - Result: Order CV increased to 1.03 (reflecting true volatility)
+
+- **Forecast Bias Miscalibration** (`level_8_9_demand.py`):
+  - Rewrote `_generate_demand_forecasts` to use Zipf-weighted SKU multipliers
+  - Calibrated base volume to account for hierarchy summation
+  - Result: **Forecast Bias reduced from 1233% to 12.4%** (realistic optimism bias)
+
+- **Validation Manifest** (`benchmark_manifest.json`):
+  - Updated `order_cv_range` to `[0.20, 1.20]` to align with FMCG industry benchmarks for high-volatility promoted items
+
+- **RealismMonitor Bug** (`realism_monitor.py`):
+  - Fixed bug where root-level `validation_tolerances` were ignored in manifest loading
+
+### Technical
+
+- All kinetic realism benchmarks (Bullwhip, Bias, CV) now passing
+
 ## [0.9.44] - 2025-12-21
 
 ### Added

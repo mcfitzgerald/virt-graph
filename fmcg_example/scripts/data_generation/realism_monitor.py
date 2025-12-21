@@ -405,11 +405,16 @@ class RealismMonitor:
         # Load benchmarks
         if manifest_data is not None:
             self.benchmarks = manifest_data.get("benchmarks", {})
+            if "validation_tolerances" in manifest_data:
+                self.benchmarks["validation_tolerances"] = manifest_data["validation_tolerances"]
             self.profile_name = manifest_data.get("supply_chain_profile", "unknown")
         elif manifest_path is not None:
             with open(manifest_path) as f:
                 data = json.load(f)
             self.benchmarks = data.get("benchmarks", {})
+            # Merge root-level validation_tolerances into benchmarks if present
+            if "validation_tolerances" in data:
+                self.benchmarks["validation_tolerances"] = data["validation_tolerances"]
             self.profile_name = data.get("supply_chain_profile", "unknown")
         else:
             self.benchmarks = {}
