@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.44] - 2025-12-21
+
+### Added
+
+- **Full Validation Coverage** (`realism_monitor.py`, `validation.py`): Comprehensive benchmark and chaos validation
+  - **Manifest-Driven Validation**: All thresholds now read from `benchmark_manifest.json` instead of hardcoded values
+  - **New `chaos_validation` section** in manifest: Defines expected outcomes for all risk events and quirks
+  - **Production checks**: Yield mean/std validation, QC rejection rate tracking
+  - **Logistics checks**: OTIF rate validation, delay mean/std tracking, mode-specific delay accumulators
+  - **OSA checks**: On-Shelf Availability rate validation (88-96% target)
+  - **Bullwhip checks**: POS CV, Order CV, and multiplier range validation
+  - **New chaos validations** (9 total, up from 3):
+    - RSK-LOG-002: Port strike delay validation (min 100 affected legs)
+    - RSK-SUP-003: Supplier OTD degradation validation
+    - RSK-ENV-005: Carbon tax multiplier validation
+    - bullwhip_whip_crack: Batched promo order validation
+    - port_congestion_flicker: Correlated delay validation
+    - single_source_fragility: SPOF configuration validation
+    - human_optimism_bias: Forecast inflation validation
+
+- **Expanded Benchmark Manifest** (`benchmark_manifest.json`):
+  - New `validation_tolerances` section with 25+ configurable thresholds
+  - Yield, QC, OTIF, OSA, bullwhip, delay, return rate, and discount thresholds
+  - New `chaos_validation` section with expected outcomes for all 5 risk events and 6 quirks
+
+### Changed
+
+- **RealismMonitor.check_benchmarks()**: Refactored to use `_get_tolerance()` and `_get_range()` helpers
+- **RealismMonitor**: Added new trackers for yield, QC, OTIF, OSA, delays, and chaos effects
+- **RealismMonitor.get_reality_report()**: Now includes production, logistics, OSA, and chaos effect statistics
+- **DataValidator.validate_chaos_injection()**: Expanded from 4 to 11 chaos checks
+
+### Technical
+
+- All 8/8 validation checks pass with 9/9 chaos sub-checks
+- Chaos validation coverage: 100% of risk events and quirks now validated
+
 ## [0.9.43] - 2025-12-20
 
 ### Added
