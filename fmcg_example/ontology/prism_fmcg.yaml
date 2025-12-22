@@ -2774,6 +2774,71 @@ slots:
         }
     range: Division
 
+  # Inventory Relationships (Polymorphic Location)
+  inventory_at_dc:
+    description: >-
+      Inventory -> DistributionCenter.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: location_id
+      vg:domain_class: Inventory
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "location_type = 'dc'"
+    range: DistributionCenter
+
+  inventory_at_store:
+    description: >-
+      Inventory -> RetailLocation.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: location_id
+      vg:domain_class: Inventory
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "location_type = 'store'"
+    range: RetailLocation
+
+  inventory_of_sku:
+    description: >-
+      Inventory -> SKU relationship.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: Inventory
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "path_aggregation"]'
+      vg:is_weighted: true
+      vg:weight_columns: '[{"name": "quantity_cases", "type": "integer", "unit": "cases"}]'
+    range: SKU
+
+  inventory_of_batch:
+    description: >-
+      Inventory -> Batch for lot tracking.
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: batch_id
+      vg:domain_class: Inventory
+      vg:range_class: Batch
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+    range: Batch
+
   shipment_line_batch:
     description: >-
       ShipmentLine -> Batch for lot traceability.
@@ -2852,6 +2917,71 @@ slots:
       vg:range_class: Carrier
       vg:operation_types: '["direct_join"]'
     range: Carrier
+
+  # Polymorphic Shipment Relationships (Split Pattern)
+  shipment_from_plant:
+    description: >-
+      Shipment -> Plant (origin).
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: origin_id
+      vg:domain_class: Shipment
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "origin_type = 'plant'"
+    range: Plant
+
+  shipment_from_dc:
+    description: >-
+      Shipment -> DC (origin).
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: origin_id
+      vg:domain_class: Shipment
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "origin_type = 'dc'"
+    range: DistributionCenter
+
+  shipment_to_dc:
+    description: >-
+      Shipment -> DC (destination).
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: destination_id
+      vg:domain_class: Shipment
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "destination_type = 'dc'"
+    range: DistributionCenter
+
+  shipment_to_store:
+    description: >-
+      Shipment -> RetailLocation (destination).
+    is_a: slot
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: destination_id
+      vg:domain_class: Shipment
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+      vg:sql_filter: "destination_type = 'store'"
+    range: RetailLocation
 
   shipment_uses_route:
     description: >-
