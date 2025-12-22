@@ -1072,14 +1072,18 @@ CREATE INDEX idx_route_segment_assignments_segment ON route_segment_assignments(
 CREATE TABLE shipment_legs (
     id SERIAL PRIMARY KEY,
     shipment_id INTEGER NOT NULL REFERENCES shipments(id),
-    segment_id INTEGER NOT NULL REFERENCES route_segments(id),
+    route_segment_id INTEGER NOT NULL REFERENCES route_segments(id),
     leg_sequence INTEGER NOT NULL,
+    transport_mode VARCHAR(30),                    -- Added for vectorized gen
     carrier_id INTEGER REFERENCES carriers(id),
-    departure_datetime TIMESTAMP,
-    arrival_datetime TIMESTAMP,
+    planned_departure TIMESTAMP,
+    planned_arrival TIMESTAMP,
+    actual_departure TIMESTAMP,
+    actual_arrival TIMESTAMP,
+    delay_hours DECIMAL(8,2),
     actual_transit_hours DECIMAL(8,2),
     status VARCHAR(20) DEFAULT 'planned'
-        CHECK (status IN ('planned', 'departed', 'in_transit', 'arrived', 'exception')),
+        CHECK (status IN ('planned', 'departed', 'in_transit', 'arrived', 'exception', 'on_time', 'delayed', 'severely_delayed')),
     freight_cost DECIMAL(10,2),
     tracking_number VARCHAR(100),
     notes TEXT,
@@ -1088,7 +1092,7 @@ CREATE TABLE shipment_legs (
 );
 
 CREATE INDEX idx_shipment_legs_shipment ON shipment_legs(shipment_id);
-CREATE INDEX idx_shipment_legs_segment ON shipment_legs(segment_id);
+CREATE INDEX idx_shipment_legs_segment ON shipment_legs(route_segment_id);
 CREATE INDEX idx_shipment_legs_carrier ON shipment_legs(carrier_id);
 CREATE INDEX idx_shipment_legs_status ON shipment_legs(status);
 
@@ -1665,8 +1669,8 @@ CREATE INDEX idx_risk_events_status ON risk_events(status);
 CREATE INDEX idx_risk_events_entity ON risk_events(affected_entity_type, affected_entity_id);
 CREATE INDEX idx_risk_events_score ON risk_events(risk_score DESC);
 
--- H6: audit_log - Change tracking for governance
-CREATE TABLE audit_log (
+-- H6: audit_logs - Change tracking for governance
+CREATE TABLE audit_logs (
     id SERIAL PRIMARY KEY,
     table_name VARCHAR(100) NOT NULL,
     record_id INTEGER NOT NULL,
@@ -1681,11 +1685,11 @@ CREATE TABLE audit_log (
     user_agent VARCHAR(500)
 );
 
-CREATE INDEX idx_audit_log_table ON audit_log(table_name);
-CREATE INDEX idx_audit_log_record ON audit_log(table_name, record_id);
-CREATE INDEX idx_audit_log_action ON audit_log(action);
-CREATE INDEX idx_audit_log_time ON audit_log(changed_at);
-CREATE INDEX idx_audit_log_user ON audit_log(changed_by);
+CREATE INDEX idx_audit_logs_table ON audit_logs(table_name);
+CREATE INDEX idx_audit_logs_record ON audit_logs(table_name, record_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX idx_audit_logs_time ON audit_logs(changed_at);
+CREATE INDEX idx_audit_logs_user ON audit_logs(changed_by);
 
 -- ============================================================================
 -- DEFERRED FOREIGN KEYS
