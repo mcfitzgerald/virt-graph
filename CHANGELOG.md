@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - **Scale-Up: Volume Boost 20/10** (`level_8_9_demand.py`):
   - Increased `pos_sales` batch size from 500K to 600K (+20%)
+  - Increased POS sales velocity to 60.0 units/week (simulating hypermarket throughput)
   - Increased base `orders` generation from 200K to 240K (+20%)
   - Increased B2B line density:
     - Distributor: 5-20 → 10-25 lines/order

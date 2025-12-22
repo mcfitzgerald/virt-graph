@@ -255,7 +255,9 @@ class POSSalesGenerator(VectorizedGenerator):
     base_year: int = 2024
     weeks_per_year: int = 52
     zipf_alpha: float = 1.05
-    base_demand_mean: float = 8.0
+    # base_demand_mean: 60.0 assumes "Hypermarket Velocity" (e.g., ~8-9 units/day)
+    # to balance the massive B2B replenishment volume (Sell-In vs Sell-Out).
+    base_demand_mean: float = 60.0
     demand_cv: float = 0.4
 
     def configure(
