@@ -260,7 +260,7 @@
   },
 
   "generation_targets": {
-    "total_rows": 7500000,
+    "total_rows": 15000000,
     "levels": {
       "0": { "name": "reference", "rows": 1200 },
       "1": { "name": "master", "rows": 500 },
@@ -271,9 +271,9 @@
       "6": { "name": "manufacturing", "rows": 550000 },
       "7": { "name": "batch_inventory", "rows": 700000 },
       "8": { "name": "demand", "rows": 2500000 },
-      "9": { "name": "order_lines", "rows": 1000000 },
-      "10": { "name": "shipments", "rows": 730000 },
-      "11": { "name": "shipment_lines", "rows": 540000 },
+      "9": { "name": "order_lines", "rows": 10000000 },
+      "10": { "name": "shipments", "rows": 1200000 },
+      "11": { "name": "shipment_lines", "rows": 1000000 },
       "12": { "name": "returns", "rows": 140000 },
       "13": { "name": "disposition", "rows": 100000 },
       "14": { "name": "kpis", "rows": 1000000 }

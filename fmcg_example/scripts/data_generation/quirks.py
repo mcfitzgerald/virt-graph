@@ -164,6 +164,13 @@ class QuirksManager:
         # Find promo orders and increase their quantities
         order_id_to_order = {o["id"]: o for o in orders}
 
+        # Mark orders as batched
+        for order_id in promo_order_ids:
+            if order_id in order_id_to_order:
+                order = order_id_to_order[order_id]
+                existing_notes = order.get("notes") or ""
+                order["notes"] = f"{existing_notes} [Quirk: Bullwhip batched]".strip()
+
         for line in order_lines:
             if line.get("order_id") in promo_order_ids:
                 # Increase quantity by batching factor
@@ -339,6 +346,10 @@ class QuirksManager:
                 if current_delay > 0:
                     leg["delay_hours"] = leg.get("delay_hours", 0) + max(0, current_delay)
                     leg["congestion_affected"] = True
+                    
+                    existing_notes = leg.get("notes") or ""
+                    if "congestion" not in existing_notes:
+                        leg["notes"] = f"{existing_notes} [Quirk: Port congestion correlated delay]".strip()
 
                 prev_delay = current_delay
 

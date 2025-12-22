@@ -218,6 +218,7 @@ class Level6Generator(BaseLevelGenerator):
         self._generate_goods_receipt_lines(now)
         self._generate_batches(now)
         self._generate_batch_cost_ledger(now)
+        self._apply_chaos_manufacturing()
 
         self.ctx.generated_levels.add(self.LEVEL)
         print(
@@ -365,6 +366,20 @@ class Level6Generator(BaseLevelGenerator):
                 }
             )
             batch_id += 1
+
+    def _apply_chaos_manufacturing(self) -> None:
+        """Apply chaos injection to manufacturing (data decay)."""
+        if self.ctx.quirks_manager and self.ctx.quirks_manager.is_enabled("data_decay"):
+            reference_date = datetime.now()
+            self.data["batches"] = self.ctx.quirks_manager.apply_data_decay(
+                self.data["batches"],
+                reference_date=reference_date,
+            )
+            decay_count = sum(
+                1 for b in self.data["batches"] if b.get("data_decay_affected")
+            )
+            if decay_count > 0:
+                print(f"    [Quirk] Data decay applied: {decay_count} batches rejected")
 
     def _generate_batch_cost_ledger(self, now: datetime) -> None:
         """Generate batch_cost_ledger table (~48,000: one per batch)."""
