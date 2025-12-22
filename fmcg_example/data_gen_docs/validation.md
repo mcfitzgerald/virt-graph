@@ -11,7 +11,7 @@ The `RealismMonitor` runs online during generation, inspecting batches of data a
 *   **Hub Concentration:** Ensures key accounts (e.g., MegaMart) hold realistic market share (20-30%).
 
 ### 2. Kinetic Dynamics
-*   **Bullwhip Effect:** Verifies that order variance is higher than POS sales variance.
+*   **Bullwhip Effect:** Verifies that order variance is higher than POS sales variance (Target: 1.5x multiplier). Simulates promotional forward-buying (3.0x quantity batching).
 *   **Friction:** Tracks transport delays by mode (Truck, Ocean, Air) to ensure realistic lead time variability.
 
 ### 3. Strategic & Financial (New)

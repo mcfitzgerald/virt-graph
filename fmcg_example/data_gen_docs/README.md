@@ -4,7 +4,7 @@ The `data_generation` module is a high-performance, modular synthetic data gener
 
 ## Key Features
 
-*   **Scale:** Capable of generating 10M+ rows efficiently using vectorized NumPy operations.
+*   **Scale:** Capable of generating 14.7M+ rows efficiently using vectorized NumPy operations.
 *   **Realism:** Incorporates industry-standard distributions (Zipf/Pareto for SKUs, Poisson/Gamma for demand) and structural patterns (hub-and-spoke networks).
 *   **Consistency:** Level-based architecture ensures referential integrity across 67 tables.
 *   **Chaos Engineering:** Injects realistic pathologies ("quirks") and deterministic risk events (strikes, recalls) for stress testing.
