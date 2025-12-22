@@ -369,8 +369,8 @@ CREATE TABLE batches (
         CHECK (qc_status IN ('pending', 'approved', 'rejected', 'hold', 'quarantine')),
     qc_release_date DATE,
     qc_notes TEXT,
-    is_contaminated BOOLEAN DEFAULT false,         -- For recall testing
-    contamination_notes TEXT,
+    rejection_reason TEXT,                         -- e.g., quality_decay, random_sample
+    data_decay_affected BOOLEAN DEFAULT false,     -- For validation tracking
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -381,7 +381,7 @@ CREATE INDEX idx_batches_plant ON batches(plant_id);
 CREATE INDEX idx_batches_production_date ON batches(production_date);
 CREATE INDEX idx_batches_expiry ON batches(expiry_date);
 CREATE INDEX idx_batches_qc_status ON batches(qc_status);
-CREATE INDEX idx_batches_contaminated ON batches(is_contaminated) WHERE is_contaminated = true;
+CREATE INDEX idx_batches_decay ON batches(data_decay_affected) WHERE data_decay_affected = true;
 
 -- B8: batch_ingredients - Actual consumption for mass balance
 CREATE TABLE batch_ingredients (
@@ -619,6 +619,7 @@ CREATE TABLE orders (
     total_amount DECIMAL(14,2),
     currency VARCHAR(3) DEFAULT 'USD',
     notes TEXT,
+    is_batched BOOLEAN DEFAULT false,              -- For bullwhip quirk tracking
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -1928,7 +1929,7 @@ WHERE dc.is_active = true;
 --   rma_authorizations, returns, return_lines, disposition_logs
 --
 -- DOMAIN H - ORCHESTRATE (6 tables):
---   kpi_thresholds, kpi_actuals, osa_metrics, business_rules, risk_events, audit_log
+--   kpi_thresholds, kpi_actuals, osa_metrics, business_rules, risk_events, audit_logs
 --
 -- VIEWS (8):
 --   v_location_divisions, v_transport_normalized, v_batch_destinations,
