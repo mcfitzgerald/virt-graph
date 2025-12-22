@@ -33,6 +33,7 @@ import json
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -484,6 +485,12 @@ class RealismMonitor:
         self._recall_affected_stores: set = set()
         self._promo_lift = PromoLiftAccumulator()
 
+        # Expert Benchmarks
+        self._schedule_adherence = WelfordAccumulator()
+        self._truck_fill = WelfordAccumulator()
+        self._slob_count: int = 0
+        self._inventory_total: int = 0
+
         # Active quirks tracking
         self.active_quirks: set[str] = set()
 
@@ -560,6 +567,10 @@ class RealismMonitor:
             self._check_orders(batch_data)
         elif table == "order_lines":
             self._check_order_lines(batch_data)
+        elif table == "work_orders":
+            self._check_work_orders(batch_data)
+        elif table == "shipments":
+            self._check_shipments(batch_data)
         elif table == "shipment_legs":
             self._check_logistics_friction(batch_data)
         elif table == "batches":
@@ -633,6 +644,32 @@ class RealismMonitor:
             if discount and discount > 50:
                 self._margin_issues += 1
 
+    def _check_work_orders(self, batch: list[dict]) -> None:
+        """Validate Schedule Adherence."""
+        for row in batch:
+            planned = row.get("planned_start_date")
+            actual = row.get("actual_start_date")
+            if planned and actual:
+                if isinstance(planned, str):
+                    planned = datetime.fromisoformat(planned.replace("Z", "+00:00")).date()
+                if isinstance(actual, str):
+                    actual = datetime.fromisoformat(actual.replace("Z", "+00:00")).date()
+                if isinstance(planned, datetime): planned = planned.date()
+                if isinstance(actual, datetime): actual = actual.date()
+                
+                diff = abs((actual - planned).days)
+                self._schedule_adherence.update(diff)
+
+    def _check_shipments(self, batch: list[dict]) -> None:
+        """Validate Truck Fill Rate."""
+        # Assume standard truck capacity ~20,000 kg (conservative)
+        TRUCK_CAPACITY_KG = 20000.0
+        for row in batch:
+            weight = row.get("total_weight_kg", 0)
+            if weight > 0:
+                fill_rate = min(1.0, weight / TRUCK_CAPACITY_KG)
+                self._truck_fill.update(fill_rate)
+
     def _check_logistics_friction(self, batch: list[dict]) -> None:
         """Validate shipment legs for kinetic friction."""
         for row in batch:
@@ -678,11 +715,17 @@ class RealismMonitor:
                     self._qc_rejected += 1
 
     def _check_inventory(self, batch: list[dict]) -> None:
-        """Validate inventory for cash cycle metrics."""
+        """Validate inventory for cash cycle metrics and SLOBs."""
         for row in batch:
             days_on_hand = row.get("days_on_hand")
             if days_on_hand is not None:
                 self._accumulators["inventory"]["days_on_hand"].update(days_on_hand)
+            
+            # SLOB check
+            aging = row.get("aging_bucket")
+            self._inventory_total += 1
+            if aging == "90+":
+                self._slob_count += 1
 
     def _check_recall_propagation(self, batch: list[dict]) -> None:
         """Track recall batch propagation to stores."""
@@ -927,6 +970,35 @@ class RealismMonitor:
                     f"Excessive discounting: {self._margin_issues} lines > {max_discount}% discount"
                 )
 
+        # === EXPERT / STRESS TEST CHECKS ===
+
+        # Schedule Adherence
+        if self._schedule_adherence.count > 100:
+            sa_days = self._schedule_adherence.mean
+            sa_tol = self._get_tolerance("schedule_adherence_tolerance_days", 1.0)
+            if sa_days > sa_tol:
+                self._add_violation(
+                    f"Schedule Adherence drift: {sa_days:.1f} days variance (max: {sa_tol})"
+                )
+
+        # Truck Fill Rate
+        if self._truck_fill.count > 100:
+            fill_rate = self._truck_fill.mean
+            target_fill = self._get_tolerance("truck_fill_rate_target", 0.70)
+            if fill_rate < target_fill:
+                self._add_violation(
+                    f"Truck Fill Rate low: {fill_rate:.1%} (target: >{target_fill:.0%})"
+                )
+
+        # SLOB Inventory
+        if self._inventory_total > 100:
+            slob_pct = self._slob_count / self._inventory_total
+            max_slob = self._get_tolerance("slob_inventory_max_pct", 0.15)
+            if slob_pct > max_slob:
+                self._add_violation(
+                    f"SLOB Inventory high: {slob_pct:.1%} (max: {max_slob:.0%})"
+                )
+
     def check_chaos_effects(self, risk_manager: Any = None, quirks_manager: Any = None) -> list[tuple[str, bool, str]]:
         """
         Validate that chaos effects (risk events and quirks) were applied correctly.
@@ -1144,6 +1216,14 @@ class RealismMonitor:
 
         # Add forecast bias metrics
         report["statistics"]["forecast"] = self._forecast_bias.get_stats()
+
+        # Add expert metrics
+        if self._schedule_adherence.count > 0:
+            report["statistics"]["expert"] = {
+                "schedule_adherence_days": self._schedule_adherence.mean,
+                "truck_fill_rate": self._truck_fill.mean,
+                "slob_pct": self._slob_count / self._inventory_total if self._inventory_total > 0 else 0,
+            }
 
         # Add chaos effects tracking
         report["statistics"]["chaos_effects"] = {

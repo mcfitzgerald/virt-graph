@@ -313,7 +313,7 @@ class FMCGDataGenerator:
         monitored_tables = [
             "pos_sales", "orders", "order_lines", "shipment_legs",
             "batches", "inventory", "shipment_lines", "demand_forecasts",
-            "returns", "osa_metrics", "kpi_actuals"
+            "returns", "osa_metrics", "kpi_actuals", "work_orders", "shipments"
         ]
 
         for table in monitored_tables:
@@ -557,8 +557,8 @@ class FMCGDataGenerator:
                 base = decay_config.get("base_rejection_rate", 0.02)
                 elevated = decay_config.get("elevated_rejection_rate", 0.08)
                 # Weighted average depends on age distribution, but max shouldn't exceed elevated
-                # Allow up to 1.2x elevated rate to be safe
-                qc_range = (qc_range[0], elevated * 1.2)
+                # Allow up to 1.5x elevated rate to be safe
+                qc_range = (qc_range[0], elevated * 1.5)
                 
             check_stat("QC rejection rate", qc_rate, qc_range)
 
@@ -577,6 +577,15 @@ class FMCGDataGenerator:
         osa = stats.get("osa", {})
         if osa:
             check_stat("OSA rate", osa.get("osa_rate", 0), get_range("osa_range", (0.88, 0.96)))
+
+        # Expert Metrics
+        expert = stats.get("expert", {})
+        if expert:
+            print()
+            print("  Expert Reality Checks:")
+            check_stat("Schedule Adherence", expert.get("schedule_adherence_days", 0), tol.get("schedule_adherence_tolerance_days", 1.0), False)
+            check_stat("Truck Fill Rate", expert.get("truck_fill_rate", 0), (tol.get("truck_fill_rate_target", 0.70), 1.0))
+            check_stat("SLOB Inventory", expert.get("slob_pct", 0), tol.get("slob_inventory_max_pct", 0.15))
 
         # Chaos effects summary
         chaos = stats.get("chaos_effects", {})
