@@ -33,25 +33,29 @@ VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL dat
 # Setup
 make install          # Install Python dependencies via Poetry
 
-# Databases (Docker required)
-make db-up            # Start PostgreSQL
-make db-down          # Stop PostgreSQL
-make db-reset         # Reset PostgreSQL (wipe and recreate)
-make neo4j-up         # Start Neo4j (for benchmarking)
+# FMCG Example (Primary - Prism Consumer Goods)
+make fmcg-db-up       # Start FMCG PostgreSQL (port 5433)
+make fmcg-db-down     # Stop FMCG PostgreSQL
+make fmcg-db-reset    # Reset FMCG database (wipe and reload)
+make fmcg-generate    # Generate ~11.4M rows of seed data (~2-3 minutes)
+make fmcg-validate    # Validate data without writing SQL
+make fmcg-test        # Run FMCG tests
+
+# Legacy (supply_chain_example - archived)
+make db-up/db-down    # Start/stop supply chain PostgreSQL (port 5432)
+make test             # Run supply chain tests
+
+# Neo4j (for benchmarking)
+make neo4j-up         # Start Neo4j
 make neo4j-down       # Stop Neo4j
 make neo4j-cycle      # Full reset (fixes PID issues)
 
-# Testing
-make test             # Run all tests
-make test-handlers    # Run handler safety tests only
-make test-ontology    # Run ontology validation tests only
-poetry run pytest supply_chain_example/tests/test_traversal.py -v  # Single test file
-poetry run pytest supply_chain_example/tests/test_traversal.py::test_name -v  # Single test
+# Single test
+poetry run pytest fmcg_example/tests/test_recall_trace.py -v           # Single test file
+poetry run pytest fmcg_example/tests/test_recall_trace.py::test_name -v  # Single test
 
 # Ontology validation
 make validate-ontology  # Full two-layer validation (LinkML + VG)
-make validate-linkml    # LinkML structure only
-make validate-vg        # VG annotations only
 make show-ontology      # Show TBox/RBox definitions
 
 # Documentation
@@ -99,7 +103,13 @@ traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
 Use `psycopg2` for PostgreSQL (psql CLI may not be available):
 ```python
 import psycopg2
-conn = psycopg2.connect(host='localhost', database='supply_chain',
+
+# FMCG database (primary)
+conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',
+                        user='virt_graph', password='dev_password')
+
+# Legacy supply chain database
+conn = psycopg2.connect(host='localhost', port=5432, database='supply_chain',
                         user='virt_graph', password='dev_password')
 ```
 
@@ -127,7 +137,49 @@ See `docs/ontology/vg-extensions.md` for detailed documentation.
 The `OntologyAccessor` class provides the API for reading ontologies:
 ```python
 from virt_graph.ontology import OntologyAccessor
-ontology = OntologyAccessor(Path("supply_chain_example/ontology/supply_chain.yaml"))
-table = ontology.get_class_table("Supplier")
-op_types = ontology.get_operation_types("SuppliesTo")
+from pathlib import Path
+
+# FMCG ontology (primary - 71 classes, ~50 relationships)
+ontology = OntologyAccessor(Path("fmcg_example/ontology/prism_fmcg.yaml"))
+
+# Get table mapping for a class
+table = ontology.get_class_table("Supplier")       # → "suppliers"
+pk = ontology.get_class_pk("Order")                # → ["id"]
+
+# Get relationship configuration
+op_types = ontology.get_operation_types("SuppliesTo")  # → ["recursive_traversal"]
+domain_keys, range_keys = ontology.get_role_keys("HasBatch")
 ```
+
+## FMCG Example
+
+Primary example demonstrating VG/SQL on an FMCG supply chain (~14.7M rows, 70 tables). Full specification: `FMCG_EXAMPLE_MASTER_PLAN.md`
+
+**Architecture**: "Formula-to-Shelf" pipeline with convergent-divergent fan-out:
+- **Convergent**: Many ingredients → 1 batch (SOURCE/TRANSFORM)
+- **Divergent**: 1 batch → 20 SKUs → 50K retail nodes (ORDER/FULFILL)
+- **SCOR-DS Loop**: Plan ↔ Source ↔ Transform ↔ Order ↔ Fulfill ↔ Return ↔ Orchestrate
+
+**The Desmet Triangle**: Every edge carries three dimensions in tension:
+- **Service**: OTIF, OSA, Fill Rate
+- **Cost**: Landed cost, freight, handling
+- **Cash**: Inventory days, payment terms
+
+**Named test entities** (deterministic fixtures for benchmarking):
+- `B-2024-RECALL-001` - Contaminated batch for recall trace (1 batch → 47K orders)
+- `ACCT-MEGA-001` - MegaMart hub (4,500 stores, 25% of orders)
+- `SUP-PALM-MY-001` - Single-source Palm Oil supplier (SPOF detection)
+- `DC-NAM-CHI-001` - Chicago DC bottleneck (40% NAM volume)
+- `PROMO-BF-2024` - Black Friday promotion (bullwhip effect, 3x demand)
+
+**Beast mode queries**:
+- Recall trace: `traverse()` from batch to affected orders
+- Landed cost: `path_aggregate()` for margin calculation
+- SPOF detection: `resilience_analysis()` for supplier criticality
+- OSA root cause: `centrality()` for DC bottlenecks
+
+**Data generation patterns** (see `fmcg_example/scripts/data_generation/`):
+- Barabási–Albert preferential attachment for scale-free network topology
+- Zipf distribution for Pareto (80/20) realism
+- Bullwhip effect: 1.54x order CV vs POS CV, +12.4% forecast bias
+- Chaos injection: 5 risk events, 6 behavioral quirks, multi-promo calendar
