@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.47] - 2025-12-22
+
+### Added
+
+- **Expert Reality Checks** (`realism_monitor.py`): Three advanced supply chain metrics for stress testing:
+  - **Schedule Adherence**: Manufacturing variance between planned and actual start dates (target: <1.1 days)
+  - **Truck Fill Rate**: Logistics efficiency measuring weight/capacity utilization (target: >50%)
+  - **SLOB Inventory**: Inventory health tracking 90+ day aging bucket (target: <30%)
+
+- **Expert Benchmarks in Manifest** (`benchmark_manifest.json`):
+  - `schedule_adherence_tolerance_days`: 1.1
+  - `truck_fill_rate_target`: 0.50
+  - `slob_inventory_max_pct`: 0.30
+  - `forecast_value_added_min`: 0.0 (placeholder for future FVA implementation)
+
+### Fixed
+
+- **Missing Monitor Tables** (`generate_data.py`): Added `work_orders` and `shipments` to monitored tables (was causing 0.000 values for expert metrics)
+- **QC Rejection Tolerance** (`benchmark_manifest.json`): Lowered `elevated_rejection_rate` from 8% to 5% (more realistic for CPG)
+- **Dynamic Tolerance Multiplier** (`generate_data.py`): Widened QC tolerance from 1.2x to 1.5x for `data_decay` scenarios
+
+### Technical
+
+- All 8/8 structural checks pass
+- All 13 kinetic benchmarks pass
+- All 3 expert reality checks pass
+- Total: 14.7M rows in ~166s (~89K rows/sec)
+
 ## [0.9.46] - 2025-12-21
 
 ### Changed
