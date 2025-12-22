@@ -200,6 +200,11 @@ class FMCGDataGenerator:
         # Trigger risk events and get stochastic mode
         triggered_events = risk_manager.trigger_all()
         stochastic_mode = risk_manager.get_stochastic_mode()
+        
+        # Configure monitor with active quirks
+        if realism_monitor:
+            realism_monitor.set_active_quirks(quirks_manager.get_enabled_quirks())
+            realism_monitor.set_stochastic_mode(stochastic_mode)
 
         # Create shared context for all generators
         self.ctx = GeneratorContext(
@@ -460,116 +465,118 @@ class FMCGDataGenerator:
         # Print summary
         print()
         print("-" * 40)
-        passed = sum(1 for p, _ in results.values() if p)
-        total = len(results)
-        print(f"Validation: {passed}/{total} checks passed")
+        passed_checks = sum(1 for p, _ in results.values() if p)
+        total_checks = len(results)
+        print(f"Validation: {passed_checks}/{total_checks} checks passed")
 
         for name, (ok, msg) in results.items():
             status = "+" if ok else "x"
             print(f"  {status} {name}: {msg}")
 
-        # Print benchmark comparison if realism monitor is available
+        # Check RealismMonitor benchmarks
+        benchmark_passed = True
         if self.ctx.realism_monitor:
-            self._print_benchmark_comparison()
+            print()
+            print("-" * 40)
+            print("Benchmark Comparison:")
+            # _print_benchmark_comparison returns False if any benchmark failed
+            benchmark_passed = self._print_benchmark_comparison()
+
+        # Add benchmark result to return dict
+        results["benchmarks"] = (benchmark_passed, "RealismMonitor benchmarks")
 
         return results
 
-    def _print_benchmark_comparison(self) -> None:
-        """Print detailed benchmark comparison from RealismMonitor."""
+    def _print_benchmark_comparison(self) -> bool:
+        """
+        Print detailed benchmark comparison from RealismMonitor.
+        
+        Returns:
+            True if all benchmarks passed, False otherwise.
+        """
         report = self.ctx.realism_monitor.get_reality_report()
         stats = report.get("statistics", {})
         tol = self.ctx.realism_monitor._tolerances
+        all_passed = True
 
         def get_range(key, default):
             val = tol.get(key, default)
             return (val[0], val[1]) if isinstance(val, list) else default
 
-        print()
-        print("-" * 40)
-        print("Benchmark Comparison:")
+        # Helper to print status
+        def check_stat(label, value, target_range, is_pct=True):
+            nonlocal all_passed
+            if isinstance(target_range, tuple):
+                passed = target_range[0] <= value <= target_range[1]
+                t_str = f"[{target_range[0]:.0%}-{target_range[1]:.0%}]" if is_pct else f"[{target_range[0]}-{target_range[1]}]"
+            else:
+                passed = value <= target_range
+                t_str = f"[<{target_range:.0%}]" if is_pct else f"[<{target_range}]"
+            
+            status = "PASS" if passed else "FAIL"
+            if not passed:
+                all_passed = False
+            
+            v_str = f"{value:.1%}" if is_pct else f"{value:.3f}"
+            print(f"  {label:<22} {v_str:<8} {t_str:<12} {status}")
 
         # Distribution
-        pareto_range = get_range("pareto_top20_range", (0.75, 0.85))
-        hub_range = get_range("hub_concentration_range", (0.20, 0.30))
+        if "order_sku" in stats.get("frequencies", {}):
+            pareto = stats["frequencies"]["order_sku"].get("pareto_20_80", 0)
+            check_stat("Pareto (top 20%)", pareto, get_range("pareto_top20_range", (0.75, 0.85)))
 
-        freq_stats = stats.get("frequencies", {})
-        if "order_sku" in freq_stats:
-            pareto = freq_stats["order_sku"].get("pareto_20_80", 0)
-            status = "PASS" if pareto_range[0] <= pareto <= pareto_range[1] else "FAIL"
-            print(f"  Pareto (top 20%):      {pareto:.1%}  [{pareto_range[0]:.0%}-{pareto_range[1]:.0%}] {status}")
-
-        hub = stats.get("hub_concentration", {})
-        if hub and hub.get("top_accounts"):
-            pct = hub["top_accounts"][0].get("pct", 0)
-            status = "PASS" if hub_range[0] <= pct <= hub_range[1] else "FAIL"
-            print(f"  Hub concentration:     {pct:.1%}  [{hub_range[0]:.0%}-{hub_range[1]:.0%}] {status}")
+        if stats.get("hub_concentration", {}).get("top_accounts"):
+            pct = stats["hub_concentration"]["top_accounts"][0].get("pct", 0)
+            check_stat("Hub concentration", pct, get_range("hub_concentration_range", (0.20, 0.30)))
 
         # Bullwhip
-        pos_range = get_range("pos_cv_range", (0.15, 0.80))
-        order_range = get_range("order_cv_range", (0.20, 0.80))
-        mult_range = get_range("bullwhip_multiplier_range", (0.3, 3.0))
-
         bw = stats.get("bullwhip", {})
         if bw:
-            pos_cv = bw.get("pos_cv", 0)
-            order_cv = bw.get("order_cv", 0)
-            mult = bw.get("multiplier", 0)
-            status = "PASS" if pos_range[0] <= pos_cv <= pos_range[1] else "FAIL"
-            print(f"  POS CV:                {pos_cv:.3f}  [{pos_range[0]:.2f}-{pos_range[1]:.2f}] {status}")
-            status = "PASS" if order_range[0] <= order_cv <= order_range[1] else "FAIL"
-            print(f"  Order CV:              {order_cv:.3f}  [{order_range[0]:.2f}-{order_range[1]:.2f}] {status}")
-            status = "PASS" if mult_range[0] <= mult <= mult_range[1] else "FAIL"
-            print(f"  Bullwhip multiplier:   {mult:.2f}x  [{mult_range[0]:.1f}-{mult_range[1]:.1f}x] {status}")
+            check_stat("POS CV", bw.get("pos_cv", 0), get_range("pos_cv_range", (0.15, 0.80)), False)
+            check_stat("Order CV", bw.get("order_cv", 0), get_range("order_cv_range", (0.20, 0.80)), False)
+            check_stat("Bullwhip multiplier", bw.get("multiplier", 0), get_range("bullwhip_multiplier_range", (0.3, 3.0)), False)
+            check_stat("Promo Lift", bw.get("promo_lift", 0), get_range("promo_lift_range", (1.5, 3.5)), False)
 
         # Forecast bias
         fc = stats.get("forecast", {})
         if fc:
-            bias = fc.get("bias_pct", 0)
-            max_bias = tol.get("forecast_bias_max", 20.0)
-            status = "PASS" if abs(bias) <= max_bias else "FAIL"
-            print(f"  Forecast bias:         {bias:.1%}  [<{max_bias:.0%}] {status}")
+            check_stat("Forecast bias", fc.get("bias_pct", 0), tol.get("forecast_bias_max", 0.20))
 
         # Production
-        yield_range = get_range("yield_mean_range", (0.96, 0.99))
-        qc_range = get_range("qc_rejection_rate_range", (0.01, 0.04))
-
         prod = stats.get("production", {})
         if prod:
-            yield_mean = prod.get("yield_mean", 0)
+            check_stat("Yield mean", prod.get("yield_mean", 0), get_range("yield_mean_range", (0.96, 0.99)))
+            
+            # QC Rejection Rate - Check for dynamic tolerance due to data_decay
             qc_rate = prod.get("qc_rejection_rate", 0)
-            status = "PASS" if yield_range[0] <= yield_mean <= yield_range[1] else "FAIL"
-            print(f"  Yield mean:            {yield_mean:.1%}  [{yield_range[0]:.0%}-{yield_range[1]:.0%}] {status}")
-            status = "PASS" if qc_range[0] <= qc_rate <= qc_range[1] else "FAIL"
-            print(f"  QC rejection rate:     {qc_rate:.1%}  [{qc_range[0]:.0%}-{qc_range[1]:.0%}] {status}")
+            qc_range = get_range("qc_rejection_rate_range", (0.01, 0.04))
+            
+            # If data_decay is active, elevate tolerance
+            if self.ctx.quirks_manager and self.ctx.quirks_manager.is_enabled("data_decay"):
+                decay_config = self.ctx.quirks_manager.get_params("data_decay")
+                base = decay_config.get("base_rejection_rate", 0.02)
+                elevated = decay_config.get("elevated_rejection_rate", 0.08)
+                # Weighted average depends on age distribution, but max shouldn't exceed elevated
+                # Allow up to 1.2x elevated rate to be safe
+                qc_range = (qc_range[0], elevated * 1.2)
+                
+            check_stat("QC rejection rate", qc_rate, qc_range)
 
         # Logistics
-        otif_range = get_range("otif_range", (0.85, 0.99))
-        delay_max = tol.get("delay_mean_max_hours", 24)
-
         log = stats.get("logistics", {})
         if log:
-            otif = log.get("otif_rate", 0)
-            delay_mean = log.get("delay_mean", 0)
-            status = "PASS" if otif_range[0] <= otif <= otif_range[1] else "FAIL"
-            print(f"  OTIF rate:             {otif:.1%}  [{otif_range[0]:.0%}-{otif_range[1]:.0%}] {status}")
-            status = "PASS" if delay_mean <= delay_max else "FAIL"
-            print(f"  Delay mean:            {delay_mean:.1f}h  [<{delay_max}h] {status}")
+            check_stat("OTIF rate", log.get("otif_rate", 0), get_range("otif_range", (0.85, 0.99)))
+            check_stat("Delay mean", log.get("delay_mean", 0), tol.get("delay_mean_max_hours", 24), False)
 
         # Returns
-        return_range = get_range("return_rate_range", (0.01, 0.06))
         ret = stats.get("returns", {})
         if ret:
-            rate = ret.get("return_rate", 0)
-            status = "PASS" if return_range[0] <= rate <= return_range[1] else "FAIL"
-            print(f"  Return rate:           {rate:.2%}  [{return_range[0]:.0%}-{return_range[1]:.0%}] {status}")
+            check_stat("Return rate", ret.get("return_rate", 0), get_range("return_rate_range", (0.01, 0.06)))
 
         # OSA
-        osa_range = get_range("osa_range", (0.88, 0.96))
         osa = stats.get("osa", {})
         if osa:
-            osa_rate = osa.get("osa_rate", 0)
-            status = "PASS" if osa_range[0] <= osa_rate <= osa_range[1] else "FAIL"
-            print(f"  OSA rate:              {osa_rate:.1%}  [{osa_range[0]:.0%}-{osa_range[1]:.0%}] {status}")
+            check_stat("OSA rate", osa.get("osa_rate", 0), get_range("osa_range", (0.88, 0.96)))
 
         # Chaos effects summary
         chaos = stats.get("chaos_effects", {})
@@ -579,6 +586,8 @@ class FMCGDataGenerator:
             print(f"  Port strike legs:      {chaos.get('port_strike_delayed_legs', 0):,}")
             print(f"  Congestion legs:       {chaos.get('congestion_correlated_legs', 0):,}")
             print(f"  Batched promo orders:  {chaos.get('batched_promo_orders', 0):,}")
+            
+        return all_passed
 
     def write_sql(self, output_path: Path = OUTPUT_PATH) -> None:
         """

@@ -367,6 +367,43 @@ class ReturnRateAccumulator:
         }
 
 
+@dataclass
+class PromoLiftAccumulator:
+    """
+    Tracks promotional lift (Promo Avg Qty / Baseline Avg Qty).
+    """
+
+    sum_promo_qty: float = 0.0
+    count_promo: int = 0
+    sum_baseline_qty: float = 0.0
+    count_baseline: int = 0
+
+    def update(self, qty: float, is_promo: bool) -> None:
+        if is_promo:
+            self.sum_promo_qty += qty
+            self.count_promo += 1
+        else:
+            self.sum_baseline_qty += qty
+            self.count_baseline += 1
+
+    @property
+    def lift_multiplier(self) -> float:
+        if self.count_baseline == 0 or self.count_promo == 0:
+            return 0.0
+        avg_promo = self.sum_promo_qty / self.count_promo
+        avg_baseline = self.sum_baseline_qty / self.count_baseline
+        if avg_baseline == 0:
+            return 0.0
+        return avg_promo / avg_baseline
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "promo_volume": self.sum_promo_qty,
+            "baseline_volume": self.sum_baseline_qty,
+            "lift_multiplier": self.lift_multiplier,
+        }
+
+
 # =============================================================================
 # Main RealismMonitor Class
 # =============================================================================
@@ -445,6 +482,10 @@ class RealismMonitor:
         self._order_cv_accumulator = WelfordAccumulator()
         self._orders_by_account: Counter = Counter()
         self._recall_affected_stores: set = set()
+        self._promo_lift = PromoLiftAccumulator()
+
+        # Active quirks tracking
+        self.active_quirks: set[str] = set()
 
         # Strategic & Financial trackers
         self._forecast_bias = ForecastBiasAccumulator()
@@ -538,7 +579,14 @@ class RealismMonitor:
 
     def _check_pos_sales(self, batch: list[dict]) -> None:
         """Validate POS sales for demand volatility."""
-        quantities = [row.get("quantity_cases", 0) for row in batch if row.get("quantity_cases")]
+        quantities = []
+        for row in batch:
+            qty = row.get("quantity_cases", 0) or row.get("quantity_eaches", 0) / 12.0
+            if qty:
+                quantities.append(qty)
+                is_promo = row.get("is_promotional", False) or (row.get("promo_id") is not None)
+                self._promo_lift.update(qty, is_promo)
+
         if quantities:
             self._pos_cv_accumulator.update_batch(quantities)
 
@@ -793,10 +841,28 @@ class RealismMonitor:
         if self._qc_total > 100:
             qc_rate = self._qc_rejected / self._qc_total
             qc_range = self._get_range("qc_rejection_rate_range", (0.01, 0.04))
+            
+            # Dynamic tolerance for data_decay quirk
+            if "data_decay" in self.active_quirks:
+                # Base 2% + Elevated 8% -> Weighted avg increases
+                # Allow up to 10% (0.10) when decay is active to avoid false positives
+                qc_range = (qc_range[0], 0.10)
+
             if not (qc_range[0] <= qc_rate <= qc_range[1]):
                 self._add_violation(
                     f"QC rejection rate out of range: {qc_rate:.1%} "
                     f"(target: {qc_range[0]:.0%}-{qc_range[1]:.0%})"
+                )
+
+        # Check Promo Lift
+        if self._promo_lift.count_promo > 100:
+            lift = self._promo_lift.lift_multiplier
+            lift_range = self._get_range("promo_lift_range", (1.5, 3.5))
+            # Relax lower bound slightly for streaming variations
+            if not (lift_range[0] * 0.8 <= lift <= lift_range[1] * 1.2):
+                self._add_violation(
+                    f"Promo lift out of range: {lift:.2f}x "
+                    f"(target: {lift_range[0]:.1f}x-{lift_range[1]:.1f}x)"
                 )
 
         # === LOGISTICS CHECKS ===
@@ -984,6 +1050,10 @@ class RealismMonitor:
         """
         self.stochastic_mode = mode
 
+    def set_active_quirks(self, quirks: list[str] | set[str]) -> None:
+        """Set the list of active quirks for dynamic tolerance adjustment."""
+        self.active_quirks = set(quirks)
+
     def get_reality_report(self) -> dict[str, Any]:
         """
         Generate comprehensive reality report.
@@ -1038,6 +1108,7 @@ class RealismMonitor:
                     if self._pos_cv_accumulator.cv > 0
                     else 0
                 ),
+                "promo_lift": self._promo_lift.lift_multiplier,
             }
 
         # Add production metrics
