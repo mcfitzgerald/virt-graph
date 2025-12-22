@@ -1212,6 +1212,8 @@ CREATE INDEX idx_modal_shift_status ON modal_shift_opportunities(status);
 -- Planning loop: POS → forecasts → capacity → supply plans → exceptions
 
 -- F1: pos_sales - Point-of-sale signals (actual demand)
+-- NOTE: In this simulation, each row represents WEEKLY AGGREGATED sales 
+-- per SKU per Store to reflect high-velocity hypermarket throughput (e.g. MegaMart).
 CREATE TABLE pos_sales (
     id SERIAL PRIMARY KEY,
     retail_location_id INTEGER NOT NULL REFERENCES retail_locations(id),

@@ -825,7 +825,7 @@ classes:
 
   Order:
     description: >-
-      Customer orders (~200K). Links retail accounts/locations to demand.
+      Customer orders (~240K). Links retail accounts/locations to demand.
       Order types: standard, rush, backorder, promotional.
     instantiates:
       - vg:SQLMappedClass
@@ -833,7 +833,7 @@ classes:
       vg:table: orders
       vg:primary_key: id
       vg:identifier: order_number
-      vg:row_count: 200000
+      vg:row_count: 240000
       vg:context: >-
         {
           "definition": "Customer demand signal with delivery requirements",
@@ -875,7 +875,7 @@ classes:
     annotations:
       vg:table: order_lines
       vg:primary_key: '["order_id", "line_number"]'
-      vg:row_count: 600000
+      vg:row_count: 4700000
     attributes:
       order_id:
         range: integer
@@ -1611,16 +1611,19 @@ classes:
     description: >-
       Point-of-sale signals - actual demand at store/SKU level.
       Feeds demand forecasting and replenishment.
+      In this simulation, each row represents WEEKLY AGGREGATED sales 
+      per SKU per Store to reflect high-velocity hypermarket throughput.
     instantiates:
       - vg:SQLMappedClass
     annotations:
       vg:table: pos_sales
       vg:primary_key: id
-      vg:row_count: 2000000
+      vg:row_count: 600000
       vg:context: >-
         {
-          "definition": "Consumer purchase transaction at retail location",
-          "llm_prompt_hint": "Aggregate by sale_week for weekly demand patterns"
+          "definition": "Weekly aggregated consumer purchase transactions for a specific SKU at a specific retail location",
+          "business_logic": "quantity_eaches represents total sales for the week (Hypermarket Velocity ~60/week)",
+          "llm_prompt_hint": "Aggregate by sale_week for weekly demand patterns; note that each row is already a store-week aggregate"
         }
     attributes:
       id:
