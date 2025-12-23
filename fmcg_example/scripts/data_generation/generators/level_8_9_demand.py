@@ -195,12 +195,33 @@ class Level8Generator(BaseLevelGenerator):
             forecast_id += 1
 
     def _generate_forecast_accuracy(self, now: datetime) -> None:
-        """Generate forecast_accuracy table (~10,000)."""
+        """
+        Generate forecast_accuracy table (~10,000).
+
+        Uses realistic forecast error distribution to achieve MAPE in 20-50% range.
+        Industry benchmark (E2Open): 48% at SKU-week level.
+        Target: ~35% average MAPE with slight positive bias (human optimism).
+        """
         forecast_count = len(self.data["demand_forecasts"])
+
+        # Forecast error parameters for realistic MAPE (target: 20-50%)
+        # Slight positive bias (8%) represents human optimism in forecasting
+        # Sigma of 0.30 gives E[|error|] ≈ 0.24, combined with bias → ~30-35% MAPE
+        bias_mean = 0.08  # 8% average over-forecasting
+        error_sigma = 0.30  # Forecast error standard deviation
+
         for fa_id in range(1, 10001):
+            # Generate actual demand (base truth)
             actual = random.randint(100, 5000)
-            forecast = random.randint(80, 5500)
+
+            # Generate forecast as actual * (1 + error) where error ~ N(bias, sigma)
+            error = random.gauss(bias_mean, error_sigma)
+            # Clamp to prevent negative forecasts (min 10% of actual)
+            forecast = max(int(actual * 0.1), int(actual * (1 + error)))
+
             mape = abs(actual - forecast) / actual * 100 if actual > 0 else 0
+            bias_pct = (forecast - actual) / actual * 100 if actual > 0 else 0
+
             self.data["forecast_accuracy"].append(
                 {
                     "id": fa_id,
@@ -208,7 +229,7 @@ class Level8Generator(BaseLevelGenerator):
                     "actual_demand": actual,
                     "forecast_demand": forecast,
                     "mape": round(mape, 2),
-                    "bias": round((forecast - actual) / actual * 100, 2) if actual > 0 else 0,
+                    "bias": round(bias_pct, 2),
                     "tracking_signal": round(random.uniform(-3, 3), 2),
                     "period_date": self.fake.date_between(
                         start_date=date(self.ctx.base_year, 1, 1),

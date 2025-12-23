@@ -1,6 +1,6 @@
 [project]
 name = "virt-graph"
-version = "0.9.48"
+version = "0.9.49"
 description = "Graph-like queries over relational data using LLM reasoning"
 authors = [
     {name = "Your Name", email = "you@example.com"}

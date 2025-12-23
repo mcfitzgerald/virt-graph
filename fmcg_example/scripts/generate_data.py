@@ -313,7 +313,8 @@ class FMCGDataGenerator:
         monitored_tables = [
             "pos_sales", "orders", "order_lines", "shipment_legs",
             "batches", "inventory", "shipment_lines", "demand_forecasts",
-            "returns", "osa_metrics", "kpi_actuals", "work_orders", "shipments"
+            "returns", "osa_metrics", "kpi_actuals", "work_orders", "shipments",
+            "forecast_accuracy"
         ]
 
         for table in monitored_tables:
@@ -588,6 +589,7 @@ class FMCGDataGenerator:
             check_stat("SLOB Inventory", expert.get("slob_pct", 0), tol.get("slob_inventory_max_pct", 0.15))
             check_stat("OEE", expert.get("oee", 0), get_range("oee_range", (0.65, 0.85)))
             check_stat("Inventory Turns", expert.get("inventory_turns", 0), get_range("inventory_turns_range", (6.0, 14.0)), False)
+            check_stat("Forecast MAPE", expert.get("forecast_mape", 0), get_range("mape_range", (0.20, 0.50)))
 
         # Chaos effects summary
         chaos = stats.get("chaos_effects", {})

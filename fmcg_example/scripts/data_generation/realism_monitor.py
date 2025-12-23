@@ -406,6 +406,48 @@ class PromoLiftAccumulator:
 
 
 @dataclass
+class ForecastMAPEAccumulator:
+    """
+    Tracks forecast accuracy via MAPE (Mean Absolute Percentage Error).
+
+    Formula: MAPE = Mean(|Forecast - Actual| / Actual) × 100%
+
+    Industry benchmarks (E2Open study):
+    - World-class: <20%
+    - Industry average: 48% at SKU-week level
+    - Target range: 20-50%
+    """
+
+    sum_ape: float = 0.0  # Sum of absolute percentage errors
+    count: int = 0
+
+    def update(self, forecast: float, actual: float) -> None:
+        """Add a forecast-actual pair to the accumulator."""
+        if actual > 0:
+            ape = abs(forecast - actual) / actual
+            self.sum_ape += ape
+            self.count += 1
+
+    @property
+    def mape_pct(self) -> float:
+        """MAPE as a percentage (0-100 scale)."""
+        return (self.sum_ape / self.count * 100) if self.count > 0 else 0.0
+
+    @property
+    def mape_decimal(self) -> float:
+        """MAPE as a decimal (0-1 scale)."""
+        return (self.sum_ape / self.count) if self.count > 0 else 0.0
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "count": self.count,
+            "sum_ape": self.sum_ape,
+            "mape_pct": self.mape_pct,
+            "mape_decimal": self.mape_decimal,
+        }
+
+
+@dataclass
 class OEEAccumulator:
     """
     Tracks simplified OEE (Overall Equipment Effectiveness) = Availability × Quality.
@@ -455,7 +497,7 @@ class InventoryTurnsAccumulator:
     """
     Tracks inventory velocity (turns per year).
 
-    Formula: Inventory Turns = Annual COGS / Average Inventory Value
+    Formula: Inventory Turns = Annual COGS / Average Inventory Position
     We proxy COGS using shipped cases volume.
 
     Industry benchmarks:
@@ -470,19 +512,30 @@ class InventoryTurnsAccumulator:
 
     @property
     def avg_inventory(self) -> float:
-        """Average inventory level across all snapshots."""
+        """Average inventory per record (for reporting)."""
         return self.sum_inventory_cases / self.inventory_snapshots if self.inventory_snapshots > 0 else 1.0
 
     @property
+    def inventory_position(self) -> float:
+        """Total inventory position (sum of all inventory records)."""
+        return self.sum_inventory_cases if self.sum_inventory_cases > 0 else 1.0
+
+    @property
     def turns(self) -> float:
-        """Inventory turns (shipped / avg inventory). Assumes data represents ~1 year."""
-        return self.sum_shipped_cases / self.avg_inventory if self.avg_inventory > 0 else 0.0
+        """
+        Inventory turns = Shipped / Inventory Position.
+
+        Uses total inventory position (not per-record average).
+        Assumes data represents ~1 year of activity.
+        """
+        return self.sum_shipped_cases / self.inventory_position if self.inventory_position > 0 else 0.0
 
     def get_stats(self) -> dict[str, float]:
         return {
             "sum_inventory_cases": self.sum_inventory_cases,
             "inventory_snapshots": self.inventory_snapshots,
             "avg_inventory": self.avg_inventory,
+            "inventory_position": self.inventory_position,
             "sum_shipped_cases": self.sum_shipped_cases,
             "turns": self.turns,
         }
@@ -575,6 +628,7 @@ class RealismMonitor:
         self._inventory_total: int = 0
         self._oee = OEEAccumulator()
         self._inventory_turns = InventoryTurnsAccumulator()
+        self._forecast_mape = ForecastMAPEAccumulator()
 
         # Active quirks tracking
         self.active_quirks: set[str] = set()
@@ -672,6 +726,8 @@ class RealismMonitor:
             self._check_osa_metrics(batch_data)
         elif table == "kpi_actuals":
             self._check_kpis(batch_data)
+        elif table == "forecast_accuracy":
+            self._check_forecast_accuracy(batch_data)
 
     def _check_pos_sales(self, batch: list[dict]) -> None:
         """Validate POS sales for demand volatility."""
@@ -748,7 +804,7 @@ class RealismMonitor:
             # OEE Availability: track scheduled vs completed work orders
             self._oee.scheduled_runs += 1
             status = row.get("status", "").lower()
-            if status in ("completed", "closed"):
+            if status in ("complete", "completed", "closed"):
                 self._oee.completed_runs += 1
 
     def _check_shipments(self, batch: list[dict]) -> None:
@@ -811,8 +867,9 @@ class RealismMonitor:
                     self._qc_rejected += 1
 
             # OEE Quality: track approved vs total batches
+            # Generator uses "released" for QC-passed batches
             self._oee.total_batches += 1
-            if qc_status and qc_status.lower() == "approved":
+            if qc_status and qc_status.lower() in ("approved", "released"):
                 self._oee.approved_batches += 1
 
     def _check_inventory(self, batch: list[dict]) -> None:
@@ -880,6 +937,22 @@ class RealismMonitor:
                 # Check if multiplier is applied (baseline ~0.25 kg/case)
                 if val > 0.5:  # More than 2x baseline suggests multiplier applied
                     self._co2_multiplier_applied = max(self._co2_multiplier_applied, val / 0.25)
+
+    def _check_forecast_accuracy(self, batch: list[dict]) -> None:
+        """
+        Track forecast accuracy via MAPE calculation.
+
+        Uses forecast_accuracy table which has pre-joined forecast vs actual quantities.
+        MAPE = Mean(|Forecast - Actual| / Actual) × 100%
+
+        Note: The table uses 'actual_demand' and 'forecast_demand' field names.
+        """
+        for row in batch:
+            # Try both field naming conventions
+            forecast = row.get("forecast_demand") or row.get("forecast_quantity", 0)
+            actual = row.get("actual_demand") or row.get("actual_quantity", 0)
+            if actual > 0:
+                self._forecast_mape.update(forecast, actual)
 
     def _get_tolerance(self, key: str, default: Any = None) -> Any:
         """Get a validation tolerance from the manifest."""
@@ -1126,6 +1199,16 @@ class RealismMonitor:
                     f"(target: {turns_range[0]:.0f}x-{turns_range[1]:.0f}x)"
                 )
 
+        # Forecast MAPE (Mean Absolute Percentage Error)
+        if self._forecast_mape.count > 100:
+            mape_value = self._forecast_mape.mape_decimal
+            mape_range = self._get_range("mape_range", (0.20, 0.50))
+            if not (mape_range[0] <= mape_value <= mape_range[1]):
+                self._add_violation(
+                    f"Forecast MAPE out of range: {mape_value:.1%} "
+                    f"(target: {mape_range[0]:.0%}-{mape_range[1]:.0%})"
+                )
+
     def check_chaos_effects(self, risk_manager: Any = None, quirks_manager: Any = None) -> list[tuple[str, bool, str]]:
         """
         Validate that chaos effects (risk events and quirks) were applied correctly.
@@ -1341,8 +1424,14 @@ class RealismMonitor:
         # Add returns metrics
         report["statistics"]["returns"] = self._return_rate.get_stats()
 
-        # Add forecast bias metrics
-        report["statistics"]["forecast"] = self._forecast_bias.get_stats()
+        # Add forecast metrics (bias + MAPE)
+        forecast_stats = self._forecast_bias.get_stats()
+        forecast_stats.update({
+            "mape_count": self._forecast_mape.count,
+            "mape_pct": self._forecast_mape.mape_pct,
+            "mape_decimal": self._forecast_mape.mape_decimal,
+        })
+        report["statistics"]["forecast"] = forecast_stats
 
         # Add expert metrics
         if self._schedule_adherence.count > 0:
@@ -1356,6 +1445,8 @@ class RealismMonitor:
                 "inventory_turns": self._inventory_turns.turns,
                 "avg_inventory": self._inventory_turns.avg_inventory,
                 "shipped_cases": self._inventory_turns.sum_shipped_cases,
+                "forecast_mape": self._forecast_mape.mape_decimal,
+                "forecast_mape_pct": self._forecast_mape.mape_pct,
             }
 
         # Add chaos effects tracking
@@ -1415,6 +1506,7 @@ class RealismMonitor:
         self._inventory_total = 0
         self._oee = OEEAccumulator()
         self._inventory_turns = InventoryTurnsAccumulator()
+        self._forecast_mape = ForecastMAPEAccumulator()
 
         # Reset logistics trackers
         self._delay_accumulator = WelfordAccumulator()

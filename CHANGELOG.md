@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.49] - 2025-12-22
+
+### Added
+
+- **Forecast MAPE** - New expert reality check:
+  - Formula: `MAPE = Mean(|Forecast - Actual| / Actual) × 100%`
+  - Industry benchmark: 48% at SKU-week level (E2Open study)
+  - Target range: 20-50%
+  - Added `ForecastMAPEAccumulator` dataclass in `realism_monitor.py`
+  - Added `_check_forecast_accuracy()` method to process `forecast_accuracy` table
+  - Added `mape_range: [0.20, 0.50]` to `benchmark_manifest.json`
+
+### Fixed
+
+- **OEE calculation** - Was showing 0%, now correctly calculates ~65%:
+  - Fixed status matching: accept `"complete"` (generator) in addition to `"completed"`
+  - Fixed qc_status matching: accept `"released"` (generator) in addition to `"approved"`
+  - Tuned work order completion weights from 70% to 85% to hit target OEE range
+
+- **Inventory Turns formula** - Was showing 184,000x, now correctly calculates ~8x:
+  - Fixed formula to use total inventory position instead of per-record average
+  - Correct: `turns = sum_shipped_cases / sum_inventory_cases`
+  - Was incorrectly dividing by `avg_inventory` (per-record average)
+
+- **Forecast accuracy data generation** - Was producing 167% MAPE (unrealistic):
+  - Changed from random uncorrelated pairs to correlated forecast/actual values
+  - Uses Normal(0.08, 0.30) error distribution for realistic 25% average MAPE
+  - 8% positive bias represents human optimism in forecasting
+
+### Technical
+
+- Added `forecast_accuracy` to monitored tables in `generate_data.py`
+- Updated `get_reality_report()` to include MAPE statistics
+- All 6 expert reality checks now pass validation
+
 ## [0.9.48] - 2025-12-22
 
 ### Added

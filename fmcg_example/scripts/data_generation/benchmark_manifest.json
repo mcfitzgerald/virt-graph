@@ -218,7 +218,8 @@
     "truck_fill_rate_target": 0.50,
     "slob_inventory_max_pct": 0.30,
     "forecast_value_added_min": 0.0,
-    "oee_range": [0.65, 0.85]
+    "oee_range": [0.65, 0.85],
+    "mape_range": [0.20, 0.50]
   },
 
   "chaos_validation": {

@@ -108,7 +108,8 @@ class Level5Generator(BaseLevelGenerator):
         line_ids = list(self.ctx.production_line_ids.values())
         formula_ids = list(self.ctx.formula_ids.values())
         wo_statuses = ["draft", "released", "in_progress", "complete", "closed", "cancelled"]
-        wo_status_weights = [5, 10, 10, 25, 45, 5]
+        # Weights tuned for OEE target 65-85%: 85% complete+closed for ~70-75% OEE
+        wo_status_weights = [3, 5, 5, 35, 50, 2]
         wo_types = ["production", "rework", "trial", "sample"]
         wo_type_weights = [85, 8, 5, 2]
 
