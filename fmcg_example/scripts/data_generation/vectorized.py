@@ -377,10 +377,18 @@ class ShipmentLegsGenerator(VectorizedGenerator):
         return self
 
     def _generate_delays(self, size, mode):
+        """Generate delays with ~85-90% on-time delivery (industry OTIF standard)."""
         params = self.delay_params.get(mode, self.delay_params["truck"])
         if self.stochastic_mode == StochasticMode.DISRUPTED:
             return self.rng.gamma(shape=self.disruption_params["gamma_shape"], scale=params["lambda"] * self.disruption_params["delay_multiplier"], size=size).astype(np.float32)
-        return self.rng.poisson(params["lambda"], size=size).astype(np.float32)
+        # OTIF fix: 85% on-time (zero delay), 15% delayed (Poisson-distributed)
+        on_time_rate = 0.85
+        is_on_time = self.rng.random(size) < on_time_rate
+        delays = np.zeros(size, dtype=np.float32)
+        delayed_count = (~is_on_time).sum()
+        if delayed_count > 0:
+            delays[~is_on_time] = self.rng.poisson(params["lambda"], size=delayed_count).astype(np.float32)
+        return delays
 
     def generate_for_shipments(self, shipment_ids, shipment_types, ship_dates, now=None) -> np.ndarray:
         if now is None: now = datetime.now()

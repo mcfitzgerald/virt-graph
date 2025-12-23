@@ -16,7 +16,7 @@ tools to resolve library id and get library docs without me having to explicitly
 
 Don't reinvent the wheel, search web for robust libraries and always opt for simple. Don't over-engineer!
 
-Update `CHANGELOG.md`, `README.md`, `docs/`, `TODO.md` and `pyproject.toml` when committing with git, use semantic versioning
+Update `CHANGELOG.md`, `README.md`, and `pyproject.toml` and relevant documentation (`docs/` and or `data_gen_docs/`) when committing with git, use semantic versioning
 
 Unless noted otherwise, do not plan for backwards compatibility
 
@@ -37,7 +37,7 @@ make install          # Install Python dependencies via Poetry
 make fmcg-db-up       # Start FMCG PostgreSQL (port 5433)
 make fmcg-db-down     # Stop FMCG PostgreSQL
 make fmcg-db-reset    # Reset FMCG database (wipe and reload)
-make fmcg-generate    # Generate ~11.4M rows of seed data (~2-3 minutes)
+make fmcg-generate    # Generate ~13.6M rows of seed data (~2-3 minutes)
 make fmcg-validate    # Validate data without writing SQL
 make fmcg-test        # Run FMCG tests
 
@@ -153,11 +153,15 @@ domain_keys, range_keys = ontology.get_role_keys("HasBatch")
 
 ## FMCG Example
 
-Primary example demonstrating VG/SQL on an FMCG supply chain (~14.7M rows, 70 tables). Full specification: `FMCG_EXAMPLE_MASTER_PLAN.md`
+### Coding Notes
+- `fmcg_example/scripts/data_generation/benchmark_manifest.json` must be maintained and updated when changes are made to data generation and validation. it is the source of truth for the realism checks and data validation
+
+Primary example demonstrating VG/SQL on an FMCG supply chain (~13.6M rows, 70 tables). Full specification: `FMCG_EXAMPLE_MASTER_PLAN.md`
 
 **Architecture**: "Formula-to-Shelf" pipeline with convergent-divergent fan-out:
 - **Convergent**: Many ingredients → 1 batch (SOURCE/TRANSFORM)
 - **Divergent**: 1 batch → 20 SKUs → 50K retail nodes (ORDER/FULFILL)
+- **Physics Engine**: Implements SKU-level micro-physics (demand-pull supply distribution, emergent logistics, and dynamic safety stock).
 - **SCOR-DS Loop**: Plan ↔ Source ↔ Transform ↔ Order ↔ Fulfill ↔ Return ↔ Orchestrate
 
 **The Desmet Triangle**: Every edge carries three dimensions in tension:

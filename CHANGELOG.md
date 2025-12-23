@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.56] - 2025-12-23
+
+### Fixed
+
+- **OTIF Rate Calibration** (`vectorized.py`):
+  - Fixed `ShipmentLegsGenerator._generate_delays()` which was using pure Poisson distribution, resulting in nearly all legs having non-zero delays (P(0)=e^(-λ)≈20% for truck mode).
+  - Changed to 85% on-time rate with 15% delayed (Poisson-distributed when delayed).
+  - OTIF rate: **9.3% → 87.1%** (within 85-99% target range).
+
+### Known Issues
+
+- **Remaining Calibration Needs** (Parts 3-4 of implementation plan):
+  - Cost-to-Serve: $0.13/case (target: $1-3) - needs multi-factor CTS model
+  - Cost Variance: P90/P50 = 6.3x (target: <4x)
+
 ## [0.9.55] - 2025-12-23
 
 ### Fixed
@@ -19,8 +34,8 @@ All notable changes to this project will be documented in this file.
 
 ### Known Issues
 
-- **Remaining Calibration Needs** (Parts 2-4 of implementation plan):
-  - OTIF rate: 9.3% (target: 85-99%) - needs delivery variance fix
+- **Remaining Calibration Needs** (Parts 3-4 of implementation plan):
+  - OTIF rate: 9.3% (target: 85-99%) - **fixed in 0.9.56**
   - Cost-to-Serve: $0.13/case (target: $1-3) - needs multi-factor CTS model
 
 ## [0.9.54] - 2025-12-23

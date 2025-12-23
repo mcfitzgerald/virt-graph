@@ -31,9 +31,11 @@
 
 Located in `fmcg_example/`, this is a high-velocity, massive-volume supply chain simulation inspired by Colgate-Palmolive.
 
-*   **Scale**: ~11.4M rows across 70 tables (SCOR-DS model: Plan, Source, Transform, Order, Fulfill, Return).
+*   **Scale**: ~13.6M rows across 70 tables (SCOR-DS model: Plan, Source, Transform, Order, Fulfill, Return).
 *   **Graph Shape**: "Horizontal Explosion" (1 batch → 20 SKUs → 50,000 retail orders).
+*   **Physics Engine**: Implements SKU-level micro-physics (demand-pull supply distribution, emergent logistics, and dynamic safety stock policies).
 *   **Key Stress Test**: Recall Trace (tracing a contaminated batch through the entire network in < 5s).
+*   **Benchmarking Source of Truth**: All validation tolerances and chaos effect signatures are centralized in `fmcg_example/scripts/data_generation/benchmark_manifest.json`.
 *   **Chaos Injection**: Realistic disruptions like port strikes, cyber outages, and "bullwhip effect" demand volatility.
 
 ## Building and Running
@@ -47,7 +49,7 @@ Located in `fmcg_example/`, this is a high-velocity, massive-volume supply chain
 *   **Setup**: `make install`
 *   **FMCG Database**:
     *   `make fmcg-db-up`: Start Postgres on port 5433.
-    *   `make fmcg-generate`: Generate the ~11.4M row seed dataset.
+    *   `make fmcg-generate`: Generate the ~13.6M row seed dataset.
     *   `make fmcg-test`: Run FMCG-specific integration tests.
     *   `make fmcg-db-reset`: Wipe and reload the entire FMCG DB.
 *   **Core Testing**: `make test` (Legacy supply chain) or `make test-handlers`.
@@ -58,6 +60,7 @@ Located in `fmcg_example/`, this is a high-velocity, massive-volume supply chain
 
 *   **Schema Parameterization**: Handlers MUST NOT hardcode table or column names. They accept these as arguments based on ontology discovery.
 *   **Batching Pattern**: "One query per node" is strictly forbidden. Use `fetch_edges_for_frontier` from `base.py` to fetch edges for an entire frontier using `ANY` or `IN`.
+*   **Safety Limits**: Handlers enforce non-negotiable limits: `MAX_DEPTH=50`, `MAX_NODES=10,000`.
 *   **Soft-Delete & Temporal Support**: Always respect `deleted_at` columns and `valid_at` temporal bounds if specified in the ontology.
 *   **UoM Normalization**: Complex unit conversions (kg, liters, cases) should be handled in SQL Views, and the ontology should map to these views.
 *   **Dual Modeling**: Large concepts (like Contracts) should be modeled as both Nodes (for detail) and Shortcut Edges (for traversal speed).
@@ -72,4 +75,4 @@ As an AI agent, you should follow this protocol:
     *   Use **Direct SQL** for `direct_join` operations.
     *   Use **Handlers** for `recursive_traversal`, `path_aggregation`, or `algorithm` operations.
 4.  **Execution**: Call the appropriate Python handler with the connection and schema parameters discovered from the ontology.
-5.  **Validation**: Verify results against the "Named Test Entities" (e.g., `B-2024-RECALL-001` for recall tracing) when debugging.
+5.  **Validation**: Verify results against the "Named Test Entities" (e.g., `B-2024-RECALL-001` for recall tracing) and consult `benchmark_manifest.json` for validation tolerances.
