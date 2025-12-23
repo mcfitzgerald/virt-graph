@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.54] - 2025-12-23
+
+### Added
+
+- **Vectorized Fulfillment** (`vectorized.py`):
+  - Implemented `ShipmentsGenerator` and `ShipmentLinesGenerator` using NumPy.
+  - Replaced slow Python loops in `level_10_11_fulfillment.py` with vectorized calls.
+  - **Performance**: Level 10 generation time reduced significantly (2.2s vs ~12s).
+
+- **Physics Refinements (Last Mile)**:
+  - **Temporal Physics**: Enforced `ship_date >= production_date` check in shipment lines to prevent "Time Machine" bugs.
+  - **Location-Bound Physics**: Restricted shipment line SKUs to those actually produced at the origin plant (where applicable).
+  - **Rate-Based Costing**: Implemented `distance * rate` calculation for freight costs instead of random distribution.
+
+### Known Issues
+
+- **Calibration Drift**:
+  - Mass Balance (Batch→Ship+Inv) drift increased to -72.7% (needs inventory generation tuning).
+  - OTIF rate dropped to 9.0% (delays may be too aggressive or lead times too short).
+  - Inventory Turns dropped to 2.2x (need to align shipment volumes with inventory).
+  - Cost-to-Serve dropped to $0.32/case (needs rate calibration).
+
 ## [0.9.53] - 2025-12-23
 
 ### Added

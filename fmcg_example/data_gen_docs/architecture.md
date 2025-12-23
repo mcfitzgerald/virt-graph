@@ -35,6 +35,7 @@ For high-volume tables (Levels 8-11), Python loops are too slow. We use `vectori
 *   **Zipf Distribution:** Used for SKU selection to match the Pareto (80/20) principle.
 *   **Promo Calendar:** A pre-computed index used to apply lift/hangover multipliers to millions of POS rows instantly.
 *   **POS Row Semantics:** To balance volume with massive B2B orders without generating billions of rows, a single row in `pos_sales` represents **Weekly Aggregated Sales** for a specific SKU at a specific Store. A mean of 60.0 units/row assumes hypermarket velocity (~8-9 units/day).
+*   **Logistics Physics:** `ShipmentsGenerator` and `ShipmentLinesGenerator` enforce physical constraints (temporal sequence, location bounds) and calculate rate-based costs using vectorized operations.
 
 ### 3. LookupCache
 To avoid O(N) scans when linking tables (e.g., finding all lines for an order), `LookupCache` builds O(1) indices (hash maps) after each level is generated.
