@@ -310,11 +310,14 @@ class FMCGDataGenerator:
             return
 
         # Tables that the monitor knows how to process
+        # NOTE: Order matters! shipments must come before shipment_lines
+        # so the destination lookup is populated for mass balance tracking
         monitored_tables = [
-            "pos_sales", "orders", "order_lines", "shipment_legs",
-            "batches", "inventory", "shipment_lines", "demand_forecasts",
-            "returns", "osa_metrics", "kpi_actuals", "work_orders", "shipments",
-            "forecast_accuracy", "batch_ingredients"
+            "pos_sales", "orders", "order_lines", "work_orders",
+            "batches", "batch_ingredients", "inventory",
+            "shipments", "shipment_legs", "shipment_lines",  # shipments before shipment_lines!
+            "demand_forecasts", "forecast_accuracy",
+            "returns", "osa_metrics", "kpi_actuals",
         ]
 
         for table in monitored_tables:

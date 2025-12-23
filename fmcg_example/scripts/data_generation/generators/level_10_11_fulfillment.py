@@ -98,7 +98,13 @@ class Level10Generator(BaseLevelGenerator):
         print(f"      Generated {pwo_count:,} pick_wave_orders")
 
     def _generate_shipments(self, now: datetime) -> None:
-        """Generate shipments table (~180K)."""
+        """
+        Generate shipments table (~180K).
+
+        Mass Balance: Shipments to stores should roughly equal batch production
+        minus inventory buffer. Intermediate legs (plant→DC, DC→DC) move goods
+        within the system and are sized proportionally.
+        """
         print("    Generating shipments...")
         plant_ids = list(self.ctx.plant_ids.values())
         dc_ids = list(self.ctx.dc_ids.values())
@@ -114,8 +120,37 @@ class Level10Generator(BaseLevelGenerator):
         shipment_statuses = ["planned", "loading", "in_transit", "at_port", "delivered", "exception"]
         shipment_status_weights = [5, 5, 15, 5, 65, 5]
 
+        # === Mass Balance: Calculate target cases from production AND orders ===
+        # Can't ship more than produced (supply constraint)
+        total_batch_output_cases = sum(
+            b.get("output_cases", 0) for b in self.data.get("batches", [])
+        )
+        production_available = int(total_batch_output_cases * 0.85)  # 15% in inventory
+
+        # Can't fulfill more than ordered (demand constraint)
+        total_ordered_cases = sum(
+            ol.get("quantity_cases", 0) for ol in self.data.get("order_lines", [])
+        )
+        target_fill_rate = 0.95  # 95% order fill rate
+        demand_constraint = int(total_ordered_cases * target_fill_rate)
+
+        # Target shipped = min(supply, demand) - physics constraint
+        target_shipped_to_stores = min(production_available, demand_constraint)
+
+        # 60% of shipments go to stores (dc_to_store 55% + direct_to_store 5%)
+        num_shipments = 180000
+        store_shipment_fraction = 0.60
+        expected_store_shipments = int(num_shipments * store_shipment_fraction)
+        # Target cases per store shipment (with ±30% variance)
+        if expected_store_shipments > 0:
+            target_cases_per_store_ship = max(20, target_shipped_to_stores // expected_store_shipments)
+        else:
+            target_cases_per_store_ship = 100
+        # Intermediate legs carry similar or larger quantities (consolidation)
+        target_cases_per_dc_ship = int(target_cases_per_store_ship * 1.5)
+
         shipment_id = 1
-        for _ in range(180000):
+        for _ in range(num_shipments):
             shipment_num = f"SHIP-{self.ctx.base_year}-{shipment_id:08d}"
             shipment_type = random.choices(shipment_types, weights=shipment_type_weights)[0]
 
@@ -163,7 +198,16 @@ class Level10Generator(BaseLevelGenerator):
                 delay = random.randint(-2, 5)
                 actual_delivery = expected_delivery + timedelta(days=delay)
 
-            total_cases = random.randint(50, 2000)
+            # Cases based on shipment type to maintain mass balance
+            if destination_type == "store":
+                # Store shipments: sized to match production output
+                base_cases = target_cases_per_store_ship
+                total_cases = max(10, int(base_cases * random.uniform(0.7, 1.3)))
+            else:
+                # DC shipments: consolidation moves larger quantities
+                base_cases = target_cases_per_dc_ship
+                total_cases = max(20, int(base_cases * random.uniform(0.8, 1.5)))
+
             total_pallets = max(1, total_cases // 50)
             total_weight = round(total_cases * random.uniform(8, 15), 2)
             freight_cost = round(total_pallets * random.uniform(50, 200), 2)

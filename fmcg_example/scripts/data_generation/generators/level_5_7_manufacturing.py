@@ -13,7 +13,7 @@ Level 6 Tables:
 - batch_cost_ledger (~48,000)
 
 Level 7 Tables:
-- batch_ingredients (~150,000)
+- batch_ingredients (~480,000 = ~48k batches × ~10 ingredients each)
 - inventory (~50,000)
 
 Named entities:
@@ -435,26 +435,38 @@ class Level7Generator(BaseLevelGenerator):
         )
 
     def _generate_batch_ingredients(self, now: datetime) -> None:
-        """Generate batch_ingredients table (~150,000)."""
+        """
+        Generate batch_ingredients table (~480,000 = ~48k batches × ~10 ingredients).
+
+        Mass Balance Physics:
+        - Ingredient input (kg) × yield = Batch output (kg)
+        - Therefore: input = output / yield > output (yield loss)
+        - Formula yield_percent (96-99%) determines the loss factor
+        """
         # Build O(1) lookup indices
         formulas_idx = LookupBuilder.build_unique(self.data["formulas"], "id")
         formula_ings_idx = LookupBuilder.build(
             self.data["formula_ingredients"], key_field="formula_id"
         )
 
-        bi_count = 0
         for batch in self.data["batches"]:
             formula_ings = formula_ings_idx.get(batch["formula_id"], [])
             formula = formulas_idx.get(batch["formula_id"])
             if not formula:
                 continue
 
-            scale_factor = batch["quantity_kg"] / formula["batch_size_kg"]
+            # Apply yield loss: we need MORE input to get the desired output
+            # If yield = 97%, then input = output / 0.97 = output × 1.031
+            yield_percent = formula.get("yield_percent", 97.0)
+            yield_factor = 100.0 / yield_percent  # e.g., 100/97 = 1.031
+            scale_factor = batch["quantity_kg"] / formula["batch_size_kg"] * yield_factor
 
             for fi in formula_ings:
                 planned_qty = fi["quantity_kg"] * scale_factor
-                actual_qty = round(planned_qty * random.uniform(0.97, 1.04), 4)
-                scrap = round(max(0, actual_qty - planned_qty) * random.uniform(0, 0.5), 4)
+                # Actual varies slightly from planned (measurement variance)
+                actual_qty = round(planned_qty * random.uniform(0.98, 1.02), 4)
+                # Scrap is material lost during processing (subset of actual)
+                scrap = round(actual_qty * random.uniform(0.005, 0.02), 4)
 
                 self.data["batch_ingredients"].append(
                     {
@@ -469,19 +481,35 @@ class Level7Generator(BaseLevelGenerator):
                         "created_at": now,
                     }
                 )
-                bi_count += 1
-                if bi_count >= 150000:
-                    break
-            if bi_count >= 150000:
-                break
 
     def _generate_inventory(self, now: datetime) -> None:
-        """Generate inventory table (~50,000)."""
+        """
+        Generate inventory table (~50,000).
+
+        Mass Balance: Inventory should equal ~15% of batch production
+        (the remaining 85% is shipped to stores).
+        """
         batches_idx = LookupBuilder.build_unique(self.data["batches"], "id")
         sku_ids = list(self.ctx.sku_ids.values())
         dc_ids = list(self.ctx.dc_ids.values())
         batch_ids = list(self.ctx.batch_ids.values())
+
+        # === Mass Balance: Calculate target inventory from batch production ===
+        total_batch_output_cases = sum(
+            b.get("output_cases", 0) for b in self.data.get("batches", [])
+        )
+        # 15% of production remains in inventory
+        target_inventory_cases = int(total_batch_output_cases * 0.15)
+        # Target ~50,000 inventory records
+        target_records = 50000
+        # Target cases per inventory record (with variance)
+        if target_records > 0:
+            target_cases_per_record = max(5, target_inventory_cases // target_records)
+        else:
+            target_cases_per_record = 50
+
         inv_id = 1
+        total_inv_cases = 0
 
         # Generate inventory at DCs for popular SKUs
         for dc_id in dc_ids:
@@ -497,7 +525,10 @@ class Level7Generator(BaseLevelGenerator):
                     if not batch:
                         continue
 
-                    qty_cases = random.randint(10, 2000)
+                    # Size inventory to match production-based target
+                    qty_cases = max(5, int(target_cases_per_record * random.uniform(0.5, 1.5)))
+                    total_inv_cases += qty_cases
+
                     self.ctx.inventory_ids[(dc_id, sku_id, batch_id)] = inv_id
                     self.data["inventory"].append(
                         {
@@ -522,11 +553,12 @@ class Level7Generator(BaseLevelGenerator):
                         }
                     )
                     inv_id += 1
-                    if inv_id > 50000:
+                    # Stop when we've reached target inventory or record count
+                    if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
                         break
-                if inv_id > 50000:
+                if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
                     break
-            if inv_id > 50000:
+            if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
                 break
 
     def _apply_chaos_inventory(self) -> None:

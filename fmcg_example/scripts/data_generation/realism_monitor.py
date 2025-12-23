@@ -777,6 +777,9 @@ class RealismMonitor:
         # Active quirks tracking
         self.active_quirks: set[str] = set()
 
+        # Shipment destination lookup for mass balance (shipment_id -> destination_type)
+        self._shipment_dest_types: dict[int, str] = {}
+
         # Strategic & Financial trackers
         self._forecast_bias = ForecastBiasAccumulator()
         self._return_rate = ReturnRateAccumulator()
@@ -959,17 +962,27 @@ class RealismMonitor:
         # Assume standard truck capacity ~20,000 kg (conservative)
         TRUCK_CAPACITY_KG = 20000.0
         for row in batch:
+            # Build destination lookup for shipment_lines mass balance
+            shipment_id = row.get("id")
+            dest_type = row.get("destination_type", "")
+            if shipment_id is not None:
+                self._shipment_dest_types[shipment_id] = dest_type
+
             weight = row.get("total_weight_kg", 0)
             if weight > 0:
                 fill_rate = min(1.0, weight / TRUCK_CAPACITY_KG)
                 self._truck_fill.update(fill_rate)
 
-            # Inventory Turns: track shipped cases as COGS proxy
             cases = row.get("total_cases", 0)
             if cases > 0:
+                # Inventory Turns: track ALL shipped cases as COGS proxy
                 self._inventory_turns.sum_shipped_cases += cases
-                # Mass Balance: track shipped cases
-                self._mass_balance.sum_shipped_cases += cases
+
+                # Mass Balance: only count shipments to final destination (stores)
+                # Intermediate legs (plant→DC, DC→DC) move goods within the system
+                # and would double-count if included
+                if dest_type == "store":
+                    self._mass_balance.sum_shipped_cases += cases
 
             # Cost-to-Serve: track freight cost per case
             freight_cost = row.get("freight_cost", 0)
@@ -1070,9 +1083,13 @@ class RealismMonitor:
                     self._recall_affected_stores.add(destination_id)
 
             # Mass Balance: track fulfilled cases from shipment_lines
+            # Only count lines for store-bound shipments (not intermediate DC transfers)
             qty_cases = row.get("quantity_cases", 0)
             if qty_cases > 0:
-                self._mass_balance.sum_fulfilled_cases += qty_cases
+                shipment_id = row.get("shipment_id")
+                dest_type = self._shipment_dest_types.get(shipment_id, "")
+                if dest_type == "store":
+                    self._mass_balance.sum_fulfilled_cases += qty_cases
 
     def _check_forecasts(self, batch: list[dict]) -> None:
         """Track demand forecasts for bias calculation."""
