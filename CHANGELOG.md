@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.50] - 2025-12-22
+
+### Added
+
+- **Cost-to-Serve** - New expert reality check (Phase 4):
+  - Formula: `Cost-to-Serve = Total Freight Cost / Total Cases Shipped`
+  - BCG benchmark: $1.58/case industry average
+  - Target range: $1.00-$3.00/case
+  - Added `CostToServeAccumulator` dataclass in `realism_monitor.py`
+  - Added cost variance check (P90/P50 ratio < 4x) for long-tail detection
+  - Added `cost_per_case_range` and `cost_variance_max_ratio` to `benchmark_manifest.json`
+
+- **Mass Balance (Physics) Validation** - New conservation-of-mass checks:
+  - `MassBalanceAccumulator` dataclass tracking three balance equations:
+    1. **Ingredient→Batch (kg)**: Σ ingredients consumed ≈ Σ batch output (with yield loss)
+    2. **Batch→Ship+Inv (cases)**: Σ produced ≈ Σ shipped + Σ inventory
+    3. **Order→Fulfill (cases)**: Σ ordered ≈ Σ fulfilled (can't over-ship)
+  - Added `_check_batch_ingredients()` method for ingredient consumption tracking
+  - Updated `_check_batches()`, `_check_inventory()`, `_check_shipments()`,
+    `_check_order_lines()`, `_check_recall_propagation()` for mass balance data
+  - Added `batch_ingredients` to monitored tables in `generate_data.py`
+  - Physics violations now correctly fail validation
+
+### Known Issues
+
+- Mass balance checks detect physics violations in current data generation:
+  - Ingredient→Batch: +165% drift (should be negative due to yield loss)
+  - Batch→Ship+Inv: +1711% drift (phantom goods)
+  - Order→Fulfill: +169% drift (over-fulfillment)
+  - Investigation plan created at `~/.claude/plans/graceful-puzzling-blum.md`
+
+### Technical
+
+- All 8 expert reality checks now implemented (Schedule Adherence, Truck Fill,
+  SLOB, OEE, Inventory Turns, Forecast MAPE, Cost-to-Serve, Mass Balance)
+- Updated `get_reality_report()` with mass balance and cost statistics
+- Updated `reset()` method for new accumulators
+
 ## [0.9.49] - 2025-12-22
 
 ### Added

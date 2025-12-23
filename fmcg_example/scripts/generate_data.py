@@ -314,7 +314,7 @@ class FMCGDataGenerator:
             "pos_sales", "orders", "order_lines", "shipment_legs",
             "batches", "inventory", "shipment_lines", "demand_forecasts",
             "returns", "osa_metrics", "kpi_actuals", "work_orders", "shipments",
-            "forecast_accuracy"
+            "forecast_accuracy", "batch_ingredients"
         ]
 
         for table in monitored_tables:
@@ -590,6 +590,51 @@ class FMCGDataGenerator:
             check_stat("OEE", expert.get("oee", 0), get_range("oee_range", (0.65, 0.85)))
             check_stat("Inventory Turns", expert.get("inventory_turns", 0), get_range("inventory_turns_range", (6.0, 14.0)), False)
             check_stat("Forecast MAPE", expert.get("forecast_mape", 0), get_range("mape_range", (0.20, 0.50)))
+
+            # Cost-to-Serve metrics (display as $ values, not percentages)
+            cost_per_case = expert.get("cost_per_case", 0)
+            cost_range = get_range("cost_per_case_range", (1.00, 3.00))
+            cost_passed = cost_range[0] <= cost_per_case <= cost_range[1]
+            if not cost_passed:
+                all_passed = False
+            print(f"  {'Cost-to-Serve':<22} ${cost_per_case:<7.2f} [${cost_range[0]:.2f}-${cost_range[1]:.2f}]  {'PASS' if cost_passed else 'FAIL'}")
+
+            # Cost variance (P90/P50 ratio)
+            cost_variance = expert.get("cost_p90_p50_ratio", 1.0)
+            max_variance = tol.get("cost_variance_max_ratio", 4.0)
+            variance_passed = cost_variance <= max_variance
+            if not variance_passed:
+                all_passed = False
+            print(f"  {'Cost Variance (P90/P50)':<22} {cost_variance:<7.1f}x [<{max_variance:.1f}x]       {'PASS' if variance_passed else 'FAIL'}")
+
+        # Mass Balance (Physics) checks
+        mb = stats.get("mass_balance", {})
+        if mb and mb.get("batch_count", 0) > 0:
+            print()
+            print("  Mass Balance (Physics):")
+            max_drift = tol.get("mass_balance_drift_max", 0.02)
+
+            # Ingredient → Batch (kg) - negative drift is normal (yield loss)
+            ing_drift = mb.get("ingredient_to_batch_drift", 0)
+            ing_passed = ing_drift <= max_drift  # Can't have more output than input
+            if not ing_passed:
+                all_passed = False
+            print(f"  {'Ingredient→Batch (kg)':<22} {ing_drift:+7.1%}  [<+{max_drift:.0%}]       {'PASS' if ing_passed else 'FAIL'}")
+
+            # Batch → Ship+Inv (cases) - should balance within tolerance
+            batch_drift = mb.get("batch_to_shipment_drift", 0)
+            batch_passed = abs(batch_drift) <= max_drift * 5  # 10% tolerance
+            if not batch_passed:
+                all_passed = False
+            print(f"  {'Batch→Ship+Inv (cases)':<22} {batch_drift:+7.1%}  [±{max_drift*5:.0%}]       {'PASS' if batch_passed else 'FAIL'}")
+
+            # Order → Fulfill (cases) - can't ship more than ordered
+            order_drift = mb.get("order_to_fulfill_drift", 0)
+            fill_rate = mb.get("fill_rate", 0)
+            order_passed = order_drift <= max_drift  # Can't over-fulfill
+            if not order_passed:
+                all_passed = False
+            print(f"  {'Order→Fulfill (cases)':<22} {order_drift:+7.1%}  [<+{max_drift:.0%}]       {'PASS' if order_passed else 'FAIL'}  (Fill: {fill_rate:.1%})")
 
         # Chaos effects summary
         chaos = stats.get("chaos_effects", {})

@@ -541,6 +541,148 @@ class InventoryTurnsAccumulator:
         }
 
 
+@dataclass
+class MassBalanceAccumulator:
+    """
+    Tracks mass balance across the supply chain (conservation of mass).
+
+    Three balance equations:
+    1. Ingredient → Batch: Σ ingredients consumed (kg) × yield ≈ Σ batch output (kg)
+    2. Batch → Ship+Inv: Σ batch output (cases) ≈ Σ shipped (cases) + Σ inventory (cases)
+    3. Order → Fulfill: Σ ordered (cases) ≈ Σ shipped (cases) + unfulfilled
+
+    Tolerance: 2% drift max (mass_balance_drift_max in manifest)
+    """
+
+    # Ingredient → Batch balance (kg)
+    sum_ingredient_input_kg: float = 0.0
+    sum_batch_output_kg: float = 0.0
+    batch_count: int = 0
+
+    # Batch → Ship+Inventory balance (cases)
+    sum_batch_output_cases: float = 0.0
+    sum_shipped_cases: float = 0.0
+    sum_inventory_cases: float = 0.0
+
+    # Order → Fulfill balance (cases)
+    sum_ordered_cases: float = 0.0
+    sum_fulfilled_cases: float = 0.0  # shipment_lines
+
+    @property
+    def ingredient_to_batch_drift(self) -> float:
+        """
+        Drift between ingredient input and batch output.
+
+        Positive = more output than input (impossible, indicates bug)
+        Negative = normal yield loss
+        """
+        if self.sum_ingredient_input_kg == 0:
+            return 0.0
+        return (self.sum_batch_output_kg - self.sum_ingredient_input_kg) / self.sum_ingredient_input_kg
+
+    @property
+    def batch_to_shipment_drift(self) -> float:
+        """
+        Drift between batch production and (shipped + inventory).
+
+        Should be ~0 if all produced goods are either shipped or in inventory.
+        """
+        if self.sum_batch_output_cases == 0:
+            return 0.0
+        accounted = self.sum_shipped_cases + self.sum_inventory_cases
+        return (accounted - self.sum_batch_output_cases) / self.sum_batch_output_cases
+
+    @property
+    def order_to_fulfill_drift(self) -> float:
+        """
+        Drift between ordered and fulfilled quantities.
+
+        Negative = under-fulfillment (normal, some orders unfilled)
+        Positive = over-fulfillment (bug, shipped more than ordered)
+        """
+        if self.sum_ordered_cases == 0:
+            return 0.0
+        return (self.sum_fulfilled_cases - self.sum_ordered_cases) / self.sum_ordered_cases
+
+    @property
+    def fill_rate(self) -> float:
+        """Order fill rate (fulfilled / ordered)."""
+        if self.sum_ordered_cases == 0:
+            return 0.0
+        return self.sum_fulfilled_cases / self.sum_ordered_cases
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "batch_count": self.batch_count,
+            "ingredient_input_kg": self.sum_ingredient_input_kg,
+            "batch_output_kg": self.sum_batch_output_kg,
+            "ingredient_to_batch_drift": self.ingredient_to_batch_drift,
+            "batch_output_cases": self.sum_batch_output_cases,
+            "shipped_cases": self.sum_shipped_cases,
+            "inventory_cases": self.sum_inventory_cases,
+            "batch_to_shipment_drift": self.batch_to_shipment_drift,
+            "ordered_cases": self.sum_ordered_cases,
+            "fulfilled_cases": self.sum_fulfilled_cases,
+            "order_to_fulfill_drift": self.order_to_fulfill_drift,
+            "fill_rate": self.fill_rate,
+        }
+
+
+@dataclass
+class CostToServeAccumulator:
+    """
+    Tracks logistics cost per case (Cost-to-Serve).
+
+    Formula: Cost-to-Serve = Total Freight Cost / Total Cases Shipped
+
+    Industry benchmarks (BCG):
+    - Industry average: $1.58/case
+    - Target range: $1.00-$3.00/case
+    """
+
+    sum_freight_cost: float = 0.0
+    sum_cases: float = 0.0
+    costs: list = field(default_factory=list)  # Per-shipment cost/case for distribution
+
+    def update(self, freight_cost: float, cases: float) -> None:
+        """Add a shipment's freight cost and case count."""
+        if cases > 0 and freight_cost > 0:
+            self.sum_freight_cost += freight_cost
+            self.sum_cases += cases
+            self.costs.append(freight_cost / cases)
+
+    @property
+    def cost_per_case(self) -> float:
+        """Average cost per case across all shipments."""
+        return self.sum_freight_cost / self.sum_cases if self.sum_cases > 0 else 0.0
+
+    @property
+    def cost_p90_p50_ratio(self) -> float:
+        """
+        P90/P50 ratio for cost distribution (long-tail detection).
+
+        High ratio indicates expensive outlier deliveries (rural, expedited, etc.).
+        Target: < 4x
+        """
+        if len(self.costs) < 10:
+            return 1.0
+        sorted_costs = sorted(self.costs)
+        p50_idx = len(sorted_costs) // 2
+        p90_idx = int(len(sorted_costs) * 0.9)
+        p50 = sorted_costs[p50_idx]
+        p90 = sorted_costs[p90_idx]
+        return p90 / p50 if p50 > 0 else 1.0
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "sum_freight_cost": self.sum_freight_cost,
+            "sum_cases": self.sum_cases,
+            "cost_per_case": self.cost_per_case,
+            "cost_p90_p50_ratio": self.cost_p90_p50_ratio,
+            "shipment_count": len(self.costs),
+        }
+
+
 # =============================================================================
 # Main RealismMonitor Class
 # =============================================================================
@@ -629,6 +771,8 @@ class RealismMonitor:
         self._oee = OEEAccumulator()
         self._inventory_turns = InventoryTurnsAccumulator()
         self._forecast_mape = ForecastMAPEAccumulator()
+        self._cost_to_serve = CostToServeAccumulator()
+        self._mass_balance = MassBalanceAccumulator()
 
         # Active quirks tracking
         self.active_quirks: set[str] = set()
@@ -728,6 +872,8 @@ class RealismMonitor:
             self._check_kpis(batch_data)
         elif table == "forecast_accuracy":
             self._check_forecast_accuracy(batch_data)
+        elif table == "batch_ingredients":
+            self._check_batch_ingredients(batch_data)
 
     def _check_pos_sales(self, batch: list[dict]) -> None:
         """Validate POS sales for demand volatility."""
@@ -770,10 +916,11 @@ class RealismMonitor:
         if quantities:
             self._order_cv_accumulator.update_batch(quantities)
 
-        # Track total order volume for return rate and forecast bias
+        # Track total order volume for return rate, forecast bias, and mass balance
         total_order_cases = sum(row.get("quantity_cases", 0) for row in batch)
         self._return_rate.update_sales(total_order_cases)
         self._forecast_bias.update_actual(total_order_cases)
+        self._mass_balance.sum_ordered_cases += total_order_cases
 
         # Track SKU frequency
         sku_ids = [row.get("sku_id") for row in batch if row.get("sku_id")]
@@ -808,7 +955,7 @@ class RealismMonitor:
                 self._oee.completed_runs += 1
 
     def _check_shipments(self, batch: list[dict]) -> None:
-        """Validate Truck Fill Rate and track shipped cases for inventory turns."""
+        """Validate Truck Fill Rate, track shipped cases, and cost-to-serve."""
         # Assume standard truck capacity ~20,000 kg (conservative)
         TRUCK_CAPACITY_KG = 20000.0
         for row in batch:
@@ -821,6 +968,13 @@ class RealismMonitor:
             cases = row.get("total_cases", 0)
             if cases > 0:
                 self._inventory_turns.sum_shipped_cases += cases
+                # Mass Balance: track shipped cases
+                self._mass_balance.sum_shipped_cases += cases
+
+            # Cost-to-Serve: track freight cost per case
+            freight_cost = row.get("freight_cost", 0)
+            if freight_cost > 0 and cases > 0:
+                self._cost_to_serve.update(freight_cost, cases)
 
     def _check_logistics_friction(self, batch: list[dict]) -> None:
         """Validate shipment legs for kinetic friction."""
@@ -851,7 +1005,7 @@ class RealismMonitor:
                 self._congestion_correlated_legs += 1
 
     def _check_batches(self, batch: list[dict]) -> None:
-        """Validate batches for yield loss, QC, and OEE quality."""
+        """Validate batches for yield loss, QC, OEE quality, and mass balance."""
         for row in batch:
             # Track yield percentage
             yield_pct = row.get("yield_percent") or row.get("yield_percentage")
@@ -872,8 +1026,17 @@ class RealismMonitor:
             if qc_status and qc_status.lower() in ("approved", "released"):
                 self._oee.approved_batches += 1
 
+            # Mass Balance: track batch output (kg and cases)
+            output_kg = row.get("quantity_kg", 0) or row.get("actual_quantity_kg", 0)
+            output_cases = row.get("output_cases", 0)
+            if output_kg > 0:
+                self._mass_balance.sum_batch_output_kg += output_kg
+                self._mass_balance.batch_count += 1
+            if output_cases > 0:
+                self._mass_balance.sum_batch_output_cases += output_cases
+
     def _check_inventory(self, batch: list[dict]) -> None:
-        """Validate inventory for cash cycle metrics, SLOBs, and inventory turns."""
+        """Validate inventory for cash cycle metrics, SLOBs, inventory turns, and mass balance."""
         for row in batch:
             days_on_hand = row.get("days_on_hand")
             if days_on_hand is not None:
@@ -882,6 +1045,11 @@ class RealismMonitor:
             # SLOB check
             aging = row.get("aging_bucket")
             self._inventory_total += 1
+
+            # Mass Balance: track inventory cases
+            qty_cases = row.get("quantity_cases", 0)
+            if qty_cases > 0:
+                self._mass_balance.sum_inventory_cases += qty_cases
             if aging == "90+":
                 self._slob_count += 1
 
@@ -892,7 +1060,7 @@ class RealismMonitor:
                 self._inventory_turns.inventory_snapshots += 1
 
     def _check_recall_propagation(self, batch: list[dict]) -> None:
-        """Track recall batch propagation to stores."""
+        """Track recall batch propagation to stores and fulfilled cases for mass balance."""
         for row in batch:
             batch_id = row.get("batch_id")
             # Check if this is the recall batch (by ID or batch_number if available)
@@ -900,6 +1068,11 @@ class RealismMonitor:
                 destination_id = row.get("destination_id")
                 if destination_id:
                     self._recall_affected_stores.add(destination_id)
+
+            # Mass Balance: track fulfilled cases from shipment_lines
+            qty_cases = row.get("quantity_cases", 0)
+            if qty_cases > 0:
+                self._mass_balance.sum_fulfilled_cases += qty_cases
 
     def _check_forecasts(self, batch: list[dict]) -> None:
         """Track demand forecasts for bias calculation."""
@@ -953,6 +1126,18 @@ class RealismMonitor:
             actual = row.get("actual_demand") or row.get("actual_quantity", 0)
             if actual > 0:
                 self._forecast_mape.update(forecast, actual)
+
+    def _check_batch_ingredients(self, batch: list[dict]) -> None:
+        """
+        Track ingredient consumption for mass balance (kg input).
+
+        Mass Balance Equation 1: Σ ingredients consumed ≈ Σ batch output (with yield loss)
+        """
+        for row in batch:
+            # Track actual quantity consumed (kg)
+            qty_kg = row.get("actual_quantity_kg", 0) or row.get("quantity_kg", 0)
+            if qty_kg > 0:
+                self._mass_balance.sum_ingredient_input_kg += qty_kg
 
     def _get_tolerance(self, key: str, default: Any = None) -> Any:
         """Get a validation tolerance from the manifest."""
@@ -1209,6 +1394,60 @@ class RealismMonitor:
                     f"(target: {mape_range[0]:.0%}-{mape_range[1]:.0%})"
                 )
 
+        # Cost-to-Serve ($/case)
+        if len(self._cost_to_serve.costs) > 100:
+            cost_value = self._cost_to_serve.cost_per_case
+            cost_range = self._get_range("cost_per_case_range", (1.00, 3.00))
+            if not (cost_range[0] <= cost_value <= cost_range[1]):
+                self._add_violation(
+                    f"Cost-to-Serve out of range: ${cost_value:.2f}/case "
+                    f"(target: ${cost_range[0]:.2f}-${cost_range[1]:.2f})"
+                )
+
+            # Cost variance (P90/P50 ratio)
+            variance_ratio = self._cost_to_serve.cost_p90_p50_ratio
+            max_variance = self._get_tolerance("cost_variance_max_ratio", 4.0)
+            if variance_ratio > max_variance:
+                self._add_violation(
+                    f"Cost variance too high: P90/P50 = {variance_ratio:.1f}x "
+                    f"(max: {max_variance:.1f}x)"
+                )
+
+        # === MASS BALANCE CHECKS (Physics) ===
+        max_drift = self._get_tolerance("mass_balance_drift_max", 0.02)
+
+        # Check 1: Ingredient → Batch (kg) - should have negative drift due to yield loss
+        if self._mass_balance.sum_ingredient_input_kg > 1000:
+            ing_to_batch_drift = self._mass_balance.ingredient_to_batch_drift
+            # Positive drift = more output than input = IMPOSSIBLE (physics violation)
+            if ing_to_batch_drift > max_drift:
+                self._add_violation(
+                    f"Mass Balance (Ingredient→Batch) violation: {ing_to_batch_drift:+.1%} drift "
+                    f"(max: +{max_drift:.0%}) - more output than input!"
+                )
+            # Large negative drift might indicate data loss, but is not a physics violation
+            # (just means high scrap/yield loss which is tracked elsewhere)
+
+        # Check 2: Batch → Ship+Inventory (cases) - production should equal shipped + inventory
+        if self._mass_balance.sum_batch_output_cases > 1000:
+            batch_to_ship_drift = self._mass_balance.batch_to_shipment_drift
+            # Allow some tolerance for in-transit, timing differences
+            if abs(batch_to_ship_drift) > max_drift * 5:  # 10% tolerance for this balance
+                self._add_violation(
+                    f"Mass Balance (Batch→Ship+Inv) drift: {batch_to_ship_drift:+.1%} "
+                    f"(tolerance: ±{max_drift*5:.0%})"
+                )
+
+        # Check 3: Order → Fulfill (cases) - should be <= 0 (can't ship more than ordered)
+        if self._mass_balance.sum_ordered_cases > 1000:
+            order_to_fulfill_drift = self._mass_balance.order_to_fulfill_drift
+            # Positive drift = shipped more than ordered = BUG
+            if order_to_fulfill_drift > max_drift:
+                self._add_violation(
+                    f"Mass Balance (Order→Fulfill) violation: {order_to_fulfill_drift:+.1%} drift "
+                    f"- shipped more than ordered!"
+                )
+
     def check_chaos_effects(self, risk_manager: Any = None, quirks_manager: Any = None) -> list[tuple[str, bool, str]]:
         """
         Validate that chaos effects (risk events and quirks) were applied correctly.
@@ -1447,6 +1686,9 @@ class RealismMonitor:
                 "shipped_cases": self._inventory_turns.sum_shipped_cases,
                 "forecast_mape": self._forecast_mape.mape_decimal,
                 "forecast_mape_pct": self._forecast_mape.mape_pct,
+                "cost_per_case": self._cost_to_serve.cost_per_case,
+                "cost_p90_p50_ratio": self._cost_to_serve.cost_p90_p50_ratio,
+                "cost_shipment_count": len(self._cost_to_serve.costs),
             }
 
         # Add chaos effects tracking
@@ -1463,6 +1705,9 @@ class RealismMonitor:
             "affected_stores": len(self._recall_affected_stores),
             "target": 500,
         }
+
+        # Add mass balance (physics) tracking
+        report["statistics"]["mass_balance"] = self._mass_balance.get_stats()
 
         # Add accumulator summaries
         for domain, accumulators in self._accumulators.items():
@@ -1507,6 +1752,8 @@ class RealismMonitor:
         self._oee = OEEAccumulator()
         self._inventory_turns = InventoryTurnsAccumulator()
         self._forecast_mape = ForecastMAPEAccumulator()
+        self._cost_to_serve = CostToServeAccumulator()
+        self._mass_balance = MassBalanceAccumulator()
 
         # Reset logistics trackers
         self._delay_accumulator = WelfordAccumulator()

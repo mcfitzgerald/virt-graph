@@ -219,7 +219,9 @@
     "slob_inventory_max_pct": 0.30,
     "forecast_value_added_min": 0.0,
     "oee_range": [0.65, 0.85],
-    "mape_range": [0.20, 0.50]
+    "mape_range": [0.20, 0.50],
+    "cost_per_case_range": [1.00, 3.00],
+    "cost_variance_max_ratio": 4.0
   },
 
   "chaos_validation": {
