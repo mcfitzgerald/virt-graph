@@ -266,20 +266,50 @@ class Level10Generator(BaseLevelGenerator):
                 carrier_rates[cid] = float(r.get("rate_per_case", 1.50)) / 100.0 + 1.0 # arbitrary scaling
         
         gen.configure(carrier_rates=carrier_rates, distances=distances)
-        
-        # Weights - distribute total_production_weight roughly
-        avg_weight = total_production_weight / num_shipments
-        weights_kg = (avg_weight * np.random.uniform(0.6, 1.4, size=num_shipments)).astype(np.float32)
-        
+
+        # Mass Balance Fix: Only store-bound shipments count toward shipped cases
+        # Internal moves (plant_to_dc, dc_to_dc) are intermediate and don't count
+        chosen_types_arr = np.array(chosen_types)
+        store_bound_mask = np.isin(chosen_types_arr, ["dc_to_store", "direct_to_store"])
+        num_store_shipments = store_bound_mask.sum()
+
+        # Calculate total shippable cases from upstream physics
+        total_shippable_cases = sum(shippable_to_store_by_sku.values())
+        avg_kg_per_case = sum(sku_weights.values()) / len(sku_weights) if sku_weights else 5.0
+
+        # Allocate cases only to store-bound shipments (fixes mass balance)
+        cases_per_shipment = np.zeros(num_shipments, dtype=np.int32)
+        if num_store_shipments > 0:
+            avg_cases_per_store_shipment = total_shippable_cases / num_store_shipments
+            store_cases = (avg_cases_per_store_shipment * np.random.uniform(0.6, 1.4, size=num_store_shipments)).astype(np.int32)
+            store_cases = np.maximum(store_cases, 1)
+            cases_per_shipment[store_bound_mask] = store_cases
+
+        # Internal shipments get nominal case counts for truck fill calculation (not counted in mass balance)
+        internal_mask = ~store_bound_mask
+        if internal_mask.sum() > 0:
+            # These move goods between facilities but don't count as "shipped to stores"
+            avg_internal_cases = 500  # Typical internal move size
+            cases_per_shipment[internal_mask] = (avg_internal_cases * np.random.uniform(0.5, 1.5, size=internal_mask.sum())).astype(np.int32)
+            cases_per_shipment[internal_mask] = np.maximum(cases_per_shipment[internal_mask], 1)
+
+        # Derive weights FROM cases using actual SKU weight
+        weights_kg = (cases_per_shipment * avg_kg_per_case).astype(np.float32)
+
+        store_cases_total = cases_per_shipment[store_bound_mask].sum()
+        print(f"    [Physics] Store shipments: {num_store_shipments:,}, cases: {store_cases_total:,} (target: {total_shippable_cases:,})")
+        print(f"    [Physics] Avg {avg_kg_per_case:.2f} kg/case")
+
         ship_dates = np.array([
             np.datetime64(date(self.ctx.base_year, 1, 1)) + np.timedelta64(random.randint(0, 364), "D")
             for _ in range(num_shipments)
         ])
-        
+
         shipments_array = gen.generate_batch(
             origins=origins,
             destinations=destinations,
             weights_kg=weights_kg,
+            total_cases=cases_per_shipment,
             shipment_types=np.array(chosen_types),
             carrier_ids=np.array([random.choice(carrier_ids) for _ in range(num_shipments)]),
             route_ids=np.array([random.choice(route_ids) for _ in range(num_shipments)]),

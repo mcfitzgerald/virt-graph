@@ -90,19 +90,19 @@ Benchmark Comparison:
 
   Expert Reality Checks:
   Schedule Adherence     0.998    [<1.1]       PASS
-  Truck Fill Rate        87.3%    [50%-100%]   PASS
-  SLOB Inventory         24.7%    [<30%]       PASS
+  Truck Fill Rate        63.6%    [50%-100%]   PASS
+  SLOB Inventory         24.9%    [<30%]       PASS
   OEE                    65.5%    [65%-85%]    PASS
-  Inventory Turns        9.623    [6.0-14.0]   PASS
+  Inventory Turns        9.570    [6.0-14.0]   PASS
   Forecast MAPE          24.8%    [20%-50%]    PASS
-  Cost-to-Serve          $2.47    [$1.00-$3.00]  PASS
-  Cost Variance          1.5x     [<4.0x]      PASS
 
   Mass Balance (Physics):
   Ingredient→Batch (kg)  -1.3%    [<+2%]       PASS
-  Batch→Ship+Inv (cases) -0.6%    [±10%]       PASS
-  Order→Fulfill (cases)  -84.9%   [<+2%]       PASS  (Fill: 15.1%)
+  Batch→Ship+Inv (cases) -9.1%    [±10%]       PASS
+  Order→Fulfill (cases)  -86.1%   [<+2%]       PASS  (Fill: 13.9%)
 ```
+
+**Note:** The Mass Balance calculation allocates cases only to store-bound shipments (`dc_to_store`, `direct_to_store`) to match the COGS accounting model. Internal transfers (`plant_to_dc`, `dc_to_dc`) don't count toward shipped cases.
 
 ## Benchmark Manifest
 

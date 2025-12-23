@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.55] - 2025-12-23
+
+### Fixed
+
+- **Mass Balance Calibration** (`level_10_11_fulfillment.py`, `vectorized.py`):
+  - Fixed critical bug where `total_cases` was derived from `weights_kg / 12.0` (hardcoded) instead of using actual SKU weights (~4-5 kg/case), causing 66% undercount.
+  - Modified `ShipmentsGenerator.generate_batch()` to accept pre-calculated `total_cases` from upstream physics.
+  - Cases are now calculated upstream and distributed only to store-bound shipments (`dc_to_store`, `direct_to_store`).
+  - Internal shipments (`plant_to_dc`, `dc_to_dc`) get nominal case counts for truck fill calculation but don't affect mass balance.
+  - Weights are now derived FROM cases using actual average SKU weight (not the other way around).
+
+- **Mass Balance Results**:
+  - Batch→Ship+Inv drift: **-72.7% → -9.1%** (within ±10% tolerance)
+  - Inventory Turns: **2.2x → 9.57x** (within 6-14x range)
+
+### Known Issues
+
+- **Remaining Calibration Needs** (Parts 2-4 of implementation plan):
+  - OTIF rate: 9.3% (target: 85-99%) - needs delivery variance fix
+  - Cost-to-Serve: $0.13/case (target: $1-3) - needs multi-factor CTS model
+
 ## [0.9.54] - 2025-12-23
 
 ### Added
@@ -18,7 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### Known Issues
 
-- **Calibration Drift**:
+- **Calibration Drift** (fixed in 0.9.55):
   - Mass Balance (Batch→Ship+Inv) drift increased to -72.7% (needs inventory generation tuning).
   - OTIF rate dropped to 9.0% (delays may be too aggressive or lead times too short).
   - Inventory Turns dropped to 2.2x (need to align shipment volumes with inventory).

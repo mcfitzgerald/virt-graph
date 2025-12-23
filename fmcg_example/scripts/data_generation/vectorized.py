@@ -304,7 +304,21 @@ class ShipmentsGenerator(VectorizedGenerator):
         self.distances = distances or {}
         return self
 
-    def generate_batch(self, origins, destinations, weights_kg, shipment_types, carrier_ids, route_ids, base_dates, now) -> np.ndarray:
+    def generate_batch(self, origins, destinations, weights_kg, total_cases, shipment_types, carrier_ids, route_ids, base_dates, now) -> np.ndarray:
+        """
+        Generate shipment batch.
+
+        Args:
+            origins: List of (origin_type, origin_id) tuples
+            destinations: List of (dest_type, dest_id) tuples
+            weights_kg: Pre-calculated total weights per shipment
+            total_cases: Pre-calculated total cases per shipment (from upstream physics)
+            shipment_types: Array of shipment type strings
+            carrier_ids: Array of carrier IDs
+            route_ids: Array of route IDs
+            base_dates: Array of ship dates
+            now: Current datetime
+        """
         size = len(weights_kg)
         batch = np.zeros(size, dtype=SHIPMENTS_DTYPE)
         batch["id"] = np.arange(self._next_id, self._next_id + size)
@@ -326,10 +340,12 @@ class ShipmentsGenerator(VectorizedGenerator):
         batch["expected_delivery_date"] = batch["ship_date"] + lead_days.astype("timedelta64[D]")
         batch["status"] = self.rng.choice(["planned", "loading", "in_transit", "at_port", "delivered", "exception"], size=size, p=[0.05, 0.05, 0.15, 0.05, 0.65, 0.05])
         is_delivered = batch["status"] == "delivered"
-        variance = self.rng.integers(-2, 5, size=size)
+        # Fix OTIF: bias toward on-time delivery (70% on-time/early, 30% late 1-2 days max)
+        variance = self.rng.choice([-2, -1, 0, 0, 0, 1, 2], size=size)
         batch["actual_delivery_date"] = np.where(is_delivered, batch["expected_delivery_date"] + variance.astype("timedelta64[D]"), np.datetime64("NaT"))
+        # Use pre-calculated total_cases from upstream (fixes mass balance)
+        batch["total_cases"] = total_cases
         batch["total_weight_kg"] = weights_kg
-        batch["total_cases"] = (weights_kg / 12.0).astype(np.int32)
         batch["total_pallets"] = np.maximum(1, batch["total_cases"] // 50)
         row_distances = np.array([self.distances.get((ot, oid, dt, did), 500.0) for ot, oid, dt, did in zip(orig_types, orig_ids, dest_types, dest_ids)], dtype=np.float32)
         rates = np.array([self.carrier_rates.get(cid, 1.50) for cid in carrier_ids], dtype=np.float32)

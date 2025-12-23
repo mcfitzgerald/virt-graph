@@ -37,8 +37,14 @@ For high-volume tables (Levels 8-11), Python loops are too slow. We use `vectori
 *   **POS Row Semantics:** To balance volume with massive B2B orders without generating billions of rows, a single row in `pos_sales` represents **Weekly Aggregated Sales** for a specific SKU at a specific Store. A mean of 60.0 units/row assumes hypermarket velocity (~8-9 units/day).
 *   **Logistics Physics:** `ShipmentsGenerator` and `ShipmentLinesGenerator` enforce physical constraints (temporal sequence, location bounds) and calculate rate-based costs using vectorized operations.
 
-### 3. LookupCache
+### 3. Mass Balance Physics
+The generator enforces conservation-of-mass at multiple levels:
+*   **Cases-First Calculation:** Total cases are calculated upstream from shippable SKU quantities (demand-capped supply), then weights are derived FROM cases using actual SKU weights (~4-5 kg/case). This prevents the "12 kg/case hardcode" bug.
+*   **Store-Bound Allocation:** Only shipments to stores (`dc_to_store`, `direct_to_store`) count toward the mass balance. Internal transfers (`plant_to_dc`, `dc_to_dc`) move goods between facilities but don't affect COGS accounting.
+*   **Inventory Remainder:** Inventory = Production - Shipped. Generated in Level 10 after shipment volumes are known.
+
+### 4. LookupCache
 To avoid O(N) scans when linking tables (e.g., finding all lines for an order), `LookupCache` builds O(1) indices (hash maps) after each level is generated.
 
-### 4. StreamingWriter
+### 5. StreamingWriter
 Data is written to disk using PostgreSQL `COPY` format. To prevent OOM errors, the `DependencyTracker` allows the writer to purge in-memory data for a table once all its dependent children have been generated.
