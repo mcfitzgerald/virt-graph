@@ -271,7 +271,22 @@ class Level10Generator(BaseLevelGenerator):
         batches_idx = LookupBuilder.build_unique(self.data["batches"], "id")
         sku_ids = list(self.ctx.sku_ids.values())
         dc_ids = list(self.ctx.dc_ids.values())
-        batch_ids = list(self.ctx.batch_ids.values())
+        
+        # === Chemical Coherence Fix ===
+        # Index batches by formula_id to ensure we only link SKUs to compatible batches
+        batches_by_formula = LookupBuilder.build(self.data["batches"], key_field="formula_id")
+        # Map SKU ID to Formula ID
+        sku_formula_map = {sku["id"]: sku.get("formula_id") for sku in self.data["skus"]}
+        
+        # Pre-filter SKUs that actually have formulas and compatible batches
+        valid_sku_ids = [
+            sid for sid in sku_ids 
+            if sku_formula_map.get(sid) in batches_by_formula
+        ]
+
+        if not valid_sku_ids:
+            print("    [Warning] No valid SKU-Batch formula matches found. Skipping inventory.")
+            return
 
         # Target ~50,000 inventory records
         target_records = 50000
@@ -286,14 +301,24 @@ class Level10Generator(BaseLevelGenerator):
 
         # Generate inventory at DCs for popular SKUs
         for dc_id in dc_ids:
-            num_skus = random.randint(200, min(500, len(sku_ids)))
-            dc_skus = random.sample(sku_ids, num_skus)
+            num_skus = random.randint(800, min(2000, len(valid_sku_ids)))
+            dc_skus = random.sample(valid_sku_ids, num_skus)
 
             for sku_id in dc_skus:
-                num_lots = random.randint(1, 4)
-                available_batches = random.sample(batch_ids, min(num_lots, len(batch_ids)))
+                # Find compatible batches
+                formula_id = sku_formula_map.get(sku_id)
+                compatible_batches = [b["id"] for b in batches_by_formula.get(formula_id, [])]
+                
+                if not compatible_batches:
+                    continue
 
-                for batch_id in available_batches:
+                num_lots = random.randint(2, 6)
+                # Sample from COMPATIBLE batches only
+                selected_batches = random.sample(
+                    compatible_batches, min(num_lots, len(compatible_batches))
+                )
+
+                for batch_id in selected_batches:
                     batch = batches_idx.get(batch_id)
                     if not batch:
                         continue

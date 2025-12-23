@@ -22,6 +22,23 @@ All notable changes to this project will be documented in this file.
 
 ## [0.9.51] - 2025-12-23
 
+### Fixed
+
+- **Chemical Coherence (Physics)** (`level_10_11_fulfillment.py`):
+  - Fixed invalid genealogy links where SKUs were associated with unrelated batches (e.g., Shampoo SKU linked to Toothpaste Batch).
+  - Inventory generation now indexes batches by `formula_id` and strictly enforces SKU-to-Batch formula compatibility.
+  - Genealogy traces (recall tracing) are now chemically valid.
+
+- **Inventory Turns Calculation** (`realism_monitor.py`):
+  - Fixed metric calculation to align with GAAP/standard accounting definition of COGS.
+  - Now only counts shipments to external stores (Sales) as COGS, excluding internal transfers (Plant->DC, DC->DC).
+  - Result: Inventory Turns metric corrected from 47x (impossible) to ~9.6x (realistic).
+
+### Technical
+
+- **Inventory Generation Boost**: Increased inventory loop density (SKUs per DC, lots per SKU) to maintain 1.1M case target volume under stricter chemical coherence filtering.
+- Validated all 8 physics and reality checks (Mass Balance drift -0.6%).
+
 ## [0.9.50] - 2025-12-22
 
 ### Added

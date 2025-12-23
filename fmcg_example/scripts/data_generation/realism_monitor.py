@@ -975,14 +975,12 @@ class RealismMonitor:
 
             cases = row.get("total_cases", 0)
             if cases > 0:
-                # Inventory Turns: track ALL shipped cases as COGS proxy
-                self._inventory_turns.sum_shipped_cases += cases
-
-                # Mass Balance: only count shipments to final destination (stores)
-                # Intermediate legs (plant→DC, DC→DC) move goods within the system
-                # and would double-count if included
+                # Inventory Turns & Mass Balance: only count shipments to final destination (stores)
+                # This aligns with COGS (Sales) rather than internal movement
                 if dest_type == "store":
+                    self._inventory_turns.sum_shipped_cases += cases
                     self._mass_balance.sum_shipped_cases += cases
+
 
             # Cost-to-Serve: track freight cost per case
             freight_cost = row.get("freight_cost", 0)
