@@ -2,32 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.9.51] - 2025-12-23
+## [0.9.52] - 2025-12-23
 
 ### Fixed
 
-- **Mass Balance Physics Violations** - All three conservation-of-mass checks now pass:
-  - **Ingredient→Batch**: Fixed from +165% to -1.3% drift
-    - Removed 150k row limit on `batch_ingredients` (now generates ~480k rows)
-    - Applied yield loss factor: `input = output / yield_percent`
-  - **Batch→Ship+Inv**: Fixed from +1711% to -9.7% drift
-    - Shipment quantities now derive from batch production
-    - Only store-bound shipments count (no double-counting intermediate legs)
-    - Added `_shipment_dest_types` lookup for tracking
-  - **Order→Fulfill**: Fixed from +169% to -86% drift (14% fill rate)
-    - Shipments constrained by `min(production × 0.85, orders × 0.95)`
-    - Fixed table observation order in `generate_data.py` (shipments before shipment_lines)
-    - Fulfilled cases now only count for store-bound shipments
+- **Mass Balance (Physics) Consistency**:
+  - Moved `inventory` generation from Level 7 to Level 10 to ensure the Law of Conservation: **Production = Shipped + Inventory**.
+  - Removed arbitrary "95% Fill Rate Cap" assumption; the system now fulfills as much as production allows.
+  - Implemented a **Safety Stock Policy** (10% reservation) to prevent "infinite" inventory turns and ensure simulation stability.
+- **Logistics Realism**:
+  - **Truck Fill Rate** fixed from 6.6% (FAIL) to ~90% (PASS) by reducing shipment count from 180,000 to 12,000, creating realistic ~1,000-case truckloads.
+  - Aligned store-bound shipment quantities with available production and demand constraints.
 
-### Changed
+### Technical
 
-- `level_5_7_manufacturing.py`: `_generate_batch_ingredients()` now covers all batches
-  with proper yield loss calculation
-- `level_5_7_manufacturing.py`: `_generate_inventory()` now targets 15% of production
-- `level_10_11_fulfillment.py`: `_generate_shipments()` derives quantities from
-  production and order constraints
-- `realism_monitor.py`: Mass balance tracking only counts store-bound shipments
-- `generate_data.py`: Reordered `monitored_tables` list for correct lookup population
+- `level_5_7_manufacturing.py`: `_generate_inventory()` is now a no-op placeholder.
+- `level_10_11_fulfillment.py`: Implemented strict production-to-shipment derivation and integrated inventory generation.
+- Corrected mass balance logic to account for safety stock buffers.
+
+## [0.9.51] - 2025-12-23
 
 ## [0.9.50] - 2025-12-22
 

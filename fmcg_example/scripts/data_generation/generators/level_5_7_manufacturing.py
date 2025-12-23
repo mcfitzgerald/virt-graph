@@ -484,82 +484,14 @@ class Level7Generator(BaseLevelGenerator):
 
     def _generate_inventory(self, now: datetime) -> None:
         """
-        Generate inventory table (~50,000).
-
-        Mass Balance: Inventory should equal ~15% of batch production
-        (the remaining 85% is shipped to stores).
+        Generate inventory table.
+        
+        NOTE: Inventory generation has been moved to Level 10 (Fulfillment)
+        to ensure strict Mass Balance (Physics) consistency.
+        Inventory = Production - Shipments.
         """
-        batches_idx = LookupBuilder.build_unique(self.data["batches"], "id")
-        sku_ids = list(self.ctx.sku_ids.values())
-        dc_ids = list(self.ctx.dc_ids.values())
-        batch_ids = list(self.ctx.batch_ids.values())
-
-        # === Mass Balance: Calculate target inventory from batch production ===
-        total_batch_output_cases = sum(
-            b.get("output_cases", 0) for b in self.data.get("batches", [])
-        )
-        # 15% of production remains in inventory
-        target_inventory_cases = int(total_batch_output_cases * 0.15)
-        # Target ~50,000 inventory records
-        target_records = 50000
-        # Target cases per inventory record (with variance)
-        if target_records > 0:
-            target_cases_per_record = max(5, target_inventory_cases // target_records)
-        else:
-            target_cases_per_record = 50
-
-        inv_id = 1
-        total_inv_cases = 0
-
-        # Generate inventory at DCs for popular SKUs
-        for dc_id in dc_ids:
-            num_skus = random.randint(200, min(500, len(sku_ids)))
-            dc_skus = random.sample(sku_ids, num_skus)
-
-            for sku_id in dc_skus:
-                num_lots = random.randint(1, 4)
-                available_batches = random.sample(batch_ids, min(num_lots, len(batch_ids)))
-
-                for batch_id in available_batches:
-                    batch = batches_idx.get(batch_id)
-                    if not batch:
-                        continue
-
-                    # Size inventory to match production-based target
-                    qty_cases = max(5, int(target_cases_per_record * random.uniform(0.5, 1.5)))
-                    total_inv_cases += qty_cases
-
-                    self.ctx.inventory_ids[(dc_id, sku_id, batch_id)] = inv_id
-                    self.data["inventory"].append(
-                        {
-                            "id": inv_id,
-                            "location_type": "dc",
-                            "location_id": dc_id,
-                            "sku_id": sku_id,
-                            "batch_id": batch_id,
-                            "quantity_cases": qty_cases,
-                            "quantity_eaches": qty_cases * 12,
-                            "lot_number": batch["batch_number"],
-                            "expiry_date": batch["expiry_date"],
-                            "receipt_date": batch["production_date"] + timedelta(days=random.randint(1, 14)),
-                            "aging_bucket": random.choice(["0-30", "31-60", "61-90", "90+"]),
-                            "quality_status": "available",
-                            "is_allocated": random.random() < 0.3,
-                            "allocated_quantity": random.randint(0, qty_cases // 2)
-                            if random.random() < 0.3
-                            else 0,
-                            "created_at": now,
-                            "updated_at": now,
-                        }
-                    )
-                    inv_id += 1
-                    # Stop when we've reached target inventory or record count
-                    if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
-                        break
-                if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
-                    break
-            if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
-                break
+        # Placeholder - generation moved to Level 10
+        pass
 
     def _apply_chaos_inventory(self) -> None:
         """Apply chaos injection to inventory (phantom inventory quirk)."""

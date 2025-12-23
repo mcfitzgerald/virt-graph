@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 import numpy as np
 
 from .base import BaseLevelGenerator
+from ..lookup_builder import LookupBuilder
 from ..vectorized import zipf_weights, ShipmentLinesGenerator, structured_to_dicts
 
 
@@ -99,11 +100,13 @@ class Level10Generator(BaseLevelGenerator):
 
     def _generate_shipments(self, now: datetime) -> None:
         """
-        Generate shipments table (~180K).
+        Generate shipments table (~12,000).
 
-        Mass Balance: Shipments to stores should roughly equal batch production
-        minus inventory buffer. Intermediate legs (plant→DC, DC→DC) move goods
-        within the system and are sized proportionally.
+        Mass Balance (Physics):
+        - Shipped = min(Production, Demand)
+        - Inventory = Production - Shipped
+        - No arbitrary caps (e.g. 95% fill rate) - use all available stock to fill orders.
+        - Reduced shipment count to ~12,000 to increase cases/shipment and improve Truck Fill Rate.
         """
         print("    Generating shipments...")
         plant_ids = list(self.ctx.plant_ids.values())
@@ -120,33 +123,45 @@ class Level10Generator(BaseLevelGenerator):
         shipment_statuses = ["planned", "loading", "in_transit", "at_port", "delivered", "exception"]
         shipment_status_weights = [5, 5, 15, 5, 65, 5]
 
-        # === Mass Balance: Calculate target cases from production AND orders ===
-        # Can't ship more than produced (supply constraint)
-        total_batch_output_cases = sum(
+        # === Mass Balance Physics ===
+        # 1. Supply: Total production from batches
+        total_production_cases = sum(
             b.get("output_cases", 0) for b in self.data.get("batches", [])
         )
-        production_available = int(total_batch_output_cases * 0.85)  # 15% in inventory
-
-        # Can't fulfill more than ordered (demand constraint)
+        
+        # 2. Demand: Total ordered cases
         total_ordered_cases = sum(
             ol.get("quantity_cases", 0) for ol in self.data.get("order_lines", [])
         )
-        target_fill_rate = 0.95  # 95% order fill rate
-        demand_constraint = int(total_ordered_cases * target_fill_rate)
 
-        # Target shipped = min(supply, demand) - physics constraint
-        target_shipped_to_stores = min(production_available, demand_constraint)
+        # 3. Safety Stock Policy: Reserve 10% of production as buffer
+        # This ensures we don't run dry (infinite inventory turns) and mimics realistic planning
+        safety_stock_cases = int(total_production_cases * 0.10)
+        available_for_shipment = total_production_cases - safety_stock_cases
 
+        # 4. Shipped: min(Available, Demand)
+        target_shipped_to_stores = min(available_for_shipment, total_ordered_cases)
+        
+        # 5. Inventory: Safety stock + any surplus production
+        target_inventory_cases = total_production_cases - target_shipped_to_stores
+
+        print(f"    [Mass Balance] Production: {total_production_cases:,}, Orders: {total_ordered_cases:,}")
+        print(f"    [Mass Balance] Target Shipped: {target_shipped_to_stores:,}, Target Inventory: {target_inventory_cases:,}")
+
+        # === Shipment Scaling ===
         # 60% of shipments go to stores (dc_to_store 55% + direct_to_store 5%)
-        num_shipments = 180000
+        # Target ~12,000 total shipments for better truck fill (avg ~1000 cases/truck)
+        num_shipments = 12000
         store_shipment_fraction = 0.60
         expected_store_shipments = int(num_shipments * store_shipment_fraction)
-        # Target cases per store shipment (with ±30% variance)
+        
+        # Calculate target cases per store shipment
         if expected_store_shipments > 0:
             target_cases_per_store_ship = max(20, target_shipped_to_stores // expected_store_shipments)
         else:
-            target_cases_per_store_ship = 100
-        # Intermediate legs carry similar or larger quantities (consolidation)
+            target_cases_per_store_ship = 1000
+            
+        # Intermediate legs (Plant->DC) are consolidated, so they're larger
         target_cases_per_dc_ship = int(target_cases_per_store_ship * 1.5)
 
         shipment_id = 1
@@ -200,7 +215,7 @@ class Level10Generator(BaseLevelGenerator):
 
             # Cases based on shipment type to maintain mass balance
             if destination_type == "store":
-                # Store shipments: sized to match production output
+                # Store shipments: sized to match demand/production limits
                 base_cases = target_cases_per_store_ship
                 total_cases = max(10, int(base_cases * random.uniform(0.7, 1.3)))
             else:
@@ -243,6 +258,98 @@ class Level10Generator(BaseLevelGenerator):
             shipment_id += 1
 
         print(f"      Generated {shipment_id - 1:,} shipments")
+        
+        # Now generate inventory based on what's left
+        self._generate_inventory(now, target_inventory_cases)
+
+    def _generate_inventory(self, now: datetime, target_inventory_cases: int) -> None:
+        """
+        Generate inventory table (~50,000) based on remaining production.
+        Moved from Level 7 to ensure mass balance.
+        """
+        print(f"    Generating inventory (Target: {target_inventory_cases:,} cases)...")
+        batches_idx = LookupBuilder.build_unique(self.data["batches"], "id")
+        sku_ids = list(self.ctx.sku_ids.values())
+        dc_ids = list(self.ctx.dc_ids.values())
+        batch_ids = list(self.ctx.batch_ids.values())
+
+        # Target ~50,000 inventory records
+        target_records = 50000
+        # Target cases per inventory record (with variance)
+        if target_records > 0 and target_inventory_cases > 0:
+            target_cases_per_record = max(5, target_inventory_cases // target_records)
+        else:
+            target_cases_per_record = 50
+
+        inv_id = 1
+        total_inv_cases = 0
+
+        # Generate inventory at DCs for popular SKUs
+        for dc_id in dc_ids:
+            num_skus = random.randint(200, min(500, len(sku_ids)))
+            dc_skus = random.sample(sku_ids, num_skus)
+
+            for sku_id in dc_skus:
+                num_lots = random.randint(1, 4)
+                available_batches = random.sample(batch_ids, min(num_lots, len(batch_ids)))
+
+                for batch_id in available_batches:
+                    batch = batches_idx.get(batch_id)
+                    if not batch:
+                        continue
+
+                    # Size inventory to match remaining production
+                    qty_cases = max(5, int(target_cases_per_record * random.uniform(0.5, 1.5)))
+                    total_inv_cases += qty_cases
+
+                    self.ctx.inventory_ids[(dc_id, sku_id, batch_id)] = inv_id
+                    self.data["inventory"].append(
+                        {
+                            "id": inv_id,
+                            "location_type": "dc",
+                            "location_id": dc_id,
+                            "sku_id": sku_id,
+                            "batch_id": batch_id,
+                            "quantity_cases": qty_cases,
+                            "quantity_eaches": qty_cases * 12,
+                            "lot_number": batch.get("batch_number", "LOT-000"),
+                            "expiry_date": batch.get("expiry_date", date(2025, 12, 31)),
+                            "receipt_date": batch.get("production_date", date(2024, 1, 1)) + timedelta(days=random.randint(1, 14)),
+                            "aging_bucket": random.choice(["0-30", "31-60", "61-90", "90+"]),
+                            "quality_status": "available",
+                            "is_allocated": random.random() < 0.3,
+                            "allocated_quantity": random.randint(0, qty_cases // 2)
+                            if random.random() < 0.3
+                            else 0,
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    )
+                    inv_id += 1
+                    
+                    if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
+                        break
+                if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
+                    break
+            if inv_id > target_records or total_inv_cases >= target_inventory_cases * 1.1:
+                break
+        
+        # Apply phantom inventory quirk here since we're generating it now
+        if self.ctx.quirks_manager and self.ctx.quirks_manager.is_enabled("phantom_inventory"):
+            reference_date = datetime.now()
+            self.data["inventory"] = self.ctx.quirks_manager.apply_phantom_inventory(
+                self.data["inventory"],
+                reference_date=reference_date,
+            )
+            shrinkage_count = sum(
+                1 for inv in self.data["inventory"] if inv.get("has_shrinkage")
+            )
+            if shrinkage_count > 0:
+                print(
+                    f"    [Quirk] Phantom inventory applied: {shrinkage_count} records with shrinkage"
+                )
+
+        print(f"      Generated {inv_id - 1:,} inventory records ({total_inv_cases:,} cases)")
 
     def _generate_shipment_legs(self, now: datetime) -> None:
         """Generate shipment_legs table (~360K)."""
