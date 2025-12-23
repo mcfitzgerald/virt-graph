@@ -405,6 +405,89 @@ class PromoLiftAccumulator:
         }
 
 
+@dataclass
+class OEEAccumulator:
+    """
+    Tracks simplified OEE (Overall Equipment Effectiveness) = Availability × Quality.
+
+    Simplified formula skips Performance since we don't track line speed.
+
+    Industry benchmarks:
+    - World-class: 85%
+    - FMCG average: 70-80%
+    - Target range: 65-85%
+    """
+
+    scheduled_runs: int = 0
+    completed_runs: int = 0  # Availability numerator
+    total_batches: int = 0
+    approved_batches: int = 0  # Quality numerator
+
+    @property
+    def availability(self) -> float:
+        """Availability = Completed Runs / Scheduled Runs."""
+        return self.completed_runs / self.scheduled_runs if self.scheduled_runs > 0 else 0.0
+
+    @property
+    def quality(self) -> float:
+        """Quality = Approved Batches / Total Batches."""
+        return self.approved_batches / self.total_batches if self.total_batches > 0 else 0.0
+
+    @property
+    def oee(self) -> float:
+        """OEE = Availability × Quality."""
+        return self.availability * self.quality
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "scheduled_runs": self.scheduled_runs,
+            "completed_runs": self.completed_runs,
+            "availability": self.availability,
+            "total_batches": self.total_batches,
+            "approved_batches": self.approved_batches,
+            "quality": self.quality,
+            "oee": self.oee,
+        }
+
+
+@dataclass
+class InventoryTurnsAccumulator:
+    """
+    Tracks inventory velocity (turns per year).
+
+    Formula: Inventory Turns = Annual COGS / Average Inventory Value
+    We proxy COGS using shipped cases volume.
+
+    Industry benchmarks:
+    - World-class: 8-12x
+    - P&G benchmark: 5.45x
+    - Target range: 5-12x (manifest uses 6-14x)
+    """
+
+    sum_inventory_cases: float = 0.0
+    inventory_snapshots: int = 0
+    sum_shipped_cases: float = 0.0  # Proxy for COGS
+
+    @property
+    def avg_inventory(self) -> float:
+        """Average inventory level across all snapshots."""
+        return self.sum_inventory_cases / self.inventory_snapshots if self.inventory_snapshots > 0 else 1.0
+
+    @property
+    def turns(self) -> float:
+        """Inventory turns (shipped / avg inventory). Assumes data represents ~1 year."""
+        return self.sum_shipped_cases / self.avg_inventory if self.avg_inventory > 0 else 0.0
+
+    def get_stats(self) -> dict[str, float]:
+        return {
+            "sum_inventory_cases": self.sum_inventory_cases,
+            "inventory_snapshots": self.inventory_snapshots,
+            "avg_inventory": self.avg_inventory,
+            "sum_shipped_cases": self.sum_shipped_cases,
+            "turns": self.turns,
+        }
+
+
 # =============================================================================
 # Main RealismMonitor Class
 # =============================================================================
@@ -490,6 +573,8 @@ class RealismMonitor:
         self._truck_fill = WelfordAccumulator()
         self._slob_count: int = 0
         self._inventory_total: int = 0
+        self._oee = OEEAccumulator()
+        self._inventory_turns = InventoryTurnsAccumulator()
 
         # Active quirks tracking
         self.active_quirks: set[str] = set()
@@ -645,7 +730,7 @@ class RealismMonitor:
                 self._margin_issues += 1
 
     def _check_work_orders(self, batch: list[dict]) -> None:
-        """Validate Schedule Adherence."""
+        """Validate Schedule Adherence and track OEE availability."""
         for row in batch:
             planned = row.get("planned_start_date")
             actual = row.get("actual_start_date")
@@ -656,12 +741,18 @@ class RealismMonitor:
                     actual = datetime.fromisoformat(actual.replace("Z", "+00:00")).date()
                 if isinstance(planned, datetime): planned = planned.date()
                 if isinstance(actual, datetime): actual = actual.date()
-                
+
                 diff = abs((actual - planned).days)
                 self._schedule_adherence.update(diff)
 
+            # OEE Availability: track scheduled vs completed work orders
+            self._oee.scheduled_runs += 1
+            status = row.get("status", "").lower()
+            if status in ("completed", "closed"):
+                self._oee.completed_runs += 1
+
     def _check_shipments(self, batch: list[dict]) -> None:
-        """Validate Truck Fill Rate."""
+        """Validate Truck Fill Rate and track shipped cases for inventory turns."""
         # Assume standard truck capacity ~20,000 kg (conservative)
         TRUCK_CAPACITY_KG = 20000.0
         for row in batch:
@@ -669,6 +760,11 @@ class RealismMonitor:
             if weight > 0:
                 fill_rate = min(1.0, weight / TRUCK_CAPACITY_KG)
                 self._truck_fill.update(fill_rate)
+
+            # Inventory Turns: track shipped cases as COGS proxy
+            cases = row.get("total_cases", 0)
+            if cases > 0:
+                self._inventory_turns.sum_shipped_cases += cases
 
     def _check_logistics_friction(self, batch: list[dict]) -> None:
         """Validate shipment legs for kinetic friction."""
@@ -699,7 +795,7 @@ class RealismMonitor:
                 self._congestion_correlated_legs += 1
 
     def _check_batches(self, batch: list[dict]) -> None:
-        """Validate batches for yield loss and QC."""
+        """Validate batches for yield loss, QC, and OEE quality."""
         for row in batch:
             # Track yield percentage
             yield_pct = row.get("yield_percent") or row.get("yield_percentage")
@@ -714,18 +810,29 @@ class RealismMonitor:
                 if qc_status.lower() == "rejected":
                     self._qc_rejected += 1
 
+            # OEE Quality: track approved vs total batches
+            self._oee.total_batches += 1
+            if qc_status and qc_status.lower() == "approved":
+                self._oee.approved_batches += 1
+
     def _check_inventory(self, batch: list[dict]) -> None:
-        """Validate inventory for cash cycle metrics and SLOBs."""
+        """Validate inventory for cash cycle metrics, SLOBs, and inventory turns."""
         for row in batch:
             days_on_hand = row.get("days_on_hand")
             if days_on_hand is not None:
                 self._accumulators["inventory"]["days_on_hand"].update(days_on_hand)
-            
+
             # SLOB check
             aging = row.get("aging_bucket")
             self._inventory_total += 1
             if aging == "90+":
                 self._slob_count += 1
+
+            # Inventory Turns: track inventory levels
+            qty = row.get("quantity_cases", 0)
+            if qty > 0:
+                self._inventory_turns.sum_inventory_cases += qty
+                self._inventory_turns.inventory_snapshots += 1
 
     def _check_recall_propagation(self, batch: list[dict]) -> None:
         """Track recall batch propagation to stores."""
@@ -999,6 +1106,26 @@ class RealismMonitor:
                     f"SLOB Inventory high: {slob_pct:.1%} (max: {max_slob:.0%})"
                 )
 
+        # OEE (Overall Equipment Effectiveness)
+        if self._oee.scheduled_runs > 100 and self._oee.total_batches > 100:
+            oee_value = self._oee.oee
+            oee_range = self._get_range("oee_range", (0.65, 0.85))
+            if not (oee_range[0] <= oee_value <= oee_range[1]):
+                self._add_violation(
+                    f"OEE out of range: {oee_value:.1%} "
+                    f"(target: {oee_range[0]:.0%}-{oee_range[1]:.0%})"
+                )
+
+        # Inventory Turns
+        if self._inventory_turns.inventory_snapshots > 100 and self._inventory_turns.sum_shipped_cases > 1000:
+            turns_value = self._inventory_turns.turns
+            turns_range = self._get_range("inventory_turns_range", (6.0, 14.0))
+            if not (turns_range[0] <= turns_value <= turns_range[1]):
+                self._add_violation(
+                    f"Inventory Turns out of range: {turns_value:.1f}x "
+                    f"(target: {turns_range[0]:.0f}x-{turns_range[1]:.0f}x)"
+                )
+
     def check_chaos_effects(self, risk_manager: Any = None, quirks_manager: Any = None) -> list[tuple[str, bool, str]]:
         """
         Validate that chaos effects (risk events and quirks) were applied correctly.
@@ -1223,6 +1350,12 @@ class RealismMonitor:
                 "schedule_adherence_days": self._schedule_adherence.mean,
                 "truck_fill_rate": self._truck_fill.mean,
                 "slob_pct": self._slob_count / self._inventory_total if self._inventory_total > 0 else 0,
+                "oee": self._oee.oee,
+                "oee_availability": self._oee.availability,
+                "oee_quality": self._oee.quality,
+                "inventory_turns": self._inventory_turns.turns,
+                "avg_inventory": self._inventory_turns.avg_inventory,
+                "shipped_cases": self._inventory_turns.sum_shipped_cases,
             }
 
         # Add chaos effects tracking
@@ -1274,6 +1407,14 @@ class RealismMonitor:
         self._yield_accumulator = WelfordAccumulator()
         self._qc_total = 0
         self._qc_rejected = 0
+
+        # Reset expert benchmarks
+        self._schedule_adherence = WelfordAccumulator()
+        self._truck_fill = WelfordAccumulator()
+        self._slob_count = 0
+        self._inventory_total = 0
+        self._oee = OEEAccumulator()
+        self._inventory_turns = InventoryTurnsAccumulator()
 
         # Reset logistics trackers
         self._delay_accumulator = WelfordAccumulator()

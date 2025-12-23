@@ -586,6 +586,8 @@ class FMCGDataGenerator:
             check_stat("Schedule Adherence", expert.get("schedule_adherence_days", 0), tol.get("schedule_adherence_tolerance_days", 1.0), False)
             check_stat("Truck Fill Rate", expert.get("truck_fill_rate", 0), (tol.get("truck_fill_rate_target", 0.70), 1.0))
             check_stat("SLOB Inventory", expert.get("slob_pct", 0), tol.get("slob_inventory_max_pct", 0.15))
+            check_stat("OEE", expert.get("oee", 0), get_range("oee_range", (0.65, 0.85)))
+            check_stat("Inventory Turns", expert.get("inventory_turns", 0), get_range("inventory_turns_range", (6.0, 14.0)), False)
 
         # Chaos effects summary
         chaos = stats.get("chaos_effects", {})

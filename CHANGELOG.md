@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.48] - 2025-12-22
+
+### Added
+
+- **OEE (Overall Equipment Effectiveness)** - New expert reality check:
+  - Formula: `OEE = Availability × Quality` (simplified, skipping Performance)
+  - Availability: Completed work orders / Scheduled work orders
+  - Quality: Approved batches / Total batches
+  - Target range: 65-85% (FMCG industry benchmark)
+  - Added `OEEAccumulator` dataclass in `realism_monitor.py`
+
+- **Inventory Turns** - New expert reality check:
+  - Formula: `Shipped Cases / Average Inventory`
+  - Tracks inventory velocity using shipment volume as COGS proxy
+  - Target range: 6-14x (P&G benchmark: 5.45x, world-class: 8-12x)
+  - Added `InventoryTurnsAccumulator` dataclass in `realism_monitor.py`
+
+- **Manifest Tolerances** (`benchmark_manifest.json`):
+  - `oee_range`: [0.65, 0.85]
+  - `inventory_turns_range`: [6.0, 14.0] (already existed, now validated)
+
+### Removed
+
+- **Duplicate Manifest**: Deleted stale `postgres/BenchmarkManifest.json` - single source of truth is now `data_generation/benchmark_manifest.json`
+
+### Technical
+
+- All expert reality checks now tracked in `get_reality_report()` statistics
+- Reset methods updated for new accumulators
+- Validation output displays both OEE and Inventory Turns in Expert Reality Checks section
+
 ## [0.9.47] - 2025-12-22
 
 ### Added

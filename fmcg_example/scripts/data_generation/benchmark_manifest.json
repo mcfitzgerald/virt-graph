@@ -217,7 +217,8 @@
     "schedule_adherence_tolerance_days": 1.1,
     "truck_fill_rate_target": 0.50,
     "slob_inventory_max_pct": 0.30,
-    "forecast_value_added_min": 0.0
+    "forecast_value_added_min": 0.0,
+    "oee_range": [0.65, 0.85]
   },
 
   "chaos_validation": {
