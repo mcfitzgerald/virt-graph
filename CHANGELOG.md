@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.53] - 2025-12-23
+
+### Added
+
+- **SKU-Level Micro-Physics Refactor** (`level_10_11_fulfillment.py`):
+  - Upgraded data generation from global aggregates to SKU-level physics.
+  - Implemented **Demand-Pull Supply Distribution**: Allocates production batches to SKUs proportional to their specific demand, fixing the "Potemkin" mass balance loopholes.
+  - Implemented **Emergent Logistics**: Derived shipment counts from total weight and truck capacities (20,000 kg FTL) with ~85-95% target fill rates.
+  - Added **Dynamic Safety Stock Policy**: Varies buffer levels (5-20%) based on SKU profile (promotional vs. standard).
+  - Fixed **Inventory Turns**: Corrected from 3.7x to ~10.0x (within realistic 6-14x range).
+  - Fixed **Mass Balance Drift**: Reduced from -41.5% to -5.6% (within ±10% tolerance).
+
+### Technical
+
+- Adjusted `chaos_validation` thresholds in `benchmark_manifest.json` for `RSK-LOG-002` and `port_congestion_flicker` to reflect derived shipment volumes.
+- Added `_get_sku_weights` helper for weight-based bin packing logic.
+- Ensured strict `Inventory = Production - Shipped` accounting at the SKU level.
+
 ## [0.9.52] - 2025-12-23
 
 ### Fixed
@@ -37,6 +55,7 @@ All notable changes to this project will be documented in this file.
 ### Technical
 
 - **Inventory Generation Boost**: Increased inventory loop density (SKUs per DC, lots per SKU) to maintain 1.1M case target volume under stricter chemical coherence filtering.
+- **Documentation Overhaul**: Updated `architecture.md` and `validation.md` to reflect move of Inventory to Level 10 and new Chemical Coherence physics.
 - Validated all 8 physics and reality checks (Mass Balance drift -0.6%).
 
 ## [0.9.50] - 2025-12-22

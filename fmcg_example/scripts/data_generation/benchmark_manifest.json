@@ -232,7 +232,7 @@
     },
     "RSK-LOG-002": {
       "check": "port_strike_delays",
-      "min_affected_legs": 100,
+      "min_affected_legs": 40,
       "delay_multiplier_min": 2.0,
       "affected_ports": ["USLAX"]
     },
@@ -264,7 +264,7 @@
     },
     "port_congestion_flicker": {
       "check": "correlated_delays",
-      "min_correlated_legs": 100
+      "min_correlated_legs": 40
     }
   },
 
@@ -278,10 +278,10 @@
       "4": { "name": "products", "rows": 20000 },
       "5": { "name": "procurement", "rows": 80000 },
       "6": { "name": "manufacturing", "rows": 550000 },
-      "7": { "name": "batch_inventory", "rows": 700000 },
+      "7": { "name": "consumption", "rows": 400000 },
       "8": { "name": "demand", "rows": 2500000 },
       "9": { "name": "order_lines", "rows": 10000000 },
-      "10": { "name": "shipments", "rows": 1200000 },
+      "10": { "name": "fulfillment", "rows": 800000 },
       "11": { "name": "shipment_lines", "rows": 1000000 },
       "12": { "name": "returns", "rows": 140000 },
       "13": { "name": "disposition", "rows": 100000 },

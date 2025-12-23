@@ -29,10 +29,8 @@ Eight advanced supply chain metrics based on industry benchmarks:
 | **Truck Fill Rate** | total_weight_kg / 20,000 kg | >50% | BCG Logistics |
 | **SLOB Inventory** | Count(aging_bucket="90+") / total | <30% | Working Capital |
 | **OEE** | Availability × Quality | 65-85% | FMCG Industry |
-| **Inventory Turns** | Shipped Cases / Avg Inventory | 6-14x | P&G Benchmark |
+| **Inventory Turns** | Store Shipped Cases / Avg Inventory | 6-14x | P&G Benchmark |
 | **Forecast MAPE** | Mean(\|Forecast - Actual\| / Actual) | 20-50% | E2Open Study |
-| **Cost-to-Serve** | Total Freight Cost / Total Cases | $1.00-$3.00 | BCG |
-| **Cost Variance** | P90 / P50 ratio | <4x | Long-tail Detection |
 
 ### 5. Mass Balance (Physics) Validation
 
@@ -45,9 +43,9 @@ Conservation-of-mass checks ensure data generation respects physics:
 | **Order→Fulfill** | (fulfilled - ordered) / ordered | <+2% | Can't ship more than ordered |
 
 **Key implementation details:**
-- Ingredient input accounts for yield loss: `input = output / yield_percent`
-- Only store-bound shipments count (intermediate legs would double-count)
-- Shipment quantities derive from `min(production × 0.85, orders × 0.95)`
+- **Chemical Coherence:** SKUs are strictly linked to `batches` via matching `formula_id`. This ensures genealogy validity (e.g., you cannot have a "Shampoo" SKU backed by a "Toothpaste" batch).
+- **Inventory Sourcing:** Inventory generation is deferred to Level 10 (Fulfillment) so it can be calculated as the remainder of `Production - Shipments`.
+- **COGS Proxy:** Inventory Turns uses only store-bound shipments as the numerator to align with GAAP accounting (Sales/Inventory) rather than internal movement.
 
 ## Chaos Injection
 
@@ -83,27 +81,27 @@ Sample validation output showing all checks:
 ```
 Benchmark Comparison:
   Pareto (top 20%)       83.4%    [75%-85%]    PASS
-  Hub concentration      25.8%    [20%-30%]    PASS
+  Hub concentration      25.9%    [20%-30%]    PASS
   POS CV                 0.665    [0.15-0.8]   PASS
   Order CV               1.029    [0.2-1.2]    PASS
-  Bullwhip multiplier    1.549    [0.3-3.0]    PASS
+  Bullwhip multiplier    1.548    [0.3-3.0]    PASS
   Promo Lift             2.331    [1.5-3.5]    PASS
   ...
 
   Expert Reality Checks:
   Schedule Adherence     0.998    [<1.1]       PASS
-  Truck Fill Rate        6.6%     [50%-100%]   FAIL
-  SLOB Inventory         25.1%    [<30%]       PASS
+  Truck Fill Rate        87.3%    [50%-100%]   PASS
+  SLOB Inventory         24.7%    [<30%]       PASS
   OEE                    65.5%    [65%-85%]    PASS
-  Inventory Turns        29.8     [6.0-14.0]   FAIL
-  Forecast MAPE          24.2%    [20%-50%]    PASS
-  Cost-to-Serve          $1.97    [$1.00-$3.00]  PASS
-  Cost Variance          1.6x     [<4.0x]      PASS
+  Inventory Turns        9.623    [6.0-14.0]   PASS
+  Forecast MAPE          24.8%    [20%-50%]    PASS
+  Cost-to-Serve          $2.47    [$1.00-$3.00]  PASS
+  Cost Variance          1.5x     [<4.0x]      PASS
 
   Mass Balance (Physics):
   Ingredient→Batch (kg)  -1.3%    [<+2%]       PASS
-  Batch→Ship+Inv (cases) -9.7%    [±10%]       PASS
-  Order→Fulfill (cases)  -86.1%   [<+2%]       PASS  (Fill: 13.9%)
+  Batch→Ship+Inv (cases) -0.6%    [±10%]       PASS
+  Order→Fulfill (cases)  -84.9%   [<+2%]       PASS  (Fill: 15.1%)
 ```
 
 ## Benchmark Manifest

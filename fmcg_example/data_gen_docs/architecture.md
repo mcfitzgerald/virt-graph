@@ -13,10 +13,10 @@ The generator follows a strictly ordered, 15-level dependency graph to ensure re
 | **4** | Product | SKU explosion | `skus`, `promotions`, `sku_costs` |
 | **5** | Procurement | Inbound orders | `purchase_orders`, `work_orders` |
 | **6** | Manufacturing | Production execution | `batches`, `po_lines`, `gr_lines` |
-| **7** | Inventory | Stock & consumption | `inventory`, `batch_ingredients` |
+| **7** | Consumption | Ingredient usage | `batch_ingredients` |
 | **8** | Demand | **(Largest)** Customer demand | `pos_sales`, `orders`, `forecasts` |
 | **9** | Planning | Order management | `order_lines`, `allocations`, `pick_waves` |
-| **10** | Fulfillment | Outbound shipping | `shipments`, `shipment_legs` |
+| **10** | Fulfillment | Outbound & Inventory | `shipments`, `shipment_legs`, `inventory` |
 | **11** | Lines | Detailed shipping | `shipment_lines` |
 | **12** | Returns | Reverse logistics start | `rma_authorizations`, `returns` |
 | **13** | Disposition | Reverse logistics end | `disposition_logs` |
