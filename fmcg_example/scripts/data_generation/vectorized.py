@@ -479,7 +479,9 @@ class ShipmentsGenerator(VectorizedGenerator):
         is_store = np.isin(shipment_types, ["dc_to_store", "direct_to_store"])
         lead_days = np.where(is_store, self.rng.integers(1, 6, size=size), self.rng.integers(2, 15, size=size))
         batch["expected_delivery_date"] = batch["ship_date"] + lead_days.astype("timedelta64[D]")
-        batch["status"] = self.rng.choice(["planned", "loading", "in_transit", "at_port", "delivered", "exception"], size=size, p=[0.05, 0.05, 0.15, 0.05, 0.65, 0.05])
+        # Status distribution: 90% delivered for mature supply chain, 3% in_transit
+        # This ensures realistic inventory turns (COGS/Inventory ratio ~6-14x)
+        batch["status"] = self.rng.choice(["planned", "loading", "in_transit", "at_port", "delivered", "exception"], size=size, p=[0.01, 0.01, 0.03, 0.01, 0.90, 0.04])
         is_delivered = batch["status"] == "delivered"
         # Fix OTIF: bias toward on-time delivery (70% on-time/early, 30% late 1-2 days max)
         variance = self.rng.choice([-2, -1, 0, 0, 0, 1, 2], size=size)

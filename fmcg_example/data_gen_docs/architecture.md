@@ -17,7 +17,7 @@ The generator follows a strictly ordered, 15-level dependency graph to ensure re
 | **8** | Demand | **(Largest)** Customer demand | `pos_sales`, `orders`, `forecasts` |
 | **9** | Planning | Order management | `order_lines`, `allocations`, `pick_waves` |
 | **10** | Fulfillment | Outbound & Inventory | `shipments`, `shipment_legs`, `inventory` |
-| **11** | Lines | Detailed shipping | `shipment_lines` |
+| **11** | Lines | Detailed shipping + Transit | `shipment_lines`, `inventory` (transit) |
 | **12** | Returns | Reverse logistics start | `rma_authorizations`, `returns` |
 | **13** | Disposition | Reverse logistics end | `disposition_logs` |
 | **14** | Monitoring | Analytics & Logs | `kpi_actuals`, `audit_logs`, `risk_events` |
@@ -42,6 +42,12 @@ The generator enforces conservation-of-mass at multiple levels:
 *   **Cases-First Calculation:** Total cases are calculated upstream from shippable SKU quantities (demand-capped supply), then weights are derived FROM cases using actual SKU weights (~4-5 kg/case). This prevents the "12 kg/case hardcode" bug.
 *   **Store-Bound Allocation:** Only shipments to stores (`dc_to_store`, `direct_to_store`) count toward the mass balance. Internal transfers (`plant_to_dc`, `dc_to_dc`) move goods between facilities but don't affect COGS accounting.
 *   **Inventory Remainder:** Inventory = Production - Shipped. Generated in Level 10 after shipment volumes are known.
+
+### 3b. Inventory Waterfall
+The generator creates a complete inventory waterfall with three components:
+*   **DC Inventory (Level 10):** Stock at distribution centers, tagged as `safety_stock` (14-day demand coverage) or `cycle_stock` (remainder).
+*   **Transit Inventory (Level 11):** Goods in-transit created from `in_transit` shipment lines using `location_type='in_transit'`.
+*   **Waterfall View:** `v_inventory_waterfall` SQL view aggregates by location, showing safety stock, cycle stock, transit inventory, and days of supply.
 
 ### 4. LookupCache
 To avoid O(N) scans when linking tables (e.g., finding all lines for an order), `LookupCache` builds O(1) indices (hash maps) after each level is generated.

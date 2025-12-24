@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.58] - 2025-12-23
+
+### Added
+
+- **Hybrid Inventory Waterfall** (`level_10_11_fulfillment.py`, `schema.sql`):
+  - **Transit Inventory Generation**: Creates inventory records for `in_transit` shipments using `location_type='in_transit'` with `location_id` pointing to the shipment. Enables tracking goods in transit as part of the inventory waterfall.
+  - **Inventory Type Tagging**: DC inventory is now tagged as `safety_stock` or `cycle_stock` based on demand coverage:
+    - Safety stock: first 14 days of demand coverage per SKU
+    - Cycle stock: inventory above safety stock threshold
+  - **New `inventory_type` column** in `inventory` table with CHECK constraint for `safety_stock` and `cycle_stock` values.
+  - **New `v_inventory_waterfall` SQL view** for waterfall reporting with:
+    - Transit inventory breakdown
+    - Safety stock vs cycle stock split
+    - Target safety stock (14 days of demand)
+    - Days of supply calculation
+
+### Technical
+
+- Moved transit inventory generation to `Level11Generator._generate_transit_inventory()` to ensure shipment_lines are available.
+- Transit inventory records are created for each shipment line of in-transit shipments.
+- DC inventory type is determined by cumulative position vs safety stock threshold per SKU.
+
+### Fixed
+
+- **Inventory Turns Calibration** (`realism_monitor.py`, `vectorized.py`):
+  - Fixed COGS proxy calculation to only count DELIVERED shipments (not all store-bound shipments).
+  - Previously, in-transit shipments were counted as COGS while also being counted as transit inventory (double-counting).
+  - Adjusted shipment status distribution: 90% delivered, 3% in_transit (was 65%/15%) for mature supply chain.
+  - Inventory Turns: now **6.6x** (within 6.0-14.0x target range).
+
 ## [0.9.57] - 2025-12-23
 
 ### Fixed

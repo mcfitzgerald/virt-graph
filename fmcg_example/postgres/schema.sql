@@ -861,7 +861,7 @@ CREATE INDEX idx_shipment_lines_batch ON shipment_lines(batch_id);
 CREATE INDEX idx_shipment_lines_lot ON shipment_lines(lot_number);
 CREATE INDEX idx_shipment_lines_expiry ON shipment_lines(expiry_date);
 
--- E8: inventory - Stock by location with aging buckets
+-- E8: inventory - Stock by location with aging buckets and inventory waterfall
 CREATE TABLE inventory (
     id SERIAL PRIMARY KEY,
     location_type VARCHAR(20) NOT NULL
@@ -878,6 +878,8 @@ CREATE TABLE inventory (
     days_until_expiry INTEGER,
     aging_bucket VARCHAR(20)                       -- 0-30, 31-60, 61-90, 90+
         CHECK (aging_bucket IN ('0-30', '31-60', '61-90', '90+')),
+    inventory_type VARCHAR(20)                     -- safety_stock, cycle_stock (for waterfall view)
+        CHECK (inventory_type IS NULL OR inventory_type IN ('safety_stock', 'cycle_stock')),
     last_movement_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -889,6 +891,7 @@ CREATE INDEX idx_inventory_sku ON inventory(sku_id);
 CREATE INDEX idx_inventory_batch ON inventory(batch_id);
 CREATE INDEX idx_inventory_expiry ON inventory(expiry_date);
 CREATE INDEX idx_inventory_aging ON inventory(aging_bucket);
+CREATE INDEX idx_inventory_type ON inventory(inventory_type);
 
 -- E9: pick_waves - Picking/packing execution
 CREATE TABLE pick_waves (
@@ -1794,6 +1797,40 @@ SELECT
 FROM inventory i
 JOIN skus s ON i.sku_id = s.id
 GROUP BY i.location_type, i.location_id, i.sku_id, s.sku_code, s.name;
+
+-- V4b: v_inventory_waterfall - Inventory position breakdown by type (safety/cycle/transit)
+CREATE VIEW v_inventory_waterfall AS
+WITH sku_demand AS (
+    SELECT
+        ol.sku_id,
+        SUM(ol.quantity_cases) / 365.0 AS daily_demand
+    FROM order_lines ol
+    JOIN orders o ON ol.order_id = o.id
+    GROUP BY ol.sku_id
+)
+SELECT
+    COALESCE(dc.name, CASE WHEN i.location_type = 'in_transit' THEN 'In Transit' ELSE 'Unknown' END) AS location_name,
+    i.location_type,
+    i.sku_id,
+    s.sku_code,
+    s.name AS sku_name,
+    SUM(CASE WHEN i.location_type = 'in_transit' THEN i.quantity_cases ELSE 0 END) AS transit_inventory,
+    SUM(CASE WHEN i.inventory_type = 'safety_stock' THEN i.quantity_cases ELSE 0 END) AS safety_stock,
+    SUM(CASE WHEN i.inventory_type = 'cycle_stock' THEN i.quantity_cases ELSE 0 END) AS cycle_stock,
+    SUM(i.quantity_cases) AS total_position,
+    COALESCE(d.daily_demand * 14, 0) AS target_safety_stock,
+    ROUND(SUM(i.quantity_cases) / NULLIF(d.daily_demand, 0), 1) AS days_of_supply
+FROM inventory i
+LEFT JOIN distribution_centers dc ON i.location_type = 'dc' AND i.location_id = dc.id
+LEFT JOIN skus s ON i.sku_id = s.id
+LEFT JOIN sku_demand d ON i.sku_id = d.sku_id
+GROUP BY
+    COALESCE(dc.name, CASE WHEN i.location_type = 'in_transit' THEN 'In Transit' ELSE 'Unknown' END),
+    i.location_type,
+    i.sku_id,
+    s.sku_code,
+    s.name,
+    d.daily_demand;
 
 -- V5: v_supplier_risk - Supplier risk assessment
 CREATE VIEW v_supplier_risk AS

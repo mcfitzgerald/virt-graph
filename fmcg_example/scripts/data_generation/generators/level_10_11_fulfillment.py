@@ -355,6 +355,10 @@ class Level10Generator(BaseLevelGenerator):
         """
         Generate inventory table based on calculated SKU-level remaining production.
         Ensures strict mass balance: Inventory = Production - Shipped (to stores).
+
+        Tags inventory as 'safety_stock' or 'cycle_stock' based on demand coverage:
+        - Safety stock: first 14 days of demand coverage
+        - Cycle stock: remainder above safety stock threshold
         """
         inventory_by_sku = getattr(self, "inventory_by_sku", {})
         total_inv_cases = sum(inventory_by_sku.values())
@@ -365,9 +369,26 @@ class Level10Generator(BaseLevelGenerator):
         batches_by_formula = LookupBuilder.build(self.data["batches"], key_field="formula_id")
         sku_formula_map = {sku["id"]: sku.get("formula_id") for sku in self.data["skus"]}
 
+        # Calculate demand-based safety stock thresholds per SKU
+        demand_by_sku = {}
+        for ol in self.data.get("order_lines", []):
+            sid = ol.get("sku_id")
+            demand_by_sku[sid] = demand_by_sku.get(sid, 0) + ol.get("quantity_cases", 0)
+
+        SAFETY_STOCK_DAYS = 14  # 2 weeks coverage
+        safety_stock_threshold = {}
+        for sid in inventory_by_sku:
+            daily_demand = demand_by_sku.get(sid, 0) / 365
+            safety_stock_threshold[sid] = int(daily_demand * SAFETY_STOCK_DAYS)
+
         inv_id = 1
         total_actual_cases = 0
+        safety_stock_cases = 0
+        cycle_stock_cases = 0
         eligible_skus = [sid for sid, qty in inventory_by_sku.items() if qty > 0]
+
+        # Track cumulative inventory generated per SKU for tagging
+        cumulative_by_sku = {sid: 0 for sid in eligible_skus}
 
         for sid in eligible_skus:
             formula_id = sku_formula_map.get(sid)
@@ -376,27 +397,53 @@ class Level10Generator(BaseLevelGenerator):
                 continue
 
             remaining_qty = inventory_by_sku[sid]
+            threshold = safety_stock_threshold.get(sid, 0)
+
             # Distribute across random DCs
             target_dcs = random.sample(dc_ids, min(random.randint(1, 3), len(dc_ids)))
-            
+
             for dc_id in target_dcs:
                 if remaining_qty <= 0:
                     break
-                
+
                 # Use a small number of lots to prevent record explosion
                 num_lots = random.randint(1, min(2, len(compatible_batches)))
                 selected_batches = random.sample(compatible_batches, num_lots)
-                
+
                 for batch_id in selected_batches:
                     if remaining_qty <= 0:
                         break
-                    
+
                     batch = batches_idx.get(batch_id)
                     # Don't make individual records too large, but ensure we use all remaining_qty
                     qty_cases = min(remaining_qty, random.randint(200, 2000))
                     if batch_id == selected_batches[-1] and dc_id == target_dcs[-1]:
-                        qty_cases = remaining_qty # Ensure full depletion
+                        qty_cases = remaining_qty  # Ensure full depletion
 
+                    # Determine inventory type based on cumulative position vs safety stock
+                    cumulative_before = cumulative_by_sku[sid]
+                    cumulative_after = cumulative_before + qty_cases
+
+                    if cumulative_before < threshold:
+                        # Some or all of this record is safety stock
+                        if cumulative_after <= threshold:
+                            inventory_type = "safety_stock"
+                            safety_stock_cases += qty_cases
+                        else:
+                            # Split: first part is safety stock, rest is cycle stock
+                            # For simplicity, tag entire record based on midpoint
+                            midpoint = cumulative_before + qty_cases // 2
+                            if midpoint < threshold:
+                                inventory_type = "safety_stock"
+                                safety_stock_cases += qty_cases
+                            else:
+                                inventory_type = "cycle_stock"
+                                cycle_stock_cases += qty_cases
+                    else:
+                        inventory_type = "cycle_stock"
+                        cycle_stock_cases += qty_cases
+
+                    cumulative_by_sku[sid] = cumulative_after
                     remaining_qty -= qty_cases
                     total_actual_cases += qty_cases
 
@@ -412,11 +459,9 @@ class Level10Generator(BaseLevelGenerator):
                             "quantity_eaches": qty_cases * 12,
                             "lot_number": batch.get("batch_number", "LOT-000"),
                             "expiry_date": batch.get("expiry_date", date(2025, 12, 31)),
-                            "receipt_date": batch.get("production_date", date(2024, 1, 1)) + timedelta(days=random.randint(1, 14)),
+                            "last_movement_date": batch.get("production_date", date(2024, 1, 1)) + timedelta(days=random.randint(1, 14)),
                             "aging_bucket": random.choice(["0-30", "31-60", "61-90", "90+"]),
-                            "quality_status": "available",
-                            "is_allocated": random.random() < 0.3,
-                            "allocated_quantity": random.randint(0, qty_cases // 2) if random.random() < 0.3 else 0,
+                            "inventory_type": inventory_type,  # safety_stock or cycle_stock
                             "created_at": now,
                             "updated_at": now,
                         }
@@ -430,6 +475,7 @@ class Level10Generator(BaseLevelGenerator):
             )
 
         print(f"      Generated {inv_id - 1:,} inventory records ({total_actual_cases:,} cases)")
+        print(f"        Safety stock: {safety_stock_cases:,} cases, Cycle stock: {cycle_stock_cases:,} cases")
 
 
 
@@ -533,6 +579,7 @@ class Level11Generator(BaseLevelGenerator):
         now = datetime.now()
 
         self._generate_shipment_lines(now)
+        self._generate_transit_inventory(now)
 
         self.ctx.generated_levels.add(self.LEVEL)
         level_elapsed = time.time() - level_start
@@ -620,3 +667,56 @@ class Level11Generator(BaseLevelGenerator):
         self.data["shipment_lines"] = structured_to_dicts(lines_array)
 
         print(f"      Generated {len(self.data['shipment_lines']):,} shipment_lines")
+
+    def _generate_transit_inventory(self, now: datetime) -> None:
+        """
+        Generate inventory records for in_transit shipments.
+
+        Uses location_type='in_transit' with shipment_id as location_id.
+        This enables the inventory waterfall view to show goods in transit.
+        """
+        print("    Generating transit inventory...")
+
+        # Get in_transit shipments
+        in_transit_shipments = [s for s in self.data["shipments"] if s["status"] == "in_transit"]
+
+        if not in_transit_shipments:
+            print("      No in_transit shipments found")
+            return
+
+        # Build shipment_id -> shipment_lines lookup
+        lines_by_shipment = {}
+        for line in self.data["shipment_lines"]:
+            sid = line["shipment_id"]
+            if sid not in lines_by_shipment:
+                lines_by_shipment[sid] = []
+            lines_by_shipment[sid].append(line)
+
+        # Get next inventory ID (continue from existing inventory)
+        next_inv_id = len(self.data["inventory"]) + 1
+        transit_count = 0
+
+        for shipment in in_transit_shipments:
+            ship_id = shipment["id"]
+            ship_date = shipment.get("ship_date", date(2024, 1, 1))
+
+            for line in lines_by_shipment.get(ship_id, []):
+                self.data["inventory"].append({
+                    "id": next_inv_id,
+                    "location_type": "in_transit",
+                    "location_id": ship_id,  # Polymorphic: points to shipment
+                    "sku_id": line["sku_id"],
+                    "batch_id": line["batch_id"],
+                    "quantity_cases": line["quantity_cases"],
+                    "quantity_eaches": line.get("quantity_eaches", line["quantity_cases"] * 12),
+                    "lot_number": line.get("lot_number"),
+                    "expiry_date": line.get("expiry_date"),
+                    "last_movement_date": ship_date if isinstance(ship_date, date) else date(2024, 1, 1),
+                    "aging_bucket": "0-30",  # Transit is always fresh
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                next_inv_id += 1
+                transit_count += 1
+
+        print(f"      Generated {transit_count:,} transit inventory records")

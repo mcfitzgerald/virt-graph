@@ -974,12 +974,16 @@ class RealismMonitor:
                 self._truck_fill.update(fill_rate)
 
             cases = row.get("total_cases", 0)
+            status = row.get("status", "")
             if cases > 0:
-                # Inventory Turns & Mass Balance: only count shipments to final destination (stores)
-                # This aligns with COGS (Sales) rather than internal movement
+                # Mass Balance: count all store-bound shipments (production → destination)
                 if dest_type == "store":
-                    self._inventory_turns.sum_shipped_cases += cases
                     self._mass_balance.sum_shipped_cases += cases
+
+                # Inventory Turns: only count DELIVERED shipments as COGS proxy
+                # In-transit shipments are still inventory (captured via transit_inventory)
+                if dest_type == "store" and status == "delivered":
+                    self._inventory_turns.sum_shipped_cases += cases
 
 
             # Cost-to-Serve: track freight cost per case
