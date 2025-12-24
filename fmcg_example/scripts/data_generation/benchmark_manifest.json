@@ -41,7 +41,16 @@
       "ocean_schedule_reliability": 0.53,
       "trucking_schedule_reliability": 0.94,
       "air_schedule_reliability": 0.88,
-      "lane_utilization_target": 0.82
+      "lane_utilization_target": 0.82,
+      "pallet_cost_tiers": {
+        "ltl_1_6_pallets": { "min": 100, "max": 300, "description": "LTL premium pricing" },
+        "volume_ltl_7_12_pallets": { "min": 60, "max": 150, "description": "Volume discount" },
+        "partial_tl_13_20_pallets": { "min": 40, "max": 100, "description": "Partial truckload" },
+        "ftl_21_plus_pallets": { "min": 30, "max": 80, "description": "Full truckload efficiency" }
+      },
+      "ftl_pallet_capacity": 26,
+      "cases_per_pallet": 50,
+      "cost_per_case_target": 1.50
     },
     "level_12_13_returns": {
       "consumer_return_rate": 0.02,
@@ -221,7 +230,10 @@
     "oee_range": [0.65, 0.85],
     "mape_range": [0.20, 0.50],
     "cost_per_case_range": [1.00, 3.00],
-    "cost_variance_max_ratio": 4.0
+    "cost_variance_max_ratio": 4.0,
+    "ltl_cost_per_pallet_range": [80, 350],
+    "ftl_cost_per_pallet_range": [25, 100],
+    "pallet_cost_ratio_ltl_ftl_range": [2.0, 6.0]
   },
 
   "chaos_validation": {

@@ -304,9 +304,148 @@ class ShipmentsGenerator(VectorizedGenerator):
         self.distances = distances or {}
         return self
 
-    def generate_batch(self, origins, destinations, weights_kg, total_cases, shipment_types, carrier_ids, route_ids, base_dates, now) -> np.ndarray:
+    def _calculate_freight_cost(
+        self,
+        distances_km: np.ndarray,
+        total_pallets: np.ndarray,
+        shipment_types: np.ndarray,
+        is_temperature_controlled: np.ndarray,
+        lead_time_days: np.ndarray,
+        carrier_is_preferred: np.ndarray,
+    ) -> np.ndarray:
         """
-        Generate shipment batch.
+        Pallet-tier freight cost model based on industry LTL/FTL economics.
+
+        Pricing tiers (base cost per pallet, varies by distance):
+        - LTL (1-6 pallets): $150-250/pallet - carrier consolidates, premium pricing
+        - Volume LTL (7-12 pallets): $80-120/pallet - partial discount
+        - Partial TL (13-20 pallets): $50-80/pallet - dedicated space
+        - FTL (21+ pallets): $40-60/pallet - full truck efficiency
+
+        Distance bands (multiplier on base):
+        - Local (<200km): 0.6x
+        - Regional (200-500km): 0.85x
+        - National (500-1000km): 1.0x (base)
+        - Long-haul (>1000km): 1.4x
+
+        Additional factors:
+        - Temperature control: +60%
+        - Urgency (<3 days): +40%
+        - Spot carrier (not preferred): +20%
+        - Channel: plant_to_dc 0.7x, dc_to_dc 0.8x, dc_to_store 1.0x, DSD 1.5x
+
+        Industry benchmarks (sources: Flock Freight, FreightRun, YK Freight):
+        - LTL: $50-200/pallet average
+        - FTL 53' trailer: 26 pallets max, $1,500-2,500/load
+        - Target CTS: $1.00-3.00/case (BCG benchmark)
+        """
+        size = len(distances_km)
+
+        # =================================================================
+        # Step 1: Base cost per pallet by shipping tier
+        # =================================================================
+        # Pallet thresholds based on industry standards
+        is_ltl = total_pallets <= 6
+        is_volume_ltl = (total_pallets > 6) & (total_pallets <= 12)
+        is_partial_tl = (total_pallets > 12) & (total_pallets <= 20)
+        is_ftl = total_pallets > 20
+
+        # Base cost per pallet (midpoint of industry ranges)
+        base_per_pallet = np.select(
+            [is_ltl, is_volume_ltl, is_partial_tl, is_ftl],
+            [200.0, 100.0, 65.0, 50.0],  # $/pallet
+            default=50.0,
+        )
+
+        # =================================================================
+        # Step 2: Distance modifier
+        # =================================================================
+        distance_mult = np.where(
+            distances_km < 200,
+            0.60,  # Local delivery
+            np.where(
+                distances_km < 500,
+                0.85,  # Regional
+                np.where(
+                    distances_km < 1000,
+                    1.00,  # National (base)
+                    1.40,  # Long-haul
+                ),
+            ),
+        )
+
+        # =================================================================
+        # Step 3: Channel modifier (shipment type)
+        # =================================================================
+        channel_mult = np.select(
+            [
+                shipment_types == "plant_to_dc",
+                shipment_types == "dc_to_dc",
+                shipment_types == "dc_to_store",
+                shipment_types == "direct_to_store",
+            ],
+            [0.70, 0.80, 1.00, 1.50],  # DSD has last-mile premium
+            default=1.0,
+        )
+
+        # =================================================================
+        # Step 4: Service modifiers
+        # =================================================================
+        # Temperature control (reefer vs dry van)
+        temp_mult = np.where(is_temperature_controlled, 1.60, 1.00)
+
+        # Urgency (expedited shipping)
+        urgency_mult = np.where(
+            lead_time_days < 3,
+            1.40,  # Rush order
+            np.where(lead_time_days < 5, 1.15, 1.00),
+        )
+
+        # Carrier type (contract vs spot market)
+        carrier_mult = np.where(carrier_is_preferred, 1.00, 1.20)
+
+        # =================================================================
+        # Step 5: Calculate total freight cost
+        # =================================================================
+        # Cost = pallets × base_per_pallet × all_multipliers
+        safe_pallets = np.maximum(total_pallets, 1)
+
+        total_freight = (
+            safe_pallets
+            * base_per_pallet
+            * distance_mult
+            * channel_mult
+            * temp_mult
+            * urgency_mult
+            * carrier_mult
+        )
+
+        # Add random noise (±15% for market volatility)
+        noise = self.rng.uniform(0.85, 1.15, size=size)
+        total_freight = total_freight * noise
+
+        # Minimum freight charge ($75 for any shipment)
+        total_freight = np.maximum(total_freight, 75.0)
+
+        return total_freight.astype(np.float32)
+
+    def generate_batch(
+        self,
+        origins,
+        destinations,
+        weights_kg,
+        total_cases,
+        shipment_types,
+        carrier_ids,
+        route_ids,
+        base_dates,
+        now,
+        # CTS factor arrays (optional - uses defaults if not provided)
+        is_temperature_controlled: np.ndarray | None = None,
+        carrier_is_preferred: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Generate shipment batch with pallet-tier CTS calculation.
 
         Args:
             origins: List of (origin_type, origin_id) tuples
@@ -318,6 +457,8 @@ class ShipmentsGenerator(VectorizedGenerator):
             route_ids: Array of route IDs
             base_dates: Array of ship dates
             now: Current datetime
+            is_temperature_controlled: Whether origin DC has temperature control
+            carrier_is_preferred: Whether the carrier is a preferred carrier
         """
         size = len(weights_kg)
         batch = np.zeros(size, dtype=SHIPMENTS_DTYPE)
@@ -347,9 +488,30 @@ class ShipmentsGenerator(VectorizedGenerator):
         batch["total_cases"] = total_cases
         batch["total_weight_kg"] = weights_kg
         batch["total_pallets"] = np.maximum(1, batch["total_cases"] // 50)
-        row_distances = np.array([self.distances.get((ot, oid, dt, did), 500.0) for ot, oid, dt, did in zip(orig_types, orig_ids, dest_types, dest_ids)], dtype=np.float32)
-        rates = np.array([self.carrier_rates.get(cid, 1.50) for cid in carrier_ids], dtype=np.float32)
-        batch["freight_cost"] = (row_distances * rates * self.rng.uniform(0.95, 1.10, size=size).astype(np.float32)) * np.maximum(0.5, (weights_kg / 20000.0))
+
+        # Pallet-tier CTS calculation
+        row_distances = np.array(
+            [self.distances.get((ot, oid, dt, did), 500.0) for ot, oid, dt, did in zip(orig_types, orig_ids, dest_types, dest_ids)],
+            dtype=np.float32,
+        )
+
+        # Use provided CTS factors or defaults
+        if is_temperature_controlled is None:
+            # Default: 20% of shipments are temperature controlled
+            is_temperature_controlled = self.rng.random(size) < 0.20
+        if carrier_is_preferred is None:
+            # Default: 60% of carriers are preferred
+            carrier_is_preferred = self.rng.random(size) < 0.60
+
+        batch["freight_cost"] = self._calculate_freight_cost(
+            distances_km=row_distances,
+            total_pallets=batch["total_pallets"],
+            shipment_types=shipment_types,
+            is_temperature_controlled=is_temperature_controlled,
+            lead_time_days=lead_days,
+            carrier_is_preferred=carrier_is_preferred,
+        )
+
         batch["currency"] = "USD"
         batch["tracking_number"] = np.char.add("TRK", self.rng.integers(1000000000, 9999999999, size=size).astype(str))
         batch["created_at"] = np.datetime64(now, "s")

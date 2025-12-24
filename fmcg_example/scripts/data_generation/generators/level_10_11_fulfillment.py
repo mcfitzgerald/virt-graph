@@ -225,9 +225,19 @@ class Level10Generator(BaseLevelGenerator):
         # Prepare for ShipmentsGenerator
         shipment_types_pool = ["plant_to_dc", "dc_to_dc", "dc_to_store", "direct_to_store"]
         shipment_type_weights = [0.30, 0.10, 0.55, 0.05]
-        
+
         chosen_types = random.choices(shipment_types_pool, weights=shipment_type_weights, k=num_shipments)
-        
+
+        # Build lookups for CTS factors
+        dc_temp_by_id = {
+            dc["id"]: dc.get("is_temperature_controlled", random.random() < 0.25)
+            for dc in self.data["distribution_centers"]
+        }
+        carrier_preferred = {
+            c["id"]: c.get("is_preferred", random.random() < 0.6)
+            for c in self.data.get("carriers", [])
+        }
+
         origins = []
         destinations = []
         for stype in chosen_types:
@@ -305,16 +315,33 @@ class Level10Generator(BaseLevelGenerator):
             for _ in range(num_shipments)
         ])
 
+        # Build CTS factor arrays
+        chosen_carrier_ids = np.array([random.choice(carrier_ids) for _ in range(num_shipments)])
+
+        # Temperature control from origin DC
+        is_temperature_controlled = np.array([
+            dc_temp_by_id.get(orig_id, False) if orig_type == "dc" else False
+            for orig_type, orig_id in origins
+        ])
+
+        # Carrier preferred status
+        carrier_is_preferred = np.array([
+            carrier_preferred.get(cid, random.random() < 0.6)
+            for cid in chosen_carrier_ids
+        ])
+
         shipments_array = gen.generate_batch(
             origins=origins,
             destinations=destinations,
             weights_kg=weights_kg,
             total_cases=cases_per_shipment,
             shipment_types=np.array(chosen_types),
-            carrier_ids=np.array([random.choice(carrier_ids) for _ in range(num_shipments)]),
+            carrier_ids=chosen_carrier_ids,
             route_ids=np.array([random.choice(route_ids) for _ in range(num_shipments)]),
             base_dates=ship_dates,
-            now=now
+            now=now,
+            is_temperature_controlled=is_temperature_controlled,
+            carrier_is_preferred=carrier_is_preferred,
         )
         
         self.data["shipments"] = structured_to_dicts(shipments_array)

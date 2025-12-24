@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.57] - 2025-12-23
+
+### Fixed
+
+- **Cost-to-Serve Calibration** (`vectorized.py`, `level_10_11_fulfillment.py`):
+  - Replaced simple per-km freight calculation with **pallet-tier pricing model** based on industry LTL/FTL economics.
+  - Pricing tiers reflect real carrier economics (sources: Flock Freight, FreightRun, YK Freight):
+    - LTL (1-6 pallets): $150-250/pallet base
+    - Volume LTL (7-12 pallets): $80-120/pallet
+    - Partial TL (13-20 pallets): $50-80/pallet
+    - FTL (21+ pallets): $40-60/pallet
+  - Distance bands: Local (<200km) 0.6x, Regional 0.85x, National 1.0x, Long-haul 1.4x
+  - Service modifiers: temperature control +60%, urgency (<3 days) +40%, spot carrier +20%
+  - Cost-to-Serve: **$0.31 → $1.50/case** (within $1.00-$3.00 target)
+  - Cost Variance: **5.5x → 1.7x P90/P50** (within <4.0x target)
+
+### Added
+
+- **Pallet cost benchmarks** in `benchmark_manifest.json`:
+  - `pallet_cost_tiers` with LTL/FTL breakpoints
+  - `ltl_cost_per_pallet_range`, `ftl_cost_per_pallet_range`
+  - `pallet_cost_ratio_ltl_ftl_range` for variance validation
+
 ## [0.9.56] - 2025-12-23
 
 ### Fixed
@@ -10,12 +33,6 @@ All notable changes to this project will be documented in this file.
   - Fixed `ShipmentLegsGenerator._generate_delays()` which was using pure Poisson distribution, resulting in nearly all legs having non-zero delays (P(0)=e^(-λ)≈20% for truck mode).
   - Changed to 85% on-time rate with 15% delayed (Poisson-distributed when delayed).
   - OTIF rate: **9.3% → 87.1%** (within 85-99% target range).
-
-### Known Issues
-
-- **Remaining Calibration Needs** (Parts 3-4 of implementation plan):
-  - Cost-to-Serve: $0.13/case (target: $1-3) - needs multi-factor CTS model
-  - Cost Variance: P90/P50 = 6.3x (target: <4x)
 
 ## [0.9.55] - 2025-12-23
 
