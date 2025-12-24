@@ -291,7 +291,7 @@ class QuirksManager:
 
             # Try segment-based lookup first (preferred)
             if segment_lookup and port_ids:
-                seg_id = leg.get("segment_id")
+                seg_id = leg.get("route_segment_id")
                 if seg_id and seg_id in segment_lookup:
                     seg = segment_lookup[seg_id]
                     # Check origin

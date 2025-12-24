@@ -480,7 +480,7 @@ class Level10Generator(BaseLevelGenerator):
 
                 strike_count = 0
                 for leg in self.data["shipment_legs"]:
-                    seg_id = leg.get("segment_id")
+                    seg_id = leg.get("route_segment_id")
                     if seg_id and seg_id in segment_lookup:
                         seg = segment_lookup[seg_id]
                         origin_is_port = (
