@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Python environment and dependencies managed by poetry
+
+Always use poetry to run python for this project
+
 ## Coding and Engineering Standards
 
 Employ a judicious but robust testing strategy, and prefer integration tests versus unit tests unless unit test is critical
@@ -12,7 +16,7 @@ tools to resolve library id and get library docs without me having to explicitly
 
 Don't reinvent the wheel, search web for robust libraries and always opt for simple. Don't over-engineer!
 
-Update `CHANGELOG.md`, `README.md`, `docs/`, `TODO.md` and `pyproject.toml` when committing with git, use semantic versioning
+Update `CHANGELOG.md`, `README.md`, and `pyproject.toml` and relevant documentation (`docs/`) when committing with git, use semantic versioning
 
 Unless noted otherwise, do not plan for backwards compatibility
 
@@ -29,26 +33,18 @@ VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL dat
 # Setup
 make install          # Install Python dependencies via Poetry
 
-# Databases (Docker required)
-make db-up            # Start PostgreSQL
-make db-down          # Stop PostgreSQL
-make db-reset         # Reset PostgreSQL (wipe and recreate)
-make neo4j-up         # Start Neo4j (for benchmarking)
-make neo4j-down       # Stop Neo4j
-make neo4j-cycle      # Full reset (fixes PID issues)
-
-# Testing
-make test             # Run all tests
-make test-handlers    # Run handler safety tests only
-make test-ontology    # Run ontology validation tests only
-poetry run pytest supply_chain_example/tests/test_traversal.py -v  # Single test file
-poetry run pytest supply_chain_example/tests/test_traversal.py::test_name -v  # Single test
-
 # Ontology validation
 make validate-ontology  # Full two-layer validation (LinkML + VG)
-make validate-linkml    # LinkML structure only
-make validate-vg        # VG annotations only
 make show-ontology      # Show TBox/RBox definitions
+
+# Testing
+make test-ontology      # Run ontology validation tests
+poetry run pytest fmcg_example/tests/test_ontology.py -v  # Single test file
+
+# Neo4j (for benchmarking)
+make neo4j-up         # Start Neo4j
+make neo4j-down       # Stop Neo4j
+make neo4j-cycle      # Full reset (fixes PID issues)
 
 # Documentation
 make serve-docs       # Serve docs at localhost:8000
@@ -89,21 +85,16 @@ traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
          edge_from_col="seller_id", edge_to_col="buyer_id", start_id=123)
 ```
 
-### Supply Chain Example
+### Reference Ontology
 
-`supply_chain_example/` contains a complete working example:
-- `ontology/supply_chain.yaml` - Domain ontology (9 entities, 15 relationships)
-- `postgres/` - Docker setup and schema/seed SQL
-- `neo4j/` - Docker setup for benchmark comparison
-- `tests/` - Comprehensive handler tests
-- `questions.md` - 60 benchmark questions
+`fmcg_example/ontology/prism_fmcg.yaml` — a full FMCG supply chain ontology demonstrating all VG patterns (71 classes, ~50 relationships).
 
 ### Database Access
 
 Use `psycopg2` for PostgreSQL (psql CLI may not be available):
 ```python
 import psycopg2
-conn = psycopg2.connect(host='localhost', database='supply_chain',
+conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',
                         user='virt_graph', password='dev_password')
 ```
 
@@ -131,7 +122,15 @@ See `docs/ontology/vg-extensions.md` for detailed documentation.
 The `OntologyAccessor` class provides the API for reading ontologies:
 ```python
 from virt_graph.ontology import OntologyAccessor
-ontology = OntologyAccessor(Path("supply_chain_example/ontology/supply_chain.yaml"))
-table = ontology.get_class_table("Supplier")
-op_types = ontology.get_operation_types("SuppliesTo")
+from pathlib import Path
+
+ontology = OntologyAccessor(Path("fmcg_example/ontology/prism_fmcg.yaml"))
+
+# Get table mapping for a class
+table = ontology.get_class_table("Supplier")       # → "suppliers"
+pk = ontology.get_class_pk("Order")                # → ["id"]
+
+# Get relationship configuration
+op_types = ontology.get_operation_types("SuppliesTo")  # → ["recursive_traversal"]
+domain_keys, range_keys = ontology.get_role_keys("HasBatch")
 ```

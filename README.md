@@ -6,144 +6,25 @@
 
 **The solution**: VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational data WITHOUT migration. It combines:
 
-1. An **ontology** expressed in [LinkML](https://linkml.io) forma that maps graph concepts to relational structures and translates 1:1 to an annotated Tbox/Rbox ontological structure.
+1. An **ontology** expressed in [LinkML](https://linkml.io) format that maps graph concepts to relational structures and translates 1:1 to an annotated TBox/RBox ontological structure.
 2. **Lightweight Python handlers** for recursive traversal and graph algorithms filling in gaps in native SQL for graph operations.
 3. **Overall orchestration and on-the-fly query generation** via general-purpose agentic systems (in this case Claude Code)
 
 This work extends the previously introduced [virtual-ontology](https://github.com/mcfitzgerald/virtual-ontology) concept by adopting LinkML for standardized, validatable ontology definitions and adding handlers for full graph operations.
 
-**Proof of concept**: We share a toy example from supply chain domain to demonstrate the approach; the pattern generalizes to any relational schema
-
 ## Quick Start
-
-**FIRST:Launch Claude Code session**
 
 ```bash
 make install          # Install Python dependencies
-make db-up            # Start PostgreSQL
-make neo4j-up         # Start Neo4j (for benchmarking)
+make validate-ontology  # Validate the reference ontology
+make show-ontology      # View TBox/RBox definitions
 ```
-
-## Database Setup
-
-While the general use case is on realtional SQL data, we compare two databases: **PostgreSQL** for relational data and **Neo4j** for validation/benchmarking
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
 - Poetry installed (`pip install poetry`)
-- Python dependencies: `make install`
-
-### Starting the Databases
-
-```bash
-# Start PostgreSQL
-make db-up
-
-# Start Neo4j
-make neo4j-up
-```
-
-### Checking Database Health
-
-```bash
-# Check running containers
-docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(postgres|neo4j)"
-```
-
-Expected output shows both as "healthy":
-```
-virt-graph-neo4j      Up X minutes (healthy)
-postgres-postgres-1   Up X minutes (healthy)
-```
-
-### Stopping the Databases
-
-```bash
-# Stop PostgreSQL
-make db-down
-
-# Stop Neo4j
-make neo4j-down
-```
-
-### Resetting PostgreSQL
-
-To wipe and recreate the PostgreSQL database (re-runs schema and seed scripts):
-
-```bash
-make db-reset
-```
-
-### Viewing Logs
-
-```bash
-# PostgreSQL logs
-make db-logs
-
-# Neo4j logs
-make neo4j-logs
-```
-
-### Neo4j Troubleshooting
-
-If Neo4j fails to start with errors like `Neo4j is already running (pid:X)`, this indicates a stale PID file from an unclean shutdown. Use the cycle command to fully reset:
-
-```bash
-# Full cycle: stop, wipe volumes, restart (fixes PID issues)
-make neo4j-cycle
-```
-
-This performs a clean stop, removes all volumes (including stale PID files), and restarts. Wait ~20 seconds after restart for Neo4j to fully initialize before connecting.
-
-For a clean shutdown without wiping data:
-```bash
-make neo4j-stop
-```
-
-### Database Credentials
-
-| Database   | Host      | Port | User        | Password     | Database/DB   |
-|------------|-----------|------|-------------|--------------|---------------|
-| PostgreSQL | localhost | 5432 | virt_graph  | dev_password | supply_chain  |
-| Neo4j      | localhost | 7687 | neo4j       | dev_password | neo4j         |
-
-Neo4j also exposes a browser UI at http://localhost:7474
-
-### Python Access
-
-**Note:** Use psycopg2 for database access. The `psql` CLI may not be installed in all environments.
-
-#### PostgreSQL
-
-```python
-import psycopg2
-
-conn = psycopg2.connect(
-    host='localhost',
-    database='supply_chain',
-    user='virt_graph',
-    password='dev_password'
-)
-cur = conn.cursor()
-cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-for row in cur.fetchall():
-    print(row[0])
-conn.close()
-```
-
-#### Neo4j
-
-```python
-from neo4j import GraphDatabase
-
-driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'dev_password'))
-with driver.session() as session:
-    result = session.run('MATCH (n) RETURN labels(n)[0] AS label, count(*) AS count')
-    for record in result:
-        print(f"{record['label']}: {record['count']}")
-driver.close()
-```
+- Python 3.12+
+- Docker (for Neo4j benchmarking only)
 
 ## How VG/SQL Works
 
@@ -171,9 +52,9 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Resource | Location | Purpose |
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
-| Example Ontology | `supply_chain_example/ontology/supply_chain.yaml` | Supply chain domain ontology |
+| Reference Ontology | `fmcg_example/ontology/prism_fmcg.yaml` | FMCG supply chain ontology (71 classes, ~50 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
-| Example | `supply_chain_example/` | Complete supply chain use case with tests |
+| Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
 
 ### Metamodel Features (v2.1)
 
@@ -198,53 +79,9 @@ The ontology classifies relationships by what operations they support:
 | **Aggregation** | `path_aggregate()` | Value aggregation along paths (e.g., BOM explosion) |
 | **Algorithm** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
 
+### Example Handler Usage
 
-# Supply Chain Use Case
-
-### Data Overview
-
-**PostgreSQL** contains 20 relational tables (~1.6M rows total):
-`audit_log`, `bill_of_materials`, `customers`, `facilities`, `inventory`, `material_transactions`, `order_items`, `orders`, `part_suppliers`, `parts`, `product_components`, `production_routings`, `products`, `shipments`, `supplier_certifications`, `supplier_relationships`, `suppliers`, `transport_routes`, `work_centers`, `work_order_steps`, `work_orders`
-
-| Entity | Rows | Notes |
-|--------|------|-------|
-| Orders | 80,000 | Customer orders |
-| Order Items | 239,985 | Composite key (order_id, line_number) |
-| Shipments | 45,737 | 70% fulfillment, 20% transfer, 10% replenishment |
-| BOM Entries | 42,706 | With effectivity dates (80% current, 15% superseded, 5% future) |
-| Inventory | 30,054 | Part × Facility |
-| Parts | 15,008 | 5-level BOM hierarchy |
-| Customers | 5,000 | Retail, wholesale, enterprise |
-| Suppliers | 1,000 | Tiered (T1/T2/T3) |
-| Facilities | 100 | Warehouses, factories, distribution centers |
-| Products | 500 | Finished goods |
-| Material Transactions | 639,666 | WIP, consumption, scrap tracking |
-| Work Order Steps | 480,352 | Execution progress through routing |
-| Work Orders | 120,000 | Make-to-order and make-to-stock |
-| Production Routings | 2,002 | Process steps per product |
-| Work Centers | 126 | Manufacturing capacity at factories |
-
-**Schema Enhancements (v0.9.9)**:
-- `order_items`: SAP-style composite key `(order_id, line_number)`
-- `shipments`: Polymorphic `shipment_type` (order_fulfillment, transfer, replenishment)
-- `bill_of_materials`: Effectivity dates (`effective_from`, `effective_to`)
-- `supplier_relationships`: Status tracking (`is_active`, `relationship_status`)
-- `transport_routes`: Route status (`route_status`)
-
-
-### Example Queries
-
-These are real queries generated by Claude Code during benchmarking. See `supply_chain_example/questions.md` for the 60 benchmark questions.
-
-**Direct SQL** (Q05: Which suppliers have ISO9001 certification?)
-```sql
-SELECT DISTINCT s.supplier_code, s.name, sc.certification_number
-FROM suppliers s
-JOIN supplier_certifications sc ON s.id = sc.supplier_id
-WHERE sc.certification_type = 'ISO9001' AND sc.is_valid = true;
-```
-
-**Recursive Traversal** (Q12: Find all upstream suppliers of 'Acme Corp')
+**Recursive Traversal** (Find all upstream suppliers)
 ```python
 result = traverse(
     conn,
@@ -253,14 +90,12 @@ result = traverse(
     edge_from_col="seller_id",
     edge_to_col="buyer_id",
     start_id=acme_id,
-    direction="inbound",  # Who sells TO Acme
+    direction="inbound",
     max_depth=10,
-    include_start=False,
 )
-# Result: 33 upstream suppliers (7 tier 2, 26 tier 3)
 ```
 
-**Path Aggregation - BOM Explosion** (Q19: Full BOM for 'Turbo Encabulator')
+**Path Aggregation - BOM Explosion**
 ```python
 result = path_aggregate(
     conn,
@@ -270,13 +105,12 @@ result = path_aggregate(
     edge_to_col="child_part_id",
     start_id=part_id,
     value_col="quantity",
-    operation="multiply",  # Propagate quantities through hierarchy
+    operation="multiply",
     max_depth=20,
 )
-# Result: 1,024 unique parts with aggregated quantities
 ```
 
-**Shortest Path** (Q29: Shortest route from Chicago to LA)
+**Shortest Path**
 ```python
 result = shortest_path(
     conn,
@@ -284,30 +118,15 @@ result = shortest_path(
     edges_table="transport_routes",
     edge_from_col="origin_facility_id",
     edge_to_col="destination_facility_id",
-    start_id=chicago_id,
-    end_id=la_id,
+    start_id=origin_id,
+    end_id=dest_id,
     weight_col="distance_km",
 )
-# Result: 3,388.3 km, 3 hops
-```
-
-**Centrality** (Q36: Which facility is most central?)
-```python
-result = centrality(
-    conn,
-    nodes_table="facilities",
-    edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
-    centrality_type="betweenness",
-    top_n=10,
-)
-# Result: New York Factory (score=0.2327)
 ```
 
 ### Workflow (with Claude Code)
 
-1. **Read the ontology** (e.g., `supply_chain_example/ontology/supply_chain.yaml`) to understand available entities and relationships
+1. **Read the ontology** to understand available entities and relationships
 2. **Dispatch** the question: determine if a handler is needed based on operation types
 3. **Generate query on-the-fly**: Direct SQL for simple joins, handler call for traversals/algorithms
 4. **Execute and return results**
@@ -330,7 +149,7 @@ The ontology + handlers are the contribution; Claude Code is the enabler.
 Serve the full documentation locally:
 
 ```bash
-poetry run mkdocs serve
+make serve-docs
 ```
 
 Documentation covers:
@@ -338,16 +157,4 @@ Documentation covers:
 - **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
 - **[Handlers](docs/handlers/overview.md)** - All available graph operations
 - **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
-- **[Supply Chain Tutorial](docs/examples/supply-chain.md)** - Complete worked example
-
-## Research Validation
-
-*Validation methodology (benchmark results to be updated):*
-
-- 60 benchmark questions across different operation categories
-- GOLD questions test cross-domain polymorphism (BOM + Supplier + Logistics traversals)
-- Same ontology defines BOTH VG/SQL handlers AND Neo4j schema
-- Both systems queried with on-the-fly generated queries
-- Supply chain domain proves the concept; approach generalizes
-
-See `benchmark_comparison.md` for detailed results.
+- **[VG Extensions](docs/ontology/vg-extensions.md)** - Complete metamodel annotation reference

@@ -436,8 +436,8 @@ def main():
         "ontology_path",
         nargs="?",
         type=Path,
-        default=Path(__file__).parent.parent / "supply_chain_example" / "ontology" / "supply_chain.yaml",
-        help="Path to ontology YAML file (default: supply_chain_example/ontology/supply_chain.yaml)",
+        default=Path(__file__).parent.parent / "fmcg_example" / "ontology" / "prism_fmcg.yaml",
+        help="Path to ontology YAML file (default: fmcg_example/ontology/prism_fmcg.yaml)",
     )
     parser.add_argument(
         "--json",

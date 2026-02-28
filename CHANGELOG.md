@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-02-28
+
+### Changed
+
+- **ontology-core branch** — Stripped to ontology construction, validation, and handler execution layer
+- Removed `ARCHIVE/`, `supply_chain_example/`, `prompts/`, data generation scripts, DB infrastructure, and working notes
+- Added FMCG reference ontology (`fmcg_example/ontology/prism_fmcg.yaml`) from fmcg branch
+- Updated all scripts (`validate_ontology.py`, `show_ontology.py`, `validate_neo4j.py`) to default to FMCG ontology
+- Trimmed Makefile to ontology/validation/handler targets only
+- Removed data-gen-only dependencies (numpy, pandas, faker, scipy)
+- Updated pyproject.toml testpaths to `fmcg_example/tests`
+- Simplified README.md and CLAUDE.md to focus on ontology + handler framework
+
+---
+
 ## [0.9.19] - 2025-12-16
 
 ### Added

@@ -20,7 +20,6 @@ nav:
     - Quick Start: getting-started/quickstart.md
   - Core Concepts:
     - Architecture: concepts/architecture.md
-    - Complexity Levels: concepts/complexity-levels.md
     - Ontology System: concepts/ontology.md
   - Handlers:
     - Overview: handlers/overview.md

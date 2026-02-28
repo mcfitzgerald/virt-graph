@@ -154,10 +154,9 @@ virt-graph/
 │   │   └── network.py         # centrality(), neighbors(), etc.
 │   ├── ontology.py            # OntologyAccessor class
 │   └── estimator/             # Pre-flight size estimation
-├── supply_chain_example/      # Example domain with tests
-│   ├── ontology/              # Supply chain ontology
-│   ├── postgres/              # Database schema and seeds
-│   └── tests/                 # Integration tests
+├── fmcg_example/              # Reference ontology and tests
+│   ├── ontology/              # FMCG supply chain ontology
+│   └── tests/                 # Ontology validation tests
 └── scripts/
     └── validate_ontology.py   # Two-layer validation
 ```
