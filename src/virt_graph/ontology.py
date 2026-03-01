@@ -115,6 +115,9 @@ class OntologyAccessor:
         with open(ontology_path) as f:
             self._data = yaml.safe_load(f)
 
+        # Load SchemaView with merged imports for slot inheritance
+        self._schema_view = SchemaView(str(ontology_path), merge_imports=True)
+
         # Build TBox/RBox indices
         self._tbox: dict[str, dict] = {}
         self._rbox: dict[str, dict] = {}
@@ -559,6 +562,33 @@ class OntologyAccessor:
     def get_class_slots(self, name: str) -> dict:
         """Get attribute definitions for a class."""
         return self._tbox[name].get("attributes", {})
+
+    def get_class_inherited_attributes(self, name: str) -> dict[str, dict]:
+        """
+        Get all attributes for a class including inherited ones via SchemaView.
+
+        Uses LinkML's SchemaView to resolve the full attribute set for a class,
+        including slots inherited via is_a hierarchy and mixins. Falls back to
+        local-only attributes if SchemaView is not available.
+
+        Args:
+            name: Class name (must be in TBox)
+
+        Returns:
+            Dict mapping attribute name to attribute definition dict
+        """
+        cls_def = self._schema_view.get_class(name)
+        if cls_def is None:
+            return self._tbox[name].get("attributes", {})
+
+        result = {}
+        for slot_def in self._schema_view.class_induced_slots(name):
+            slot_name = slot_def.name
+            result[slot_name] = {
+                "range": str(slot_def.range) if slot_def.range else "string",
+                "description": slot_def.description or "",
+            }
+        return result
 
     def get_class_row_count(self, name: str) -> Optional[int]:
         """Get estimated row count for a class."""

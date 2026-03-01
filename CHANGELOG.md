@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-02-28
+
+### Added
+
+- **Supply Chain Base Schema (`scm_base.yaml`)**
+  - Reusable structural patterns for supply chain domain ontologies
+  - Abstract classes: `Location`, `TransactionDocument`, `LineItem`
+  - Mixins: `HasActiveFlag` (is_active soft-delete), `HasName` (display name)
+  - Shared slots: `name`, `status`, `is_active`, `day`, `quantity_kg`, `line_amount`, `total_amount`, `line_number`
+  - `LocationType` enum (`plant`, `dc`, `retail`) for polymorphic location references
+
+- **Class hierarchy in PCG ontology (v3.0)**
+  - `imports: ../../scm_base` — PCG now imports scm_base via LinkML native imports
+  - Location hierarchy: Plant, DistributionCenter, RetailLocation → Location (abstract)
+  - TransactionDocument hierarchy: PO, GR, WorkOrder, Batch, Order, Shipment, Return, AP/AR Invoice → TransactionDocument
+  - LineItem hierarchy: all 7 line item classes → LineItem
+  - `HasActiveFlag` mixin on 10 master data entities (Supplier, Ingredient, SKU, etc.)
+  - `HasName` mixin on 9 entities (removes duplicate `name` attribute declarations)
+  - `LocationType` enum used on Inventory, RouteSegment, DemandForecast location_type columns
+
+- **OntologyAccessor: SchemaView integration**
+  - `SchemaView(merge_imports=True)` loaded alongside raw YAML for slot inheritance
+  - New `get_class_inherited_attributes(name)` method returns all attributes including inherited ones
+  - Abstract/mixin classes automatically excluded from TBox/RBox (no `instantiates`)
+
+- **Test suite** (`pcg_example/tests/test_structural_patterns.py`):
+  - scm_base.yaml validity and LinkML loading (~5 tests)
+  - Abstract class flag and TBox exclusion tests (~9 tests)
+  - is_a hierarchy tests for all 3 hierarchies (~40 parametrized tests)
+  - Mixin application tests (is_active on 10 classes, name on 9 classes)
+  - Slot inheritance tests (inherited + local attributes)
+  - LocationType enum value and usage tests
+  - TBox/RBox count unchanged assertions
+
+### Changed
+
+- PCG ontology version `2.0.0` → `3.0.0`
+- Project version `1.2.0` → `1.3.0`
+- `vg:type_discriminator` annotations converted from native YAML dicts to `>-` JSON strings for SchemaView compatibility (consistent with all other complex VG annotations)
+- Removed 9 duplicate `status` attribute declarations (inherited from TransactionDocument)
+- Removed 9 duplicate `name` attribute declarations (inherited via HasName mixin)
+- Updated test_ontology.py: version assertion `2.0.0` → `3.0.0`, added import and abstract exclusion tests
+
+---
+
 ## [1.2.0] - 2026-02-28
 
 ### Added

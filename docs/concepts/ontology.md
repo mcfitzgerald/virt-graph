@@ -46,6 +46,19 @@ The metamodel supports virtual kinetics — declaring dynamic behavior (state ma
 
 See [VG Extensions](../ontology/vg-extensions.md) for complete reference.
 
+## Class Hierarchy and Base Schema
+
+Domain ontologies can import `scm_base.yaml` for reusable structural patterns via LinkML's native `imports:` mechanism. This provides:
+
+- **Abstract classes**: `Location`, `TransactionDocument`, `LineItem` — common patterns with shared slots
+- **Mixins**: `HasActiveFlag` (is_active soft-delete), `HasName` (display name) — cross-cutting concerns
+- **Shared slots**: `name`, `status`, `is_active`, `day`, `quantity_kg`, `line_amount`, `total_amount`
+- **Enums**: `LocationType` (`plant`, `dc`, `retail`) for polymorphic location references
+
+Abstract classes do NOT have `instantiates: vg:SQLMappedClass` — they have `abstract: true`. Only concrete children in the domain ontology get `instantiates`. The `OntologyAccessor` automatically excludes abstract and mixin classes from TBox/RBox.
+
+Use `get_class_inherited_attributes(name)` to see all attributes including inherited ones from parent classes and mixins.
+
 ## LinkML Format
 
 VG/SQL ontologies are valid [LinkML schemas](https://linkml.io/linkml/schemas/) with VG extensions. This provides:

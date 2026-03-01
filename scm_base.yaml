@@ -1,0 +1,138 @@
+# Supply Chain Base Schema for VG/SQL Ontologies
+#
+# Reusable structural patterns for supply chain / ERP domain ontologies.
+# Provides abstract classes, shared slots, enums, and mixins for common
+# patterns that recur across supply chain domains.
+#
+# This schema is IMPORTED by domain ontologies (e.g., pcg.yaml) via LinkML's
+# native `imports:` mechanism. It does NOT contain VG annotations — those
+# belong in the domain ontology on concrete classes.
+#
+# Usage in a domain ontology:
+#   imports:
+#     - linkml:types
+#     - ../../scm_base       # relative path to this file
+
+id: https://virt-graph.dev/schemas/scm_base
+name: scm_base
+version: "1.0.0"
+description: >-
+  Reusable supply chain structural patterns for VG/SQL ontologies.
+  Provides abstract classes, shared slots, enums, and mixins
+  for common ERP patterns.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  scm: https://virt-graph.dev/scm/
+
+imports:
+  - linkml:types
+
+default_range: string
+
+# =============================================================================
+# ENUMS
+# =============================================================================
+
+enums:
+  LocationType:
+    description: >-
+      Physical location type for polymorphic location references.
+      Used by type_discriminator mappings and location_type columns.
+    permissible_values:
+      plant:
+        description: "Manufacturing plant"
+      dc:
+        description: "Distribution center / warehouse"
+      retail:
+        description: "Retail store or customer delivery point"
+
+# =============================================================================
+# SHARED SLOTS
+# =============================================================================
+
+slots:
+  name:
+    range: string
+    description: "Display name for the entity"
+
+  status:
+    range: string
+    description: "Lifecycle status (specific values defined per entity's state machine)"
+
+  is_active:
+    range: boolean
+    description: "Soft-delete / active flag for master data entities"
+
+  day:
+    range: integer
+    description: "Day-number date (e.g., 1-365 in PCG simulation)"
+
+  quantity_kg:
+    range: decimal
+    description: "Mass quantity in kilograms"
+
+  line_amount:
+    range: decimal
+    description: "Financial line amount"
+
+  total_amount:
+    range: decimal
+    description: "Document total monetary amount"
+
+  line_number:
+    range: integer
+    description: "Line item sequence number within a document"
+
+# =============================================================================
+# MIXINS
+# =============================================================================
+
+classes:
+
+  HasActiveFlag:
+    description: >-
+      Mixin for master data entities with a soft-delete is_active flag.
+      Applies to both Location subtypes and standalone master data
+      (Supplier, Ingredient, SKU, Channel, etc.).
+    mixin: true
+    slots:
+      - is_active
+
+  HasName:
+    description: >-
+      Mixin for entities with a display name.
+      Applies to both Location subtypes and standalone master data.
+    mixin: true
+    slots:
+      - name
+
+  # ===========================================================================
+  # ABSTRACT CLASSES
+  # ===========================================================================
+
+  Location:
+    description: >-
+      Abstract base class for physical locations in the supply chain
+      (plants, distribution centers, retail stores). Children inherit
+      name and is_active slots.
+    abstract: true
+    mixins:
+      - HasActiveFlag
+      - HasName
+
+  TransactionDocument:
+    description: >-
+      Abstract base class for header-level transaction documents
+      with a status lifecycle (POs, orders, shipments, invoices, etc.).
+    abstract: true
+    slots:
+      - status
+
+  LineItem:
+    description: >-
+      Abstract base class for line items on transaction documents.
+      Children typically have composite primary keys (document_id, line_number).
+    abstract: true
+    slots:
+      - line_number

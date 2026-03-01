@@ -52,6 +52,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Resource | Location | Purpose |
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
+| Base Schema | `scm_base.yaml` | Supply chain structural patterns (abstract classes, mixins, enums) |
 | Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 50 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
@@ -67,6 +68,20 @@ The ontology doesn't just map tables — it declares the **graph structure** tha
 | **BOM hierarchy** | `formula_ingredients` linking formulas to ingredients with quantity rollup | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
 
 These declarations drive the **dispatch pattern**: the agentic system reads the ontology, sees the operation type, and knows whether to generate SQL or call a handler.
+
+### Class Hierarchy
+
+Domain ontologies import `scm_base.yaml` for reusable structural patterns via LinkML's native `imports:` mechanism:
+
+| Pattern | Base Class/Mixin | Children in PCG |
+|---------|------------------|-----------------|
+| **Locations** | `Location` (abstract) | Plant, DistributionCenter, RetailLocation |
+| **Documents** | `TransactionDocument` (abstract) | PurchaseOrder, Order, Shipment, Return, APInvoice, ARInvoice, ... |
+| **Line items** | `LineItem` (abstract) | PurchaseOrderLine, OrderLine, ShipmentLine, ... |
+| **Active flag** | `HasActiveFlag` (mixin) | Supplier, Ingredient, SKU, Channel, Plant, ... |
+| **Display name** | `HasName` (mixin) | Supplier, Ingredient, SKU, Channel, Plant, ... |
+
+Abstract classes and mixins live in `scm_base.yaml` — domain-agnostic and reusable. Concrete classes with VG annotations live in the domain ontology. The `OntologyAccessor` uses LinkML's `SchemaView(merge_imports=True)` to resolve inherited slots.
 
 ### Ontology Features
 

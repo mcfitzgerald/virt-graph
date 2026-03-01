@@ -56,7 +56,21 @@ class TestOntologyStructure:
         assert ontology.name == "pcg"
 
     def test_ontology_version(self, ontology):
-        assert ontology.version == "2.0.0"
+        assert ontology.version == "3.0.0"
+
+    def test_imports_scm_base(self, raw_yaml):
+        """pcg.yaml imports scm_base for structural patterns."""
+        imports = raw_yaml.get("imports", [])
+        assert any("scm_base" in i for i in imports)
+
+    def test_abstract_classes_excluded_from_tbox(self, ontology):
+        """Abstract classes from scm_base must not appear in TBox."""
+        abstract_names = ["Location", "TransactionDocument", "LineItem",
+                          "HasActiveFlag", "HasName"]
+        for name in abstract_names:
+            assert name not in ontology.classes, (
+                f"Abstract class '{name}' should not appear in TBox"
+            )
 
     def test_database_type(self, ontology):
         db = ontology.database

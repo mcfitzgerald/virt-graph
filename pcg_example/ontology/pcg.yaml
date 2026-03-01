@@ -3,18 +3,21 @@
 # ============================================================================
 #
 # Virtual twin declaration for the PCG schema (38 tables, ~395M rows, 365-day sim).
-# Flat class hierarchy (no is_a). All 38 tables mapped as entity classes.
+# Uses class hierarchy via scm_base.yaml imports (is_a, mixins, abstract classes).
+#
+# v3.0 — Structural Hierarchy:
+#   - Imports scm_base.yaml for abstract classes, mixins, shared slots, enums
+#   - Location hierarchy: Plant, DistributionCenter, RetailLocation → Location
+#   - TransactionDocument hierarchy: PO, GR, Order, Shipment, Return, AP/AR → TransactionDocument
+#   - LineItem hierarchy: all line items → LineItem
+#   - Mixins: HasActiveFlag, HasName for master data entities
+#   - LocationType enum for polymorphic location_type columns
 #
 # v2.0 — Complete Virtual Twin Declaration:
-#   - 49 relationships (30→49): all FK columns mapped, including polymorphic
-#   - Operation types: 8 of 11 types used (direct_join, hierarchical_aggregation,
-#     path_aggregation, recursive_traversal, shortest_path, centrality,
-#     connected_components, resilience_analysis)
-#   - Transport network: route_segments declared as weighted graph
-#   - SKU alias chain: recursive_traversal for supersedes_sku_id
-#   - Polymorphic relationships: 5 with vg:type_discriminator
-#   - Context blocks: domain semantics for AI query generation
-#   - Edge attributes: junction table properties (cost, quantity, lead time)
+#   - 50 relationships: all FK columns mapped, including polymorphic
+#   - Operation types: 8 of 11 types used
+#   - Transport network, SKU alias chain, BOM hierarchy
+#   - Polymorphic relationships, context blocks, edge attributes
 #   - OWL 2 role axioms: functional, asymmetric, irreflexive, acyclic
 #
 # Kinetic Annotations (v3.0):
@@ -33,14 +36,14 @@
 
 id: https://virt-graph.dev/schemas/pcg
 name: pcg
-version: "2.0.0"
+version: "3.0.0"
 description: >-
   Prism Consumer Goods ERP ontology for Virtual Graph.
   Models a full FMCG supply chain across 8 domains: Source, Transform,
   Product, Order, Fulfill, Logistics, Plan, Return, and Finance.
-  38 entity classes, 49 relationships with polymorphic patterns,
-  transport network graph, recursive alias chains, context blocks,
-  and kinetic annotations for state/flow/scenario analysis.
+  38 entity classes with class hierarchy (Location, TransactionDocument,
+  LineItem), 50 relationships with polymorphic patterns, transport network
+  graph, recursive alias chains, context blocks, and kinetic annotations.
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -48,6 +51,7 @@ prefixes:
 
 imports:
   - linkml:types
+  - ../../scm_base
 
 default_range: string
 
@@ -68,6 +72,9 @@ classes:
 
   Supplier:
     description: "Raw material and ingredient supplier"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -81,8 +88,6 @@ classes:
     attributes:
       supplier_code:
         range: string
-      name:
-        range: string
       country:
         range: string
       tier:
@@ -90,6 +95,9 @@ classes:
 
   Ingredient:
     description: "Raw material input to manufacturing formulas"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -98,8 +106,6 @@ classes:
       vg:identifier: ingredient_code
     attributes:
       ingredient_code:
-        range: string
-      name:
         range: string
       category:
         range: string
@@ -123,6 +129,7 @@ classes:
 
   PurchaseOrder:
     description: "Purchase order header for procuring ingredients"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -145,11 +152,10 @@ classes:
         range: string
       order_date:
         range: integer
-      status:
-        range: string
 
   PurchaseOrderLine:
     description: "Line item on a purchase order"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -163,6 +169,7 @@ classes:
 
   GoodsReceipt:
     description: "Goods receipt header confirming delivery of purchased materials"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -185,11 +192,10 @@ classes:
         range: string
       receipt_date:
         range: integer
-      status:
-        range: string
 
   GoodsReceiptLine:
     description: "Line item on a goods receipt"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -205,6 +211,7 @@ classes:
 
   Plant:
     description: "Manufacturing plant with production capacity"
+    is_a: Location
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -228,13 +235,13 @@ classes:
     attributes:
       plant_code:
         range: string
-      name:
-        range: string
       capacity_tons_per_day:
         range: decimal
 
   ProductionLine:
     description: "Production line within a plant"
+    mixins:
+      - HasActiveFlag
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -282,6 +289,7 @@ classes:
 
   WorkOrder:
     description: "Manufacturing work order for planned production"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -304,11 +312,10 @@ classes:
         range: string
       planned_quantity_kg:
         range: decimal
-      status:
-        range: string
 
   Batch:
     description: "Production batch output from a work order"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -368,8 +375,6 @@ classes:
         range: decimal
       yield_percent:
         range: decimal
-      status:
-        range: string
       production_date:
         range: integer
       product_type:
@@ -394,6 +399,9 @@ classes:
 
   BulkIntermediate:
     description: "Intermediate bulk product (e.g., paste, base compound)"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -403,13 +411,14 @@ classes:
     attributes:
       bulk_code:
         range: string
-      name:
-        range: string
       category:
         range: string
 
   SKU:
     description: "Stock keeping unit - finished good for sale"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -418,8 +427,6 @@ classes:
       vg:identifier: sku_code
     attributes:
       sku_code:
-        range: string
-      name:
         range: string
       category:
         range: string
@@ -436,6 +443,9 @@ classes:
 
   Channel:
     description: "Sales channel (retail, wholesale, e-commerce)"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -445,13 +455,12 @@ classes:
     attributes:
       channel_code:
         range: string
-      name:
-        range: string
       channel_type:
         range: string
 
   Order:
     description: "Customer order header"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -505,13 +514,12 @@ classes:
         range: string
       day:
         range: integer
-      status:
-        range: string
       total_cases:
         range: integer
 
   OrderLine:
     description: "Line item on a customer order"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -529,6 +537,7 @@ classes:
 
   DistributionCenter:
     description: "Distribution center / warehouse"
+    is_a: Location
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -538,13 +547,12 @@ classes:
     attributes:
       dc_code:
         range: string
-      name:
-        range: string
       type:
         range: string
 
   RetailLocation:
     description: "Retail store or customer delivery point"
+    is_a: Location
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -554,13 +562,12 @@ classes:
     attributes:
       location_code:
         range: string
-      name:
-        range: string
       store_format:
         range: string
 
   Shipment:
     description: "Outbound shipment to customer or distribution center"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -619,8 +626,6 @@ classes:
         range: integer
       arrival_date:
         range: integer
-      status:
-        range: string
       route_type:
         range: string
       freight_cost:
@@ -628,6 +633,7 @@ classes:
 
   ShipmentLine:
     description: "Line item on a shipment"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -665,7 +671,7 @@ classes:
       day:
         range: integer
       location_type:
-        range: string
+        range: LocationType
       quantity_cases:
         range: decimal
 
@@ -690,9 +696,9 @@ classes:
       segment_code:
         range: string
       origin_type:
-        range: string
+        range: LocationType
       destination_type:
-        range: string
+        range: LocationType
       transport_mode:
         range: string
       distance_km:
@@ -715,7 +721,7 @@ classes:
       forecast_version:
         range: string
       location_type:
-        range: string
+        range: LocationType
       forecast_date:
         range: integer
       forecast_quantity_cases:
@@ -729,6 +735,7 @@ classes:
 
   Return:
     description: "Customer return (RMA) header"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -751,11 +758,10 @@ classes:
         range: string
       return_date:
         range: integer
-      status:
-        range: string
 
   ReturnLine:
     description: "Line item on a customer return"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -786,6 +792,9 @@ classes:
 
   ChartOfAccounts:
     description: "General ledger chart of accounts"
+    mixins:
+      - HasActiveFlag
+      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -834,6 +843,7 @@ classes:
 
   APInvoice:
     description: "Accounts payable invoice from supplier"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -857,11 +867,10 @@ classes:
         range: integer
       total_amount:
         range: decimal
-      status:
-        range: string
 
   APInvoiceLine:
     description: "Line item on an AP invoice"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -875,6 +884,7 @@ classes:
 
   ARInvoice:
     description: "Accounts receivable invoice to customer"
+    is_a: TransactionDocument
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -899,11 +909,10 @@ classes:
         range: integer
       total_amount:
         range: decimal
-      status:
-        range: string
 
   ARInvoiceLine:
     description: "Line item on an AR invoice"
+    is_a: LineItem
     instantiates:
       - vg:SQLMappedClass
     annotations:
@@ -1136,11 +1145,8 @@ classes:
       vg:range_class: '["SKU", "BulkIntermediate"]'
       vg:operation_types: '["direct_join"]'
       vg:functional: true
-      vg:type_discriminator:
-        column: bom_level
-        mapping:
-          0: SKU
-          1: BulkIntermediate
+      vg:type_discriminator: >-
+        {"column": "bom_level", "mapping": {"0": "SKU", "1": "BulkIntermediate"}}
 
   FormulaHasIngredients:
     description: "Formula requires ingredients (BOM)"
@@ -1251,11 +1257,8 @@ classes:
       vg:range_class: '["SKU", "BulkIntermediate"]'
       vg:operation_types: '["direct_join"]'
       vg:functional: true
-      vg:type_discriminator:
-        column: product_type
-        mapping:
-          finished_good: SKU
-          bulk_intermediate: BulkIntermediate
+      vg:type_discriminator: >-
+        {"column": "product_type", "mapping": {"finished_good": "SKU", "bulk_intermediate": "BulkIntermediate"}}
 
   BatchConsumesIngredient:
     description: "Batch consumed ingredients during production"
@@ -1459,12 +1462,8 @@ classes:
       vg:domain_class: Inventory
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join"]'
-      vg:type_discriminator:
-        column: location_type
-        mapping:
-          plant: Plant
-          dc: DistributionCenter
-          retail: RetailLocation
+      vg:type_discriminator: >-
+        {"column": "location_type", "mapping": {"plant": "Plant", "dc": "DistributionCenter", "retail": "RetailLocation"}}
 
   # --- LOGISTICS domain ---
 
@@ -1480,12 +1479,8 @@ classes:
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
       vg:functional: true
-      vg:type_discriminator:
-        column: origin_type
-        mapping:
-          plant: Plant
-          dc: DistributionCenter
-          retail: RetailLocation
+      vg:type_discriminator: >-
+        {"column": "origin_type", "mapping": {"plant": "Plant", "dc": "DistributionCenter", "retail": "RetailLocation"}}
       vg:is_weighted: true
       vg:weight_columns: >-
         [
@@ -1512,12 +1507,8 @@ classes:
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
       vg:functional: true
-      vg:type_discriminator:
-        column: destination_type
-        mapping:
-          plant: Plant
-          dc: DistributionCenter
-          retail: RetailLocation
+      vg:type_discriminator: >-
+        {"column": "destination_type", "mapping": {"plant": "Plant", "dc": "DistributionCenter", "retail": "RetailLocation"}}
       vg:is_weighted: true
       vg:weight_columns: >-
         [

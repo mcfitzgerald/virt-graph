@@ -69,6 +69,20 @@ src/virt_graph/
     └── guards.py         # Runtime safety guards
 ```
 
+### Schema Layers
+
+```
+virt_graph.yaml     ← VG extension vocabulary (domain-agnostic metamodel)
+scm_base.yaml       ← Supply chain structural patterns (slots, enums, abstract classes, mixins)
+pcg_example/
+  ontology/
+    pcg.yaml        ← Domain ontology (imports scm_base, uses is_a/mixins, has VG annotations)
+```
+
+**`scm_base.yaml`** provides reusable patterns: abstract classes (`Location`, `TransactionDocument`, `LineItem`), mixins (`HasActiveFlag`, `HasName`), shared slots, and `LocationType` enum. Domain ontologies import it via `imports: ../../scm_base`.
+
+**`OntologyAccessor`** loads `SchemaView(merge_imports=True)` alongside raw YAML. Use `get_class_inherited_attributes(name)` to see all attributes including inherited ones.
+
 ### Key Concepts
 
 **Two-layer validation**: Ontologies are validated first by LinkML (structure) then by VG metamodel (`virt_graph.yaml`) for required annotations.

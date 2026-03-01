@@ -2,6 +2,12 @@
 
 VG/SQL extends LinkML with custom annotations using the `vg:` prefix. These annotations map graph concepts to SQL structures and define traversal behavior.
 
+## Abstract Classes and Mixins
+
+Domain ontologies can import `scm_base.yaml` for reusable structural patterns. Abstract classes (`abstract: true`) and mixins (`mixin: true`) do NOT have `instantiates` and are automatically excluded from TBox/RBox. Only concrete children need `instantiates: vg:SQLMappedClass`.
+
+All complex VG annotations (type_discriminator, state_machine, axioms, context, etc.) must use the `>-` JSON string format for compatibility with LinkML's SchemaView.
+
 ## Extension Classes
 
 VG defines two extension classes that ontology classes instantiate:
