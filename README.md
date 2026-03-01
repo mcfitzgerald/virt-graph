@@ -56,33 +56,44 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
 
-### Metamodel Features (v3.0)
+### The Virtual Twin
 
-The metamodel supports advanced patterns:
+The ontology doesn't just map tables — it declares the **graph structure** that lives in the agentic system's reasoning. The PCG reference ontology demonstrates this with three distinct graph patterns:
 
-| Feature | Annotation | Description |
-|---------|------------|-------------|
-| Composite Keys | `vg:primary_key: '["col1", "col2"]'` | Multi-column primary/foreign keys |
-| AI Context | `vg:context` | Structured hints with definition, business_logic, data_quality_notes |
-| Edge Filtering | `vg:sql_filter` | SQL WHERE clause for edge tables |
-| Edge Properties | `vg:edge_attributes` | Property Graph style edge data |
-| Polymorphism | `vg:type_discriminator` | Native YAML format for multi-class domain/range |
-| Axioms | `vg:axioms` | SQL-evaluable data integrity constraints |
-| State Machines | `vg:state_machine` | Lifecycle states and valid transitions |
-| Flow Config | `vg:flow_config` | Material/financial flow metadata for throughput analysis |
-| Actions | `vg:actions` | Semantic mutation docs for what-if reasoning |
-| Scenario Params | `vg:scenario_params` | Perturbable attributes with propagation direction |
+| Graph Pattern | What It Is | Operation Types | Handler |
+|---|---|---|---|
+| **Transport network** | `route_segments` with polymorphic origin/destination across Plants, DCs, RetailLocations | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | Network handlers |
+| **SKU alias chain** | Self-referential `skus.supersedes_sku_id` forming replacement chains | `recursive_traversal` | `traverse()` |
+| **BOM hierarchy** | `formula_ingredients` linking formulas to ingredients with quantity rollup | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
+
+These declarations drive the **dispatch pattern**: the agentic system reads the ontology, sees the operation type, and knows whether to generate SQL or call a handler.
+
+### Ontology Features
+
+The metamodel (`virt_graph.yaml` v3.0) supports rich graph declarations. Here's what the PCG ontology actually uses:
+
+| Feature | What It Does | PCG Usage |
+|---------|-------------|-----------|
+| **Polymorphism** | `vg:type_discriminator` resolves FKs that point to multiple table types | 5 relationships — route segments, batches, formulas, inventory |
+| **Edge weights** | `vg:weight_columns` for pathfinding algorithms | `distance_km`, `transit_time_hours` on transport network |
+| **Edge properties** | `vg:edge_attributes` for Property Graph style data on edges | `unit_cost`/`lead_time_days` on supplier offers, `quantity_kg` on BOM |
+| **Context blocks** | `vg:context` provides domain semantics for AI query generation | 6 entities + 6 relationships with business logic hints |
+| **State machines** | `vg:state_machine` declares lifecycle states and transitions | Orders, POs, batches, shipments, goods receipts, returns |
+| **Flow config** | `vg:flow_config` declares material/financial/information flows | 10 relationships with conservation groups |
+| **Axioms** | `vg:axioms` are SQL-evaluable integrity constraints | Mass balance, temporal ordering, GL balance |
+| **Actions** | `vg:actions` document mutations for what-if reasoning | Production start, order fulfillment, capacity changes |
+| **OWL 2 axioms** | `vg:functional`, `vg:acyclic`, etc. | SKU chain (asymmetric, irreflexive, acyclic), many functional FKs |
 
 ### Operation Types
 
-The ontology classifies relationships by what operations they support:
+The ontology classifies relationships by what operations they support (8 of 11 types used in PCG):
 
 | Category | Handlers | Use Case |
 |----------|----------|----------|
-| **Direct** | SQL joins | Simple lookups, aggregations |
-| **Traversal** | `traverse()` | Recursive paths (supplier networks, hierarchies) |
-| **Aggregation** | `path_aggregate()` | Value aggregation along paths (e.g., BOM explosion) |
-| **Algorithm** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
+| **Direct** | SQL joins | Simple lookups, aggregations (47 relationships) |
+| **Traversal** | `traverse()` | Recursive paths — SKU alias chains |
+| **Aggregation** | `path_aggregate()` | Value rollup along paths — BOM explosion |
+| **Algorithm** | `shortest_path()`, `centrality()`, etc. | Transport network analysis |
 | **Kinetic** | Ad-hoc SQL via Claude | Flow/state/scenario analysis (handlers planned) |
 
 ### Example Handler Usage
@@ -143,10 +154,25 @@ All queries are generated on-the-fly by the agentic system—no hardcoded templa
 
 VG/SQL is built for a new paradigm: **tools running in a loop** ([Willison, 2025](https://simonwillison.net/2025/Sep/18/agents/)). General-purpose agentic systems like **Claude Code** provide a complete environment—file access, code execution, web search, reasoning—with batteries included.
 
-VG/SQL leverages these native capabilities:
-- **Ontology discovery**: Introspect database schema, generate LinkML ontology
-- **Dispatch**: Natural language question → determine if handler is needed
-- **Query generation**: On-the-fly SQL or handler calls (not templates)
+The ontology is the key artifact — it tells the agentic system everything it needs to answer graph questions over SQL:
+
+```
+User: "What's the shortest transport route from Plant 7 to RetailLocation 42?"
+
+Claude reads ontology → sees RouteSegmentOrigin/Destination:
+  - operation_types: [shortest_path, centrality, ...]
+  - weight_columns: [distance_km, transit_time_hours]
+  - type_discriminator: {column: origin_type, mapping: {plant: Plant, dc: DC, ...}}
+
+Claude dispatches → shortest_path(conn, nodes_table="route_segments", ...)
+```
+
+No hardcoded query templates. The ontology declares what's possible; the agentic system figures out how.
+
+- **Ontology discovery**: Introspect database schema, generate LinkML ontology via 4-round protocol
+- **Dispatch**: Read operation types → SQL join or handler call
+- **Context blocks**: Domain semantics (business logic, traversal hints) guide query generation
+- **Polymorphism**: Type discriminators let the system resolve FKs that point to multiple table types
 
 The ontology + handlers are the contribution; Claude Code is the enabler.
 
