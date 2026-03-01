@@ -144,7 +144,7 @@ class OntologyAccessor:
         if cls._metamodel_loaded:
             return
 
-        metamodel_path = Path(__file__).parent.parent.parent / "virt_graph.yaml"
+        metamodel_path = Path(__file__).parent / "virt_graph.yaml"
         sv = SchemaView(str(metamodel_path))
 
         # Extract required fields from SQLMappedClass

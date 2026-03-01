@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-03-01
+
+### Changed
+
+- **Repository reorganization**
+  - Moved `virt_graph.yaml` → `src/virt_graph/virt_graph.yaml` (ships with package)
+  - Moved `scm_base.yaml` → `pcg_example/ontology/scm_base.yaml` (sibling of pcg.yaml)
+  - Moved `schema.sql` → `pcg_example/pcg_schema.sql`
+  - Moved gap analyses, whitepaper, research PDF → `planning/`
+  - Updated all internal paths: metamodel loader, LinkML imports, test fixtures
+  - Added `virt_graph.yaml` to pyproject.toml package data
+
+### Removed
+
+- `Makefile` — commands documented in CLAUDE.md, no build targets needed
+- `scripts/validate_neo4j.py` — no Neo4j infrastructure on this branch
+- `mkdocs.yml` — docs serving not currently active
+
+---
+
 ## [1.3.0] - 2026-02-28
 
 ### Added

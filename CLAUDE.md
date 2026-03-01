@@ -31,23 +31,17 @@ VG/SQL ("VeeJee over Sequel") enables graph-like queries over relational SQL dat
 
 ```bash
 # Setup
-make install          # Install Python dependencies via Poetry
-
-# Ontology validation
-make validate-ontology  # Full two-layer validation (LinkML + VG)
-make show-ontology      # Show TBox/RBox definitions
+poetry install                                    # Install dependencies
 
 # Testing
-make test-ontology      # Run ontology validation tests
-poetry run pytest pcg_example/tests/ -v  # All tests
+poetry run pytest pcg_example/tests/ -v           # All tests
 
-# Neo4j (for benchmarking)
-make neo4j-up         # Start Neo4j
-make neo4j-down       # Stop Neo4j
-make neo4j-cycle      # Full reset (fixes PID issues)
+# Ontology validation
+poetry run python scripts/validate_ontology.py --all   # Full two-layer validation (LinkML + VG)
+poetry run python scripts/show_ontology.py             # Show TBox/RBox definitions
 
 # Documentation
-make serve-docs       # Serve docs at localhost:8000
+poetry run mkdocs serve                           # Serve docs at localhost:8000
 ```
 
 ## Architecture
@@ -72,14 +66,16 @@ src/virt_graph/
 ### Schema Layers
 
 ```
-virt_graph.yaml     ← VG extension vocabulary (domain-agnostic metamodel)
-scm_base.yaml       ← Supply chain structural patterns (slots, enums, abstract classes, mixins)
+src/virt_graph/
+  virt_graph.yaml   ← VG extension vocabulary (domain-agnostic metamodel)
 pcg_example/
   ontology/
+    scm_base.yaml   ← Supply chain structural patterns (slots, enums, abstract classes, mixins)
     pcg.yaml        ← Domain ontology (imports scm_base, uses is_a/mixins, has VG annotations)
+  pcg_schema.sql    ← PostgreSQL DDL for the PCG ERP database
 ```
 
-**`scm_base.yaml`** provides reusable patterns: abstract classes (`Location`, `TransactionDocument`, `LineItem`), mixins (`HasActiveFlag`, `HasName`), shared slots, and `LocationType` enum. Domain ontologies import it via `imports: ../../scm_base`.
+**`scm_base.yaml`** provides reusable patterns: abstract classes (`Location`, `TransactionDocument`, `LineItem`), mixins (`HasActiveFlag`, `HasName`), shared slots, and `LocationType` enum. Domain ontologies import it via `imports: scm_base`.
 
 **`OntologyAccessor`** loads `SchemaView(merge_imports=True)` alongside raw YAML. Use `get_class_inherited_attributes(name)` to see all attributes including inherited ones.
 
@@ -121,7 +117,7 @@ traverse(conn, nodes_table="skus", edges_table="skus",
 
 ### Database Access
 
-Use `psycopg2` for PostgreSQL (psql CLI may not be available):
+No database is running on this branch. The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference. When a database is available, use `psycopg2`:
 ```python
 import psycopg2
 conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',

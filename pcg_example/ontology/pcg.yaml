@@ -51,7 +51,7 @@ prefixes:
 
 imports:
   - linkml:types
-  - ../../scm_base
+  - scm_base
 
 default_range: string
 

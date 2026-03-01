@@ -21,7 +21,7 @@ import yaml
 from linkml_runtime.utils.schemaview import SchemaView
 
 ONTOLOGY_PATH = Path(__file__).parent.parent / "ontology" / "pcg.yaml"
-SCM_BASE_PATH = Path(__file__).parent.parent.parent / "scm_base.yaml"
+SCM_BASE_PATH = Path(__file__).parent.parent / "ontology" / "scm_base.yaml"
 
 
 @pytest.fixture(scope="module")
