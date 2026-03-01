@@ -7,7 +7,7 @@ which caps estimation to prevent wild over-estimates.
 
 from dataclasses import dataclass
 
-from psycopg2.extensions import connection as PgConnection
+from psycopg import Connection as PgConnection
 
 
 @dataclass

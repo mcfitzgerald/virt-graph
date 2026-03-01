@@ -114,12 +114,23 @@ traverse(conn, nodes_table="skus", edges_table="skus",
 
 ### Database Access
 
-No database is running on this branch. The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference. When a database is available, use `psycopg2`:
+Connection reads `DATABASE_URL` from environment or `.env` file. See `.env.example` for format.
+
 ```python
-import psycopg2
-conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',
-                        user='virt_graph', password='dev_password')
+from virt_graph.db import connection
+
+with connection() as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM suppliers")
+        print(cur.fetchone()[0])
 ```
+
+The PCG database runs via Docker (`prism-sim` project):
+```
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/erp_db
+```
+
+The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 
 ## Metamodel
 

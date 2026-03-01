@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-03-01
+
+### Added
+
+- **Database connectivity tooling**
+  - `src/virt_graph/db.py` — `get_connection()` + `connection()` context manager
+  - Inline `.env` parser (no `python-dotenv` dependency) reads `DATABASE_URL`
+  - `.env.example` with connection string template
+  - `pcg_example/tests/test_db_connection.py` — integration test (skips if DB unavailable)
+
+- **Benchmark question categories** (`pcg_example/benchmark/question_categories.md`)
+  - Domain-agnostic category definitions for 85 benchmark questions
+  - Difficulty tiers based on handler composition
+  - VG/SQL feature coverage matrix
+  - Template question patterns with abstract placeholders
+  - Per-question mapping to handlers and operation types
+
+- **Ontology creation lifecycle** (`docs/ontology/creating-ontologies.md`)
+  - Phase 2: Complete FK Coverage — polymorphism, context blocks, edge attributes
+  - Phase 3: Kinetic Enrichment — state machines, flows, axioms, actions, scenarios
+  - Phase 4: Structural Patterns — class hierarchy, mixins, enums, imports
+  - Phase 5: Schema Validation — cross-reference against live database
+  - Inline SQL introspection queries for schema discovery
+
+### Changed
+
+- **Migrated from psycopg2 to psycopg (v3)**
+  - Replaced `psycopg2-binary` with `psycopg[binary]>=3.1` in dependencies
+  - Updated all handler imports: `from psycopg import Connection as PgConnection`
+  - Updated `get_connection()` in `base.py` to use `psycopg.connect(conninfo)`
+  - Connection type hint: `psycopg.Connection` replaces `psycopg2.extensions.connection`
+  - All existing `%s` parameter style queries work unchanged with psycopg v3
+- Project version `1.3.1` → `1.4.0`
+
+---
+
 ## [1.3.1] - 2026-03-01
 
 ### Changed

@@ -1,24 +1,21 @@
 # Creating Ontologies
 
-VG/SQL ontologies are created through an interactive discovery process with Claude. This guide walks through the 4-round protocol.
+VG/SQL ontologies are created through an interactive discovery process with Claude, then enriched through four additional phases. This guide covers the full lifecycle.
 
 ## Overview
 
-The discovery protocol introspects your database schema and generates a complete LinkML ontology with VG extensions. Claude handles the technical details; you provide domain knowledge.
-
 ```
-Round 1: Schema Introspection    → Discover tables, FKs, constraints
-Round 2: Entity Discovery (TBox) → Propose entity classes
-Round 3: Relationship Discovery  → Propose relationship classes
-Round 4: Draft & Validate        → Write ontology, run validation
+Phase 1: Discovery Protocol (4 rounds)  → Structural ontology with entity/relationship classes
+Phase 2: Complete FK Coverage            → Map all FKs, identify polymorphism, add context
+Phase 3: Kinetic Enrichment              → State machines, flows, axioms, actions, scenario params
+Phase 4: Structural Patterns             → Class hierarchy, mixins, enums, imports
+Phase 5: Schema Validation               → Cross-reference ontology against live database
 ```
-
-After each round, you review and correct before proceeding.
 
 ## Prerequisites
 
 - PostgreSQL database running and accessible
-- VG/SQL installed (`make install`)
+- VG/SQL installed (`poetry install`)
 - Claude Code session active
 
 ## Starting a Discovery Session
@@ -29,38 +26,75 @@ Tell Claude the database connection details:
 Create an ontology for my database at postgresql://user:pass@localhost:5432/mydb
 ```
 
-Claude will begin with Round 1 automatically.
+Claude will begin with Phase 1 automatically.
 
-## Round 1: Schema Introspection
+---
 
-Claude queries `information_schema` to discover:
+## Phase 1: Discovery Protocol
 
-- Tables with columns and data types
-- Foreign key relationships
-- Self-referential tables (same table on both ends of FK)
-- Check constraints (especially self-reference prevention)
-- Unique constraints (natural key candidates)
+The core 4-round protocol introspects your database and generates the structural ontology.
 
-### Pattern Recognition
+### Round 1: Schema Introspection
+
+Claude queries `information_schema` to discover tables, FKs, constraints, and patterns.
+
+**SQL Introspection Queries:**
+
+```sql
+-- Tables and columns
+SELECT table_name, column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+ORDER BY table_name, ordinal_position;
+
+-- Foreign keys
+SELECT
+    tc.table_name AS source_table,
+    kcu.column_name AS source_column,
+    ccu.table_name AS target_table,
+    ccu.column_name AS target_column
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu
+    ON tc.constraint_name = ccu.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY';
+
+-- Check constraints (self-reference prevention, enums)
+SELECT table_name, constraint_name, check_clause
+FROM information_schema.check_constraints
+WHERE constraint_schema = 'public';
+
+-- Unique constraints (natural key candidates)
+SELECT tc.table_name, kcu.column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+WHERE tc.constraint_type = 'UNIQUE';
+
+-- Row counts (fast, from statistics)
+SELECT relname AS table_name, reltuples::bigint AS row_count
+FROM pg_class
+WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace;
+```
+
+**Pattern Recognition:**
 
 | Pattern | Interpretation |
 |---------|----------------|
-| `deleted_at` column | Soft delete enabled |
+| `deleted_at` / `is_active` column | Soft delete enabled |
 | `_id` suffix columns | Foreign keys |
-| Two FKs to same table | Edge/relationship table |
+| Two FKs to same table | Junction/edge table |
 | `code`, `number` unique columns | Natural key candidates |
+| `_type` suffix columns | Polymorphism discriminators |
+| `status` column with CHECK constraint | State machine candidate |
+| Self-referential FK (table → itself) | Recursive traversal candidate |
 
-### Your Input
+**Your input:** Review the table summary. Correct misunderstandings about which tables are domain entities vs. infrastructure.
 
-Review the table summary. Correct any misunderstandings:
+### Round 2: Entity Discovery (TBox)
 
-- "The `audit_log` table is for logging, not a domain entity"
-- "The `supplier_code` column is the business identifier"
-- "The `route_segments` table represents a transport network graph"
-
-## Round 2: Entity Discovery (TBox)
-
-Claude proposes entity classes for each table. Example:
+Claude proposes entity classes for each table:
 
 ```yaml
 Supplier:
@@ -80,36 +114,28 @@ Supplier:
     name:
       range: string
       required: true
-    tier:
-      range: integer
 ```
 
-### Your Input
+**Your input:** Review class proposals — rename for clarity, exclude non-domain tables, add descriptions.
 
-Review class proposals:
-
-- "Rename `SupplierRelationship` to `SupplierNetwork` for clarity"
-- "The `tier` attribute should have a description explaining 1=direct, 2=second-level"
-- "Don't include `audit_log` as an entity class"
-
-## Round 3: Relationship Discovery (RBox)
+### Round 3: Relationship Discovery (RBox)
 
 Claude proposes relationship classes for each FK. This is the most critical round.
 
-### Operation Type Determination
+**Operation Type Determination:**
 
 | Pattern | Operation Types |
 |---------|-----------------|
 | Simple FK (A → B) | `direct_join` |
 | Self-referential (A → A) | `recursive_traversal` |
 | Self-referential + weights | `shortest_path`, `centrality`, etc. |
-| Hierarchy with quantities | `hierarchical_aggregation` |
+| Hierarchy with quantities | `path_aggregation`, `hierarchical_aggregation` |
 
-### Example Direct Relationship
+**Example direct relationship:**
 
 ```yaml
-PlacedBy:
-  description: "Order was placed by customer"
+OrderPlacedByCustomer:
+  description: "Order placed by a customer"
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
@@ -122,192 +148,419 @@ PlacedBy:
     vg:functional: true
 ```
 
-### Example Traversal Relationship
+**SME Enrichment Questions** (for traversal/algorithm relationships):
 
-```yaml
-SKUSupersedes:
-  description: "SKU supersedes another SKU (alias/replacement chain)"
-  instantiates:
-    - vg:SQLMappedRelationship
-  annotations:
-    vg:edge_table: skus
-    vg:domain_key: id
-    vg:range_key: supersedes_sku_id
-    vg:domain_class: SKU
-    vg:range_class: SKU
-    vg:operation_types: '["direct_join", "recursive_traversal"]'
-    vg:asymmetric: true
-    vg:irreflexive: true
-    vg:acyclic: true
-```
-
-### Example Algorithm Relationship
-
-```yaml
-RouteSegmentOrigin:
-  description: "Route segment originates from a location (polymorphic)"
-  instantiates:
-    - vg:SQLMappedRelationship
-  annotations:
-    vg:edge_table: route_segments
-    vg:domain_key: id
-    vg:range_key: origin_id
-    vg:domain_class: RouteSegment
-    vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
-    vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
-    vg:is_weighted: true
-    vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}]'
-```
-
-### Key Questions Claude Will Ask
-
-For traversal/algorithm relationships:
-
-1. **Inverse pairs**: "Do users need to traverse in both directions?"
-   - YES → Create inverse (e.g., `ComponentOf` / `HasComponent`)
-   - NO → Single relationship is sufficient
-
-2. **Traversal semantics**: "What do inbound/outbound mean in business terms?"
-   - Document clearly (e.g., inbound = "upstream suppliers")
-
+1. **Inverse pairs**: "Do users need to traverse in both directions with distinct semantics?"
+2. **Traversal semantics**: "What do inbound and outbound mean in business terms?"
 3. **Transitivity**: "If A→B and B→C, does A→C hold?"
-   - Usually NO for supply chains, YES for `partOf` relationships
-
 4. **Symmetry**: "If A→B, does B→A always hold?"
-   - Symmetric relationships don't need inverses
 
-### Your Input
+**Your input:** Review relationship proposals — correct operation types, add OWL 2 axioms.
 
-Review relationship proposals:
+### Round 4: Draft & Validate
 
-- "The `SKUSupersedes` relationship should be `acyclic: true` since we don't allow circular alias chains"
-- "Route segments need algorithm operation types for pathfinding"
-- "The `distance_km` weight column is the one used for routing"
+Claude writes the complete ontology and runs two-layer validation.
 
-## Round 4: Draft & Validate
-
-Claude writes the complete ontology and runs validation.
-
-### Two-Layer Validation
-
-**Layer 1: LinkML Structure**
+**Layer 1 — LinkML Structure:**
 ```bash
 poetry run linkml-lint --validate-only ontology/my_domain.yaml
 ```
-Checks YAML syntax and LinkML schema structure.
 
-**Layer 2: VG Annotations**
+**Layer 2 — VG Annotations:**
 ```python
 from virt_graph.ontology import OntologyAccessor
+from pathlib import Path
 
-# Raises OntologyValidationError if invalid
-ontology = OntologyAccessor("ontology/my_domain.yaml", validate=True)
+ontology = OntologyAccessor(Path("ontology/my_domain.yaml"), validate=True)
 ```
-Checks VG-specific requirements (required annotations, valid operation types, etc.).
 
-### Common Validation Errors
+**Common validation errors:**
 
 | Error | Fix |
 |-------|-----|
 | "Missing required annotation: vg:table" | Add `vg:table` to entity class |
-| "Invalid operation_type: traverse" | Use valid types: `recursive_traversal` |
+| "Invalid operation_type: traverse" | Use `recursive_traversal` |
 | "Unknown domain_class: supplier" | Match class name exactly: `Supplier` |
 
-### Your Input
+---
 
-Review the complete ontology file. Request changes if needed:
+## Phase 2: Complete FK Coverage
 
-- "Add a description to the `ConnectsTo` relationship"
-- "The row count for suppliers is outdated, please re-query"
+After the initial 4 rounds, go back and ensure every FK column in the DDL is covered.
 
-## Post-Discovery
+### Discover Unmapped FKs
 
-After the ontology is created:
+Compare ontology relationships against actual FK constraints:
 
-### Verify with Tests
+```sql
+-- All FKs in the database
+SELECT
+    tc.table_name,
+    kcu.column_name AS fk_column,
+    ccu.table_name AS target_table,
+    ccu.column_name AS target_column
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu
+    ON tc.constraint_name = ccu.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+ORDER BY tc.table_name, kcu.column_name;
+```
+
+Cross-reference against `vg:domain_key` and `vg:range_key` annotations in the ontology. Any FK not covered by a relationship class needs one.
+
+### Identify Polymorphic Relationships
+
+Look for FKs where the target depends on a discriminator column:
+
+```sql
+-- FKs where the source table also has a *_type column
+SELECT
+    tc.table_name,
+    kcu.column_name AS fk_column,
+    ccu.table_name AS target_table,
+    c.column_name AS type_column
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu
+    ON tc.constraint_name = ccu.constraint_name
+JOIN information_schema.columns c
+    ON c.table_name = tc.table_name
+    AND c.column_name LIKE '%_type'
+WHERE tc.constraint_type = 'FOREIGN KEY'
+ORDER BY tc.table_name;
+```
+
+For polymorphic relationships, add:
+- `vg:range_class` as a JSON array of possible target classes
+- `vg:type_discriminator` with column and value→class mapping
+
+```yaml
+vg:type_discriminator: >-
+  {"column": "origin_type", "mapping": {"plant": "Plant", "dc": "DistributionCenter", "retail": "RetailLocation"}}
+```
+
+### Add Context Blocks
+
+For complex entities and relationships, add `vg:context` to guide AI query generation:
+
+```yaml
+vg:context: >-
+  {
+    "business_logic": "Batches represent a single production run...",
+    "llm_prompt_hint": "When querying batches, always consider the product_type discriminator...",
+    "traversal_semantics": {
+      "inbound": "What inputs went into this batch?",
+      "outbound": "What products did this batch produce?"
+    }
+  }
+```
+
+Context blocks are especially valuable for:
+- Entities with non-obvious semantics
+- Polymorphic relationships (explain when each target type applies)
+- Relationships without clean FK constraints (explain join logic)
+- Edge cases in the domain model
+
+### Add Edge Attributes
+
+For junction tables with meaningful columns beyond the FK pair:
+
+```yaml
+vg:edge_attributes: >-
+  [
+    {"name": "quantity_kg", "type": "decimal", "description": "Amount of ingredient in formula"},
+    {"name": "sequence", "type": "integer", "description": "Order of ingredient in formula"}
+  ]
+```
+
+### Add SQL Filters
+
+For relationships that should filter on a condition by default:
+
+```yaml
+vg:sql_filter: "is_active = true"
+```
+
+---
+
+## Phase 3: Kinetic Enrichment
+
+Add behavioral metadata that describes how entities change over time.
+
+### State Machines
+
+For entities with a `status` column and defined lifecycle:
+
+```yaml
+vg:state_machine: >-
+  {
+    "state_column": "status",
+    "states": ["draft", "submitted", "confirmed", "shipped", "received"],
+    "initial": "draft",
+    "terminal": ["received"],
+    "transitions": [
+      {"from": "draft", "to": "submitted", "label": "submit"},
+      {"from": "submitted", "to": "confirmed", "label": "confirm"},
+      {"from": "confirmed", "to": "shipped", "label": "ship"},
+      {"from": "shipped", "to": "received", "label": "receive"}
+    ]
+  }
+```
+
+**Discovery approach:** Query for status columns and their distinct values:
+
+```sql
+-- Find status columns and their values
+SELECT table_name, column_name
+FROM information_schema.columns
+WHERE column_name IN ('status', 'state', 'lifecycle_state')
+  AND table_schema = 'public';
+
+-- For each, get distinct values
+SELECT DISTINCT status FROM orders ORDER BY status;
+```
+
+Then ask the SME about valid transitions.
+
+### Flow Configurations
+
+For relationships that represent material, financial, or information flows:
+
+```yaml
+vg:flow_config: >-
+  {
+    "flow_type": "material",
+    "measure_column": "quantity_kg",
+    "conservation_group": "production_mass_balance",
+    "direction": "domain_to_range"
+  }
+```
+
+Group flows into conservation groups where inflows must equal outflows (e.g., production mass balance, procure-to-pay).
+
+### Axioms
+
+SQL-evaluable integrity constraints:
+
+```yaml
+vg:axioms: >-
+  [
+    {
+      "name": "mass_balance",
+      "type": "conservation",
+      "severity": "warning",
+      "sql_check": "SELECT batch_id FROM batches b WHERE ABS(input_kg - output_kg) > 0.01",
+      "description": "Input mass must equal output mass within tolerance"
+    }
+  ]
+```
+
+### Actions
+
+Document mutations for what-if reasoning:
+
+```yaml
+vg:actions: >-
+  [
+    {
+      "name": "start_production",
+      "description": "Begin production run",
+      "effects": [
+        {"type": "state_change", "from": "planned", "to": "in_progress"},
+        {"type": "create", "target": "MaterialTransaction"}
+      ]
+    }
+  ]
+```
+
+### Scenario Parameters
+
+Mark attributes that can be perturbed in what-if analysis:
+
+```yaml
+vg:scenario_params: >-
+  [
+    {"attribute": "capacity_tons_per_day", "type": "numeric", "perturbation": "multiply", "range": [0.5, 1.5]},
+    {"attribute": "is_active", "type": "boolean", "perturbation": "toggle"}
+  ]
+```
+
+---
+
+## Phase 4: Structural Patterns
+
+Refactor the flat ontology into a proper class hierarchy.
+
+### Identify Abstract Patterns
+
+Look for groups of tables that share columns:
+
+```sql
+-- Find columns that appear in multiple tables
+SELECT column_name, COUNT(DISTINCT table_name) AS table_count,
+       array_agg(table_name) AS tables
+FROM information_schema.columns
+WHERE table_schema = 'public'
+GROUP BY column_name
+HAVING COUNT(DISTINCT table_name) >= 3
+ORDER BY table_count DESC;
+```
+
+Common patterns:
+- **Location types** → abstract `Location` class
+- **Document types** with `status`, `total_amount` → abstract `TransactionDocument`
+- **Line items** with `line_number`, `quantity` → abstract `LineItem`
+
+### Create Base Schema
+
+Create a separate `scm_base.yaml` (or domain-appropriate name) with:
+
+```yaml
+classes:
+  Location:
+    abstract: true
+    description: "Abstract location in the network"
+    attributes:
+      name:
+        range: string
+      is_active:
+        range: boolean
+
+  HasActiveFlag:
+    mixin: true
+    attributes:
+      is_active:
+        range: boolean
+```
+
+### Use Imports
+
+The domain ontology imports the base schema:
+
+```yaml
+imports:
+  - linkml:types
+  - ../../scm_base
+```
+
+Then concrete classes use `is_a` and `mixins`:
+
+```yaml
+Plant:
+  is_a: Location
+  mixins:
+    - HasActiveFlag
+  instantiates:
+    - vg:SQLMappedClass
+  annotations:
+    vg:table: plants
+    ...
+```
+
+### Add Enums
+
+For columns with a fixed set of values:
+
+```yaml
+enums:
+  LocationType:
+    permissible_values:
+      plant:
+        description: "Manufacturing plant"
+      dc:
+        description: "Distribution center"
+      retail:
+        description: "Retail location"
+```
+
+---
+
+## Phase 5: Schema Validation
+
+Cross-reference the completed ontology against the live database.
+
+### Run Automated Validation
 
 ```bash
-# Run validation tests
-poetry run pytest tests/test_ontology_validation.py -v
+# Two-layer ontology validation (LinkML + VG)
+poetry run python scripts/validate_ontology.py --all
 
-# Run all tests
-make test
+# Schema match validation (ontology vs live database)
+poetry run python scripts/validate_schema_match.py
 ```
 
-### View the Ontology
+### Validation Checks
 
-```bash
-# Show TBox/RBox summary
-make show-ontology
-```
+| Check | Ontology Source | Database Source |
+|-------|----------------|----------------|
+| Table exists | `vg:table` per class | `information_schema.tables` |
+| Columns exist | `attributes` block | `information_schema.columns` |
+| Primary key matches | `vg:primary_key` | `table_constraints` + `key_column_usage` |
+| FK existence | `vg:domain_key`/`vg:range_key` | `referential_constraints` |
+| Row count plausibility | `vg:row_count` | `SELECT COUNT(*)` |
 
-### Use in Queries
+### Quality Checklist
 
-```python
-from virt_graph.ontology import OntologyAccessor
+After validation passes, review:
 
-ontology = OntologyAccessor("ontology/my_domain.yaml")
+- [ ] Every FK in the DDL has a corresponding relationship class
+- [ ] Polymorphic FKs have `vg:type_discriminator`
+- [ ] Self-referential tables have appropriate traversal operation types
+- [ ] Weighted edges have `vg:weight_columns`
+- [ ] Junction tables with extra columns have `vg:edge_attributes`
+- [ ] Stateful entities have `vg:state_machine`
+- [ ] Context blocks on complex entities/relationships
+- [ ] Row counts are current
 
-# Get table for entity
-table = ontology.get_class_table("Supplier")
+---
 
-# Get operation types for relationship
-op_types = ontology.get_operation_types("SuppliesTo")
+## Type Mapping Reference
 
-# List all relationships with traversal operations
-traversal_roles = [r for r in ontology.roles
-                   if 'recursive_traversal' in ontology.get_operation_types(r['name'])]
-```
+| SQL Type | LinkML Range |
+|----------|--------------|
+| VARCHAR, TEXT, CHAR | `string` |
+| INTEGER, BIGINT, SMALLINT | `integer` |
+| NUMERIC, DECIMAL, REAL, DOUBLE | `decimal` |
+| BOOLEAN | `boolean` |
+| DATE | `date` |
+| TIMESTAMP, TIMESTAMPTZ | `datetime` |
 
 ## Tips for Good Ontologies
 
 ### 1. Be Specific About Semantics
 
-Don't just accept default names. Use domain-specific terminology:
-- `SuppliesTo` instead of `SupplierToSupplier`
-- `ComponentOf` instead of `PartToPart`
+Use domain-specific relationship names, not generic FK patterns:
+- `FormulaHasIngredients` not `FormulaToIngredient`
+- `BatchProducesProduct` not `BatchProductFK`
 
 ### 2. Document Traversal Direction
 
 For traversal relationships, always clarify what inbound/outbound means:
 ```yaml
-SuppliesTo:
-  description: "Supplier sells to another supplier. Inbound = upstream (who sells to me), Outbound = downstream (who do I sell to)"
+description: "SKU supersedes another. Outbound = newer version, Inbound = older version"
 ```
 
-### 3. Consider Inverse Pairs
+### 3. Choose Appropriate Operation Types
 
-If users will ask questions in both directions, create inverse relationships:
-- "What parts make up this assembly?" → `HasComponent`
-- "What assemblies use this part?" → `ComponentOf`
+- Simple FKs → `direct_join` only
+- Recursive chains → `recursive_traversal`
+- Hierarchies with quantities → `path_aggregation`
+- Weighted networks → `shortest_path`, `centrality`, etc.
+- Operation types determine handler dispatch
 
-### 4. Choose Appropriate Operation Types
+### 4. Include Row Counts
 
-- Simple FKs use `direct_join` only
-- Hierarchies without weights use `recursive_traversal`
-- Weighted networks use algorithm types (`shortest_path`, `centrality`, etc.)
-- The operation types determine handler dispatch
-
-### 5. Include Row Counts
-
-Row counts help with query planning:
+Row counts help with query planning and estimation:
 ```yaml
 vg:row_count: 500
 ```
-
 Re-query if data volume changes significantly.
-
-## Discovery Protocol Reference
-
-The full protocol is defined in `prompts/ontology_discovery.md`. It includes:
-
-- Detailed SQL queries for schema introspection
-- Complete annotation reference
-- Robustness checklist for quality assurance
-- OOPS! pitfall avoidance guidelines
 
 ## Next Steps
 
-- [LinkML Format](linkml-format.md) - LinkML basics
-- [VG Extensions](vg-extensions.md) - Complete annotation reference
+- [VG Extensions](vg-extensions.md) - Complete metamodel annotation reference
 - [Validation](validation.md) - Validation details
+- [LinkML Format](linkml-format.md) - LinkML basics

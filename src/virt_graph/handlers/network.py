@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 import networkx as nx
-from psycopg2.extensions import connection as PgConnection
+from psycopg import Connection as PgConnection
 
 from .base import (
     MAX_NODES,

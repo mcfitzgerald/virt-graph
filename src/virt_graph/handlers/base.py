@@ -16,8 +16,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, TypedDict, Union
 
-import psycopg2
-from psycopg2.extensions import connection as PgConnection
+import psycopg
+from psycopg import Connection as PgConnection
 
 # Type alias for node IDs - can be single value or tuple for composite keys
 NodeId = Union[int, tuple[Any, ...]]
@@ -569,30 +569,21 @@ def should_stop(
         return cur.fetchone() is not None
 
 
-def get_connection(
-    host: str = "localhost",
-    port: int = 5432,
-    database: str = "supply_chain",
-    user: str = "virt_graph",
-    password: str = "dev_password",
-) -> PgConnection:
+def get_connection(conninfo: str | None = None, **kwargs) -> PgConnection:
     """
-    Get a PostgreSQL connection with standard settings.
+    Get a PostgreSQL connection.
+
+    Prefer ``virt_graph.db.connection()`` context manager for new code.
 
     Args:
-        host: Database host
-        port: Database port
-        database: Database name
-        user: Database user
-        password: Database password
+        conninfo: Connection string. If None, reads DATABASE_URL from environment.
+        **kwargs: Additional arguments passed to psycopg.connect().
 
     Returns:
-        PostgreSQL connection
+        psycopg.Connection
     """
-    return psycopg2.connect(
-        host=host,
-        port=port,
-        database=database,
-        user=user,
-        password=password,
-    )
+    if conninfo is None:
+        from ..db import get_database_url
+
+        conninfo = get_database_url()
+    return psycopg.connect(conninfo, **kwargs)

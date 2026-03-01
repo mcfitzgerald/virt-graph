@@ -9,7 +9,7 @@ Supports composite primary/foreign keys for complex entity identification.
 from datetime import datetime
 from typing import Any, Literal
 
-from psycopg2.extensions import connection as PgConnection
+from psycopg import Connection as PgConnection
 
 from ..estimator import (
     EstimationConfig,

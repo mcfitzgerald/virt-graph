@@ -15,15 +15,24 @@ This work extends the previously introduced [virtual-ontology](https://github.co
 ## Quick Start
 
 ```bash
-make install          # Install Python dependencies
-make validate-ontology  # Validate the reference ontology
-make show-ontology      # View TBox/RBox definitions
+poetry install                                    # Install dependencies
+poetry run python scripts/validate_ontology.py --all   # Validate the reference ontology
+poetry run python scripts/show_ontology.py             # View TBox/RBox definitions
+```
+
+### Database Setup
+
+```bash
+cp .env.example .env   # Configure DATABASE_URL
+# Edit .env with your PostgreSQL connection string
+poetry run pytest pcg_example/tests/test_db_connection.py -v  # Verify connection
 ```
 
 ### Prerequisites
 
 - Poetry installed (`pip install poetry`)
 - Python 3.12+
+- PostgreSQL database (for live queries)
 - Docker (for Neo4j benchmarking only)
 
 ## How VG/SQL Works
@@ -193,13 +202,7 @@ The ontology + handlers are the contribution; Claude Code is the enabler.
 
 ## Documentation
 
-Serve the full documentation locally:
-
-```bash
-make serve-docs
-```
-
-Documentation covers:
+Documentation lives in `docs/` and covers:
 - **[Architecture](docs/concepts/architecture.md)** - System design and dispatch pattern
 - **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
 - **[Handlers](docs/handlers/overview.md)** - All available graph operations

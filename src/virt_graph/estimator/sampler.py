@@ -8,7 +8,7 @@ that inform estimation and traversal strategy selection.
 from dataclasses import dataclass
 from typing import Literal
 
-from psycopg2.extensions import connection as PgConnection
+from psycopg import Connection as PgConnection
 
 
 @dataclass
