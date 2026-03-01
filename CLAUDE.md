@@ -39,9 +39,6 @@ poetry run pytest pcg_example/tests/ -v           # All tests
 # Ontology validation
 poetry run python scripts/validate_ontology.py --all   # Full two-layer validation (LinkML + VG)
 poetry run python scripts/show_ontology.py             # Show TBox/RBox definitions
-
-# Documentation
-poetry run mkdocs serve                           # Serve docs at localhost:8000
 ```
 
 ## Architecture
