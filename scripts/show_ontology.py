@@ -38,6 +38,21 @@ def format_tbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
         soft_delete = ontology.get_class_soft_delete(name)
         if soft_delete[0]:
             entry["soft_delete_column"] = soft_delete[1]
+
+        # Kinetic extensions
+        sm = ontology.get_class_state_machine(name)
+        if sm:
+            entry["state_machine"] = f"{sm['state_column']} ({len(sm.get('states', []))} states)"
+        axioms = ontology.get_class_axioms(name)
+        if axioms:
+            entry["axiom_count"] = len(axioms)
+        actions = ontology.get_class_actions(name)
+        if actions:
+            entry["action_count"] = len(actions)
+        params = ontology.get_class_scenario_params(name)
+        if params:
+            entry["scenario_param_count"] = len(params)
+
         tbox_data.append(entry)
 
     if as_json:
@@ -55,6 +70,14 @@ def format_tbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
             lines.append(f"  row_count: {entry['row_count']:,}")
         if entry.get('soft_delete_column'):
             lines.append(f"  soft_delete: {entry['soft_delete_column']}")
+        if entry.get('state_machine'):
+            lines.append(f"  state_machine: {entry['state_machine']}")
+        if entry.get('axiom_count'):
+            lines.append(f"  axioms: {entry['axiom_count']}")
+        if entry.get('action_count'):
+            lines.append(f"  actions: {entry['action_count']}")
+        if entry.get('scenario_param_count'):
+            lines.append(f"  scenario_params: {entry['scenario_param_count']}")
 
     return "\n".join(lines)
 
@@ -97,6 +120,14 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
         if temporal:
             entry["temporal_bounds"] = temporal
 
+        # Kinetic extensions
+        fc = ontology.get_role_flow_config(name)
+        if fc:
+            entry["flow_config"] = f"{fc['flow_type']} ({fc['quantity_column']} @ {fc['timestamp_column']})"
+        axioms = ontology.get_role_axioms(name)
+        if axioms:
+            entry["axiom_count"] = len(axioms)
+
         rbox_data.append(entry)
 
     if as_json:
@@ -123,6 +154,10 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
             lines.append(f"  weights: {', '.join(entry['weight_columns'])}")
         if entry.get('temporal_bounds'):
             lines.append(f"  temporal: {entry['temporal_bounds']['start_col']} -> {entry['temporal_bounds']['end_col']}")
+        if entry.get('flow_config'):
+            lines.append(f"  flow: {entry['flow_config']}")
+        if entry.get('axiom_count'):
+            lines.append(f"  axioms: {entry['axiom_count']}")
 
     return "\n".join(lines)
 
@@ -134,7 +169,7 @@ def main():
     parser.add_argument(
         "ontology_path",
         nargs="?",
-        help="Path to ontology YAML (default: fmcg_example/ontology/prism_fmcg.yaml)"
+        help="Path to ontology YAML (default: pcg_example/ontology/pcg.yaml)"
     )
     parser.add_argument(
         "--tbox-only",
@@ -158,7 +193,7 @@ def main():
     if args.ontology_path:
         ontology_path = Path(args.ontology_path)
     else:
-        ontology_path = Path(__file__).parent.parent / "fmcg_example" / "ontology" / "prism_fmcg.yaml"
+        ontology_path = Path(__file__).parent.parent / "pcg_example" / "ontology" / "pcg.yaml"
 
     if not ontology_path.exists():
         print(f"Error: {ontology_path} not found", file=sys.stderr)
@@ -192,8 +227,13 @@ def main():
 
     # Summary
     if not args.json:
+        sm_count = len(ontology.get_classes_with_state_machines())
+        fc_count = len(ontology.get_roles_with_flow_config())
+        cg_count = len(ontology.get_conservation_groups())
         print(f"\n{'=' * 60}")
         print(f"Summary: {len(ontology.classes)} entities, {len(ontology.roles)} relationships")
+        if sm_count or fc_count or cg_count:
+            print(f"Kinetic: {sm_count} state machines, {fc_count} flow configs, {cg_count} conservation groups")
 
 
 if __name__ == "__main__":

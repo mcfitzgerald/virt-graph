@@ -511,6 +511,273 @@ To see the complete metamodel:
 make show-ontology
 ```
 
+## Axioms (v3.0)
+
+Axioms are SQL-evaluable constraints declared on classes or relationships. Claude checks them via `SELECT COUNT(*) FROM table WHERE NOT (sql_expression)`.
+
+### Axiom Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique name (e.g., `mass_balance`) |
+| `description` | Yes | Human-readable explanation |
+| `axiom_type` | Yes | One of: `value_range`, `temporal_order`, `conservation`, `conditional`, `referential` |
+| `sql_expression` | Yes | SQL boolean expression that should be true for valid rows |
+| `severity` | Yes | One of: `error`, `warning`, `info` |
+
+### AxiomType Enum
+
+| Value | Description |
+|-------|-------------|
+| `value_range` | Column value within expected range |
+| `temporal_order` | Temporal ordering constraint |
+| `conservation` | Quantity/value conservation |
+| `conditional` | Constraint applies when condition met |
+| `referential` | Cross-table referential integrity |
+
+### Example (Class Axiom)
+
+```yaml
+Shipment:
+  annotations:
+    vg:axioms: >-
+      [
+        {
+          "name": "temporal_order",
+          "description": "Arrival date must be on or after ship date",
+          "axiom_type": "temporal_order",
+          "sql_expression": "arrival_date >= ship_date OR arrival_date IS NULL",
+          "severity": "error"
+        }
+      ]
+```
+
+### Example (Relationship Axiom)
+
+```yaml
+FormulaHasIngredients:
+  annotations:
+    vg:axioms: >-
+      [
+        {
+          "name": "ingredient_quantity_positive",
+          "description": "Formula ingredient quantity must be positive",
+          "axiom_type": "value_range",
+          "sql_expression": "quantity_kg > 0",
+          "severity": "error"
+        }
+      ]
+```
+
+### Claude Evaluation Pattern
+
+```python
+axioms = ontology.get_class_axioms("Shipment")
+for axiom in axioms:
+    sql = f"SELECT COUNT(*) FROM shipments WHERE NOT ({axiom['sql_expression']})"
+    # Run sql, report violations based on axiom['severity']
+```
+
+## State Machines (v3.0)
+
+State machines declare lifecycle states and valid transitions for status-bearing entities. Claude uses these for state distribution queries, transition analysis, and dwell-time calculations.
+
+### StateMachine Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `state_column` | Yes | Column containing current state |
+| `states` | Yes | All valid state values (minimum 2) |
+| `transitions` | Yes | Valid transitions (minimum 1) |
+| `initial_state` | No | Starting state for new entities |
+| `terminal_states` | No | End-of-lifecycle states |
+
+### StateTransition Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `from_state` | Yes | Source state |
+| `to_state` | Yes | Target state |
+| `guard` | No | SQL boolean expression for conditional transition |
+| `description` | No | When/why this transition occurs |
+
+### Example
+
+```yaml
+Order:
+  annotations:
+    vg:state_machine: >-
+      {
+        "state_column": "status",
+        "states": ["pending", "allocated", "shipped", "delivered"],
+        "transitions": [
+          {"from_state": "pending", "to_state": "allocated", "description": "Inventory reserved"},
+          {"from_state": "allocated", "to_state": "shipped", "description": "Shipment dispatched"},
+          {"from_state": "shipped", "to_state": "delivered", "description": "Receipt confirmed"}
+        ],
+        "initial_state": "pending",
+        "terminal_states": ["delivered"]
+      }
+```
+
+### Claude Usage Patterns
+
+```sql
+-- State distribution
+SELECT status, COUNT(*) FROM orders GROUP BY status;
+
+-- Dwell time (how long orders stay in each state)
+-- Requires transaction_sequence_id for temporal ordering
+```
+
+## Flow Configuration (v3.0)
+
+Flow configuration declares material, information, or financial flow metadata on relationships. Enables throughput analysis using Little's Law (L = λW), bottleneck detection, and conservation checking.
+
+### FlowConfig Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `flow_type` | Yes | One of: `material`, `information`, `financial` |
+| `quantity_column` | Yes | Column with flow quantity |
+| `timestamp_column` | Yes | Column with flow timestamp |
+| `conservation_group` | No | Conservation group name |
+| `unit` | No | Unit of measurement |
+| `capacity_column` | No | Capacity limit column |
+
+### FlowType Enum
+
+| Value | Description |
+|-------|-------------|
+| `material` | Physical goods (kg, cases, units) |
+| `information` | Data/document flow |
+| `financial` | Monetary flow (invoices, payments) |
+
+### Example
+
+```yaml
+BatchConsumesIngredient:
+  annotations:
+    vg:flow_config: >-
+      {
+        "flow_type": "material",
+        "quantity_column": "quantity_kg",
+        "timestamp_column": "batch_id",
+        "conservation_group": "production_mass_balance",
+        "unit": "kg"
+      }
+```
+
+### Conservation Groups
+
+Relationships in the same conservation group should satisfy quantity conservation (total in ≈ total out). Use `get_conservation_groups()` to discover groups:
+
+```python
+groups = ontology.get_conservation_groups()
+# {'procure_to_pay': [...], 'order_to_cash': [...], 'production_mass_balance': [...]}
+```
+
+### Little's Law (L = λW)
+
+For flow relationships, Claude can compute:
+- **λ** (arrival rate): `COUNT(*) / time_window` from the flow table
+- **W** (wait time): average time between entry and exit states
+- **L** (inventory): predicted WIP from λ × W
+
+## Actions (v3.0)
+
+Actions declare semantic mutations for what-if reasoning. They are **NOT executable** — they document business operations so Claude can reason about causal chains and predict downstream effects.
+
+### Action Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Action name (e.g., `allocate`) |
+| `description` | Yes | Business description |
+| `preconditions` | No | Conditions for action to occur |
+| `effects` | Yes | Changes when action executes |
+| `affected_relationships` | No | Relationships affected |
+
+### ActionEffect Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `attribute` | Yes | Column being affected |
+| `effect_type` | Yes | One of: `set`, `increment`, `trigger_transition` |
+| `description` | No | Human-readable effect description |
+
+### Example
+
+```yaml
+Order:
+  annotations:
+    vg:actions: >-
+      [
+        {
+          "name": "allocate",
+          "description": "Reserve inventory for order fulfillment",
+          "preconditions": ["status = 'pending'", "inventory >= total_cases"],
+          "effects": [
+            {"attribute": "status", "effect_type": "trigger_transition", "description": "pending -> allocated"}
+          ],
+          "affected_relationships": ["OrderHasLines"]
+        }
+      ]
+```
+
+## Scenario Parameters (v3.0)
+
+Scenario parameters declare attributes that can be perturbed in what-if analysis. Claude uses these to understand which parameters are meaningful to vary and how changes propagate.
+
+### ScenarioParam Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `attribute` | Yes | Column name to perturb |
+| `propagation` | Yes | One of: `upstream`, `downstream`, `local` |
+| `description` | No | Business meaning of perturbation |
+| `default_perturbation` | No | Suggested change (e.g., `+10%`) |
+
+### PropagationDirection Enum
+
+| Value | Description |
+|-------|-------------|
+| `upstream` | Propagates to suppliers/predecessors |
+| `downstream` | Propagates to customers/successors |
+| `local` | Affects only the entity itself |
+
+### Example
+
+```yaml
+Plant:
+  annotations:
+    vg:scenario_params: >-
+      [
+        {
+          "attribute": "capacity_tons_per_day",
+          "propagation": "downstream",
+          "description": "Plant capacity affects production throughput",
+          "default_perturbation": "-20%"
+        }
+      ]
+```
+
+### What-If Reasoning
+
+Claude uses scenario params to answer questions like:
+- "What if Plant X loses 20% capacity?" → propagate downstream to batches, shipments, orders
+- "What if demand increases 30%?" → propagate upstream to plants, POs, suppliers
+
+## Operation Types (Updated for v3.0)
+
+| Category | Operation Types | Handler |
+|----------|-----------------|---------|
+| **Direct** | `direct_join` | None needed (SQL) |
+| **Traversal** | `recursive_traversal`, `temporal_traversal` | `traverse()` |
+| **Aggregation** | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
+| **Algorithm** | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | NetworkX-based handlers |
+| **Kinetic** | `flow_analysis`, `state_analysis`, `scenario_analysis` | Ad-hoc SQL via Claude (handlers planned) |
+
 ## Next Steps
 
 - [LinkML Format](linkml-format.md) - LinkML basics

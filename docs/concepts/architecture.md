@@ -203,6 +203,33 @@ The VG metamodel (`virt_graph.yaml` at project root) defines:
 
 The `OntologyAccessor` reads this file to dynamically validate domain ontologies—no hardcoded rules in Python.
 
+## Virtual Kinetics Stack (v3.0)
+
+VG/SQL supports a 4-layer kinetics architecture, where each layer builds on the one below:
+
+```
+Layer 4: Focused Simulation (future)
+         Queuing models, Monte Carlo for cascade timing
+         ─────────────────────────────────────────────
+Layer 3: Virtual What-If
+         Scenario params + actions → predicted impact
+         Claude generates ad-hoc SQL from ontology metadata
+         ─────────────────────────────────────────────
+Layer 2: Derived Properties
+         State distribution, throughput (Little's Law),
+         conservation checks, dwell time
+         ─────────────────────────────────────────────
+Layer 1: Declared Structure
+         State machines, flow configs, axioms
+         Declared in ontology annotations (vg:state_machine, etc.)
+         ─────────────────────────────────────────────
+Layer 0: SQL Data
+         Status columns, timestamps, quantities
+         Already in the relational database
+```
+
+**Key principle**: The SQL data already contains evidence of kinetic behavior. The metamodel declares the kinetic *structure*; Claude computes kinetic *analysis* via ad-hoc SQL. No simulation engine required for Layers 1-3.
+
 ## Next Steps
 
 - [Ontology System](ontology.md) - Defining your domain

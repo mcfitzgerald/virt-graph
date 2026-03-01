@@ -1,0 +1,1374 @@
+# ============================================================================
+# Prism Consumer Goods (PCG) - ERP Supply Chain Ontology
+# ============================================================================
+#
+# First-pass ontology for the PCG schema (38 tables, ~395M rows, 365-day sim).
+# Flat class hierarchy (no is_a). All 38 tables mapped as entity classes.
+#
+# Kinetic Annotations (v3.0):
+#   - State machines: 9 entities with status lifecycle
+#   - Axioms: Physics constraints (mass balance, temporal order, GL balance)
+#   - Actions: Business mutation semantics for what-if reasoning
+#   - Scenario params: Perturbable attributes for sensitivity analysis
+#   - Flow config: Material/financial flow metadata on key relationships
+#
+# Dates are INTEGER (day number 1-365), not timestamps.
+# transaction_sequence_id provides causal ordering across tables.
+#
+# Validation:
+#   Layer 1: poetry run linkml-lint --validate-only pcg_example/ontology/pcg.yaml
+#   Layer 2: OntologyAccessor("pcg_example/ontology/pcg.yaml", validate=True)
+
+id: https://virt-graph.dev/schemas/pcg
+name: pcg
+version: "1.0.0"
+description: >-
+  Prism Consumer Goods ERP ontology for Virtual Graph.
+  Models a full FMCG supply chain across 8 domains: Source, Transform,
+  Product, Order, Fulfill, Logistics, Plan, Return, and Finance.
+  38 tables with kinetic annotations for state/flow/scenario analysis.
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  vg: https://virt-graph.dev/
+
+imports:
+  - linkml:types
+
+default_range: string
+
+annotations:
+  vg:database_type: postgresql
+  vg:database_version: "15"
+  vg:connection_string: "postgresql://virt_graph:dev_password@localhost:5433/prism_fmcg"
+
+# =============================================================================
+# CLASSES
+# =============================================================================
+
+classes:
+
+  # ===========================================================================
+  # DOMAIN A: SOURCE (Procurement & Inbound)
+  # ===========================================================================
+
+  Supplier:
+    description: "Raw material and ingredient supplier"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:identifier: supplier_code
+      vg:scenario_params: >-
+        [
+          {"attribute": "lead_time_days", "propagation": "downstream", "description": "Supplier lead time affects PO receipt timing", "default_perturbation": "+50%"}
+        ]
+    attributes:
+      supplier_code:
+        range: string
+      name:
+        range: string
+      country:
+        range: string
+      tier:
+        range: integer
+
+  Ingredient:
+    description: "Raw material input to manufacturing formulas"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ingredients
+      vg:primary_key: id
+      vg:identifier: ingredient_code
+    attributes:
+      ingredient_code:
+        range: string
+      name:
+        range: string
+      category:
+        range: string
+      cost_per_kg:
+        range: decimal
+
+  SupplierIngredient:
+    description: "Supplier-ingredient catalog with cost and lead time"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: supplier_ingredients
+      vg:primary_key: id
+    attributes:
+      unit_cost:
+        range: decimal
+      lead_time_days:
+        range: integer
+      min_order_qty:
+        range: decimal
+
+  PurchaseOrder:
+    description: "Purchase order header for procuring ingredients"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: purchase_orders
+      vg:primary_key: id
+      vg:identifier: po_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["open", "received", "closed"],
+          "transitions": [
+            {"from_state": "open", "to_state": "received", "description": "Goods receipt confirmed"},
+            {"from_state": "received", "to_state": "closed", "description": "Invoice matched and paid"}
+          ],
+          "initial_state": "open",
+          "terminal_states": ["closed"]
+        }
+    attributes:
+      po_number:
+        range: string
+      order_date:
+        range: integer
+      status:
+        range: string
+
+  PurchaseOrderLine:
+    description: "Line item on a purchase order"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: purchase_order_lines
+      vg:primary_key: '["po_id", "line_number"]'
+    attributes:
+      quantity_kg:
+        range: decimal
+      unit_cost:
+        range: decimal
+
+  GoodsReceipt:
+    description: "Goods receipt header confirming delivery of purchased materials"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: goods_receipts
+      vg:primary_key: id
+      vg:identifier: gr_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["received", "inspected", "posted"],
+          "transitions": [
+            {"from_state": "received", "to_state": "inspected", "description": "Quality inspection complete"},
+            {"from_state": "inspected", "to_state": "posted", "description": "Posted to inventory"}
+          ],
+          "initial_state": "received",
+          "terminal_states": ["posted"]
+        }
+    attributes:
+      gr_number:
+        range: string
+      receipt_date:
+        range: integer
+      status:
+        range: string
+
+  GoodsReceiptLine:
+    description: "Line item on a goods receipt"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: goods_receipt_lines
+      vg:primary_key: '["gr_id", "line_number"]'
+    attributes:
+      quantity_kg:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN B: TRANSFORM (Manufacturing)
+  # ===========================================================================
+
+  Plant:
+    description: "Manufacturing plant with production capacity"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: plants
+      vg:primary_key: id
+      vg:identifier: plant_code
+      vg:axioms: >-
+        [
+          {
+            "name": "capacity_positive",
+            "description": "Plant capacity must be positive",
+            "axiom_type": "value_range",
+            "sql_expression": "capacity_tons_per_day > 0",
+            "severity": "error"
+          }
+        ]
+      vg:scenario_params: >-
+        [
+          {"attribute": "capacity_tons_per_day", "propagation": "downstream", "description": "Plant capacity affects production throughput", "default_perturbation": "-20%"}
+        ]
+    attributes:
+      plant_code:
+        range: string
+      name:
+        range: string
+      capacity_tons_per_day:
+        range: decimal
+
+  ProductionLine:
+    description: "Production line within a plant"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: production_lines
+      vg:primary_key: id
+      vg:identifier: line_code
+    attributes:
+      line_code:
+        range: string
+      line_type:
+        range: string
+      capacity_units_per_hour:
+        range: integer
+
+  Formula:
+    description: "Manufacturing formula (recipe/BOM) for producing a product"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: formulas
+      vg:primary_key: id
+      vg:identifier: formula_code
+    attributes:
+      formula_code:
+        range: string
+      name:
+        range: string
+      batch_size_kg:
+        range: decimal
+      yield_percent:
+        range: decimal
+
+  FormulaIngredient:
+    description: "Ingredient requirement within a formula"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: formula_ingredients
+      vg:primary_key: '["formula_id", "ingredient_id", "sequence"]'
+    attributes:
+      quantity_kg:
+        range: decimal
+      sequence:
+        range: integer
+
+  WorkOrder:
+    description: "Manufacturing work order for planned production"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: work_orders
+      vg:primary_key: id
+      vg:identifier: wo_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["planned", "in_progress", "completed"],
+          "transitions": [
+            {"from_state": "planned", "to_state": "in_progress", "description": "Production started"},
+            {"from_state": "in_progress", "to_state": "completed", "description": "Production finished"}
+          ],
+          "initial_state": "planned",
+          "terminal_states": ["completed"]
+        }
+    attributes:
+      wo_number:
+        range: string
+      planned_quantity_kg:
+        range: decimal
+      status:
+        range: string
+
+  Batch:
+    description: "Production batch output from a work order"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: batches
+      vg:primary_key: id
+      vg:identifier: batch_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["pending", "in_progress", "completed"],
+          "transitions": [
+            {"from_state": "pending", "to_state": "in_progress", "description": "Batch production started"},
+            {"from_state": "in_progress", "to_state": "completed", "description": "Batch production finished"}
+          ],
+          "initial_state": "pending",
+          "terminal_states": ["completed"]
+        }
+      vg:axioms: >-
+        [
+          {
+            "name": "yield_range",
+            "description": "Yield percent must be between 0 and 100",
+            "axiom_type": "value_range",
+            "sql_expression": "yield_percent BETWEEN 0 AND 100",
+            "severity": "error"
+          }
+        ]
+      vg:actions: >-
+        [
+          {
+            "name": "start_production",
+            "description": "Begin batch production, consuming ingredients",
+            "preconditions": ["status = 'pending'", "work order is in_progress"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "pending -> in_progress"}
+            ]
+          },
+          {
+            "name": "complete_production",
+            "description": "Finish batch production, output available for shipment",
+            "preconditions": ["status = 'in_progress'"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "in_progress -> completed"},
+              {"attribute": "yield_percent", "effect_type": "set", "description": "Actual yield recorded"}
+            ]
+          }
+        ]
+    attributes:
+      batch_number:
+        range: string
+      quantity_kg:
+        range: decimal
+      yield_percent:
+        range: decimal
+      status:
+        range: string
+      production_date:
+        range: integer
+
+  BatchIngredient:
+    description: "Actual ingredient consumption in a batch"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: batch_ingredients
+      vg:primary_key: id
+    attributes:
+      quantity_kg:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN C: PRODUCT (SKU Master)
+  # ===========================================================================
+
+  BulkIntermediate:
+    description: "Intermediate bulk product (e.g., paste, base compound)"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: bulk_intermediates
+      vg:primary_key: id
+      vg:identifier: bulk_code
+    attributes:
+      bulk_code:
+        range: string
+      name:
+        range: string
+      category:
+        range: string
+
+  SKU:
+    description: "Stock keeping unit - finished good for sale"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: skus
+      vg:primary_key: id
+      vg:identifier: sku_code
+    attributes:
+      sku_code:
+        range: string
+      name:
+        range: string
+      category:
+        range: string
+      brand:
+        range: string
+      price_per_case:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN D: ORDER (Demand Signal)
+  # ===========================================================================
+
+  Channel:
+    description: "Sales channel (retail, wholesale, e-commerce)"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: channels
+      vg:primary_key: id
+      vg:identifier: channel_code
+    attributes:
+      channel_code:
+        range: string
+      name:
+        range: string
+      channel_type:
+        range: string
+
+  Order:
+    description: "Customer order header"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: orders
+      vg:primary_key: id
+      vg:identifier: order_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["pending", "allocated", "shipped", "delivered"],
+          "transitions": [
+            {"from_state": "pending", "to_state": "allocated", "description": "Inventory reserved"},
+            {"from_state": "allocated", "to_state": "shipped", "description": "Shipment dispatched"},
+            {"from_state": "shipped", "to_state": "delivered", "description": "Customer confirmed receipt"}
+          ],
+          "initial_state": "pending",
+          "terminal_states": ["delivered"]
+        }
+      vg:actions: >-
+        [
+          {
+            "name": "allocate",
+            "description": "Reserve inventory for order fulfillment",
+            "preconditions": ["status = 'pending'", "inventory >= total_cases"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "pending -> allocated"}
+            ],
+            "affected_relationships": ["OrderHasLines"]
+          },
+          {
+            "name": "ship",
+            "description": "Dispatch shipment for order",
+            "preconditions": ["status = 'allocated'"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "allocated -> shipped"}
+            ],
+            "affected_relationships": ["ShipmentHasLines"]
+          }
+        ]
+      vg:scenario_params: >-
+        [
+          {"attribute": "total_cases", "propagation": "downstream", "description": "Order volume affects shipment and inventory", "default_perturbation": "+20%"}
+        ]
+    attributes:
+      order_number:
+        range: string
+      day:
+        range: integer
+      status:
+        range: string
+      total_cases:
+        range: integer
+
+  OrderLine:
+    description: "Line item on a customer order"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: order_lines
+      vg:primary_key: '["order_id", "line_number"]'
+    attributes:
+      quantity_cases:
+        range: decimal
+      unit_price:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN E: FULFILL (Outbound)
+  # ===========================================================================
+
+  DistributionCenter:
+    description: "Distribution center / warehouse"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: distribution_centers
+      vg:primary_key: id
+      vg:identifier: dc_code
+    attributes:
+      dc_code:
+        range: string
+      name:
+        range: string
+      type:
+        range: string
+
+  RetailLocation:
+    description: "Retail store or customer delivery point"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: retail_locations
+      vg:primary_key: id
+      vg:identifier: location_code
+    attributes:
+      location_code:
+        range: string
+      name:
+        range: string
+      store_format:
+        range: string
+
+  Shipment:
+    description: "Outbound shipment to customer or distribution center"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipments
+      vg:primary_key: id
+      vg:identifier: shipment_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["planned", "in_transit", "delivered"],
+          "transitions": [
+            {"from_state": "planned", "to_state": "in_transit", "description": "Shipment departed origin"},
+            {"from_state": "in_transit", "to_state": "delivered", "description": "Shipment arrived at destination"}
+          ],
+          "initial_state": "planned",
+          "terminal_states": ["delivered"]
+        }
+      vg:axioms: >-
+        [
+          {
+            "name": "temporal_order",
+            "description": "Arrival date must be on or after ship date",
+            "axiom_type": "temporal_order",
+            "sql_expression": "arrival_date >= ship_date OR arrival_date IS NULL",
+            "severity": "error"
+          }
+        ]
+      vg:actions: >-
+        [
+          {
+            "name": "dispatch",
+            "description": "Dispatch shipment from origin",
+            "preconditions": ["status = 'planned'"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "planned -> in_transit"}
+            ]
+          },
+          {
+            "name": "deliver",
+            "description": "Mark shipment as delivered",
+            "preconditions": ["status = 'in_transit'"],
+            "effects": [
+              {"attribute": "status", "effect_type": "trigger_transition", "description": "in_transit -> delivered"}
+            ]
+          }
+        ]
+    attributes:
+      shipment_number:
+        range: string
+      ship_date:
+        range: integer
+      arrival_date:
+        range: integer
+      status:
+        range: string
+      freight_cost:
+        range: decimal
+
+  ShipmentLine:
+    description: "Line item on a shipment"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: shipment_lines
+      vg:primary_key: '["shipment_id", "line_number"]'
+    attributes:
+      quantity_cases:
+        range: decimal
+      weight_kg:
+        range: decimal
+
+  Inventory:
+    description: "Daily inventory snapshot by location and SKU"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: inventory
+      vg:primary_key: id
+      vg:axioms: >-
+        [
+          {
+            "name": "quantity_non_negative",
+            "description": "Inventory quantity must not be negative",
+            "axiom_type": "value_range",
+            "sql_expression": "quantity_cases >= 0",
+            "severity": "warning"
+          }
+        ]
+    attributes:
+      day:
+        range: integer
+      quantity_cases:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN E2: LOGISTICS (Transport Network)
+  # ===========================================================================
+
+  RouteSegment:
+    description: "Transport route segment between two locations"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: route_segments
+      vg:primary_key: id
+      vg:identifier: segment_code
+    attributes:
+      segment_code:
+        range: string
+      transport_mode:
+        range: string
+      distance_km:
+        range: decimal
+      transit_time_hours:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN F: PLAN (Demand & Supply Planning)
+  # ===========================================================================
+
+  DemandForecast:
+    description: "Demand forecast for SKU at location"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: demand_forecasts
+      vg:primary_key: id
+    attributes:
+      forecast_version:
+        range: string
+      forecast_date:
+        range: integer
+      forecast_quantity_cases:
+        range: decimal
+      forecast_type:
+        range: string
+
+  # ===========================================================================
+  # DOMAIN G: RETURN (Regenerate)
+  # ===========================================================================
+
+  Return:
+    description: "Customer return (RMA) header"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: returns
+      vg:primary_key: id
+      vg:identifier: return_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["received", "inspected", "disposed"],
+          "transitions": [
+            {"from_state": "received", "to_state": "inspected", "description": "Return inspected for condition"},
+            {"from_state": "inspected", "to_state": "disposed", "description": "Disposition decision applied"}
+          ],
+          "initial_state": "received",
+          "terminal_states": ["disposed"]
+        }
+    attributes:
+      return_number:
+        range: string
+      return_date:
+        range: integer
+      status:
+        range: string
+
+  ReturnLine:
+    description: "Line item on a customer return"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: return_lines
+      vg:primary_key: '["return_id", "line_number"]'
+    attributes:
+      quantity_cases:
+        range: decimal
+      condition:
+        range: string
+
+  DispositionLog:
+    description: "Disposition action for returned goods"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: disposition_logs
+      vg:primary_key: '["return_id", "return_line_number"]'
+    attributes:
+      disposition:
+        range: string
+      quantity_cases:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN H: FINANCE
+  # ===========================================================================
+
+  ChartOfAccounts:
+    description: "General ledger chart of accounts"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: chart_of_accounts
+      vg:primary_key: id
+      vg:identifier: account_code
+    attributes:
+      account_code:
+        range: string
+      account_name:
+        range: string
+      account_type:
+        range: string
+
+  GLJournal:
+    description: "General ledger journal entry"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: gl_journal
+      vg:primary_key: id
+      vg:axioms: >-
+        [
+          {
+            "name": "gl_balance",
+            "description": "Total debits must equal total credits per day",
+            "axiom_type": "conservation",
+            "sql_expression": "ABS(SUM(debit_amount) - SUM(credit_amount)) < 0.01",
+            "severity": "error"
+          }
+        ]
+    attributes:
+      entry_date:
+        range: integer
+      debit_amount:
+        range: decimal
+      credit_amount:
+        range: decimal
+      reference_type:
+        range: string
+
+  APInvoice:
+    description: "Accounts payable invoice from supplier"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ap_invoices
+      vg:primary_key: id
+      vg:identifier: invoice_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["open", "paid"],
+          "transitions": [
+            {"from_state": "open", "to_state": "paid", "description": "Payment processed"}
+          ],
+          "initial_state": "open",
+          "terminal_states": ["paid"]
+        }
+    attributes:
+      invoice_number:
+        range: string
+      invoice_date:
+        range: integer
+      total_amount:
+        range: decimal
+      status:
+        range: string
+
+  APInvoiceLine:
+    description: "Line item on an AP invoice"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ap_invoice_lines
+      vg:primary_key: '["invoice_id", "line_number"]'
+    attributes:
+      quantity_kg:
+        range: decimal
+      line_amount:
+        range: decimal
+
+  ARInvoice:
+    description: "Accounts receivable invoice to customer"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ar_invoices
+      vg:primary_key: id
+      vg:identifier: invoice_number
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["open", "paid", "bad_debt"],
+          "transitions": [
+            {"from_state": "open", "to_state": "paid", "description": "Payment received"},
+            {"from_state": "open", "to_state": "bad_debt", "description": "Written off as uncollectable"}
+          ],
+          "initial_state": "open",
+          "terminal_states": ["paid", "bad_debt"]
+        }
+    attributes:
+      invoice_number:
+        range: string
+      invoice_date:
+        range: integer
+      total_amount:
+        range: decimal
+      status:
+        range: string
+
+  ARInvoiceLine:
+    description: "Line item on an AR invoice"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ar_invoice_lines
+      vg:primary_key: '["invoice_id", "line_number"]'
+    attributes:
+      quantity_cases:
+        range: decimal
+      line_amount:
+        range: decimal
+
+  # ===========================================================================
+  # DOMAIN H2: FRICTION (Data Quality)
+  # ===========================================================================
+
+  InvoiceVariance:
+    description: "Price or quantity variance on AP invoice line"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: invoice_variances
+      vg:primary_key: id
+    attributes:
+      variance_type:
+        range: string
+      variance_amount:
+        range: decimal
+
+  APPayment:
+    description: "Payment against an AP invoice"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ap_payments
+      vg:primary_key: id
+    attributes:
+      payment_date:
+        range: integer
+      amount:
+        range: decimal
+      net_amount:
+        range: decimal
+
+  ARReceipt:
+    description: "Receipt of payment against an AR invoice"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: ar_receipts
+      vg:primary_key: id
+    attributes:
+      receipt_date:
+        range: integer
+      amount:
+        range: decimal
+
+  # ===========================================================================
+  # RELATIONSHIPS (RBox)
+  # ===========================================================================
+
+  # --- SOURCE domain ---
+
+  SupplierOffersIngredient:
+    description: "Supplier offers an ingredient at a given cost/lead time"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: supplier_ingredients
+      vg:domain_key: supplier_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Supplier
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "min_order_qty",
+          "timestamp_column": "lead_time_days",
+          "conservation_group": "procure_to_pay",
+          "unit": "kg"
+        }
+
+  POFromSupplier:
+    description: "Purchase order placed with a supplier"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_orders
+      vg:domain_key: id
+      vg:range_key: supplier_id
+      vg:domain_class: PurchaseOrder
+      vg:range_class: Supplier
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  POAtPlant:
+    description: "Purchase order delivered to a plant"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_orders
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: PurchaseOrder
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  POHasLines:
+    description: "Purchase order has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_order_lines
+      vg:domain_key: po_id
+      vg:range_key: '["po_id", "line_number"]'
+      vg:domain_class: PurchaseOrder
+      vg:range_class: PurchaseOrderLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "quantity_kg",
+          "timestamp_column": "po_id",
+          "conservation_group": "procure_to_pay",
+          "unit": "kg"
+        }
+
+  POLineForIngredient:
+    description: "PO line is for a specific ingredient"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: purchase_order_lines
+      vg:domain_key: '["po_id", "line_number"]'
+      vg:range_key: ingredient_id
+      vg:domain_class: PurchaseOrderLine
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join"]'
+
+  GRHasLines:
+    description: "Goods receipt has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: goods_receipt_lines
+      vg:domain_key: gr_id
+      vg:range_key: '["gr_id", "line_number"]'
+      vg:domain_class: GoodsReceipt
+      vg:range_class: GoodsReceiptLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "quantity_kg",
+          "timestamp_column": "gr_id",
+          "conservation_group": "procure_to_pay",
+          "unit": "kg"
+        }
+
+  GRLineForIngredient:
+    description: "GR line received a specific ingredient"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: goods_receipt_lines
+      vg:domain_key: '["gr_id", "line_number"]'
+      vg:range_key: ingredient_id
+      vg:domain_class: GoodsReceiptLine
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join"]'
+
+  # --- TRANSFORM domain ---
+
+  ProductionLineAtPlant:
+    description: "Production line is located at a plant"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: production_lines
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: ProductionLine
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  FormulaHasIngredients:
+    description: "Formula requires ingredients (BOM)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: formula_ingredients
+      vg:domain_key: formula_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Formula
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join", "hierarchical_aggregation"]'
+      vg:axioms: >-
+        [
+          {
+            "name": "ingredient_quantity_positive",
+            "description": "Formula ingredient quantity must be positive",
+            "axiom_type": "value_range",
+            "sql_expression": "quantity_kg > 0",
+            "severity": "error"
+          }
+        ]
+
+  WorkOrderAtPlant:
+    description: "Work order is executed at a plant"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: work_orders
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: WorkOrder
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  WorkOrderUsesFormula:
+    description: "Work order uses a specific formula"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: work_orders
+      vg:domain_key: id
+      vg:range_key: formula_id
+      vg:domain_class: WorkOrder
+      vg:range_class: Formula
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  BatchFromWorkOrder:
+    description: "Batch produced from a work order"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: wo_id
+      vg:domain_class: Batch
+      vg:range_class: WorkOrder
+      vg:operation_types: '["direct_join"]'
+
+  BatchAtPlant:
+    description: "Batch produced at a plant"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: Batch
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+
+  BatchUsesFormula:
+    description: "Batch uses a specific formula"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: formula_id
+      vg:domain_class: Batch
+      vg:range_class: Formula
+      vg:operation_types: '["direct_join"]'
+
+  BatchConsumesIngredient:
+    description: "Batch consumed ingredients during production"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batch_ingredients
+      vg:domain_key: batch_id
+      vg:range_key: ingredient_id
+      vg:domain_class: Batch
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "quantity_kg",
+          "timestamp_column": "batch_id",
+          "conservation_group": "production_mass_balance",
+          "unit": "kg"
+        }
+
+  # --- ORDER domain ---
+
+  OrderHasLines:
+    description: "Order has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: order_lines
+      vg:domain_key: order_id
+      vg:range_key: '["order_id", "line_number"]'
+      vg:domain_class: Order
+      vg:range_class: OrderLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "quantity_cases",
+          "timestamp_column": "order_id",
+          "conservation_group": "order_to_cash",
+          "unit": "cases"
+        }
+
+  OrderLineForSKU:
+    description: "Order line is for a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: order_lines
+      vg:domain_key: '["order_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: OrderLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+
+  # --- FULFILL domain ---
+
+  ShipmentHasLines:
+    description: "Shipment has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_lines
+      vg:domain_key: shipment_id
+      vg:range_key: '["shipment_id", "line_number"]'
+      vg:domain_class: Shipment
+      vg:range_class: ShipmentLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "material",
+          "quantity_column": "quantity_cases",
+          "timestamp_column": "shipment_id",
+          "conservation_group": "order_to_cash",
+          "unit": "cases"
+        }
+
+  ShipmentLineForSKU:
+    description: "Shipment line carries a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipment_lines
+      vg:domain_key: '["shipment_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: ShipmentLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+
+  # --- RETURN domain ---
+
+  ReturnHasLines:
+    description: "Return has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: return_lines
+      vg:domain_key: return_id
+      vg:range_key: '["return_id", "line_number"]'
+      vg:domain_class: Return
+      vg:range_class: ReturnLine
+      vg:operation_types: '["direct_join"]'
+
+  ReturnLineForSKU:
+    description: "Return line is for a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: return_lines
+      vg:domain_key: '["return_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: ReturnLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+
+  ReturnToDC:
+    description: "Return is sent to a distribution center"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: returns
+      vg:domain_key: id
+      vg:range_key: dc_id
+      vg:domain_class: Return
+      vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  # --- FINANCE domain ---
+
+  APInvoiceFromSupplier:
+    description: "AP invoice is from a supplier"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ap_invoices
+      vg:domain_key: id
+      vg:range_key: supplier_id
+      vg:domain_class: APInvoice
+      vg:range_class: Supplier
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  APInvoiceForGR:
+    description: "AP invoice matches a goods receipt"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ap_invoices
+      vg:domain_key: id
+      vg:range_key: gr_id
+      vg:domain_class: APInvoice
+      vg:range_class: GoodsReceipt
+      vg:operation_types: '["direct_join"]'
+
+  APInvoiceHasLines:
+    description: "AP invoice has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ap_invoice_lines
+      vg:domain_key: invoice_id
+      vg:range_key: '["invoice_id", "line_number"]'
+      vg:domain_class: APInvoice
+      vg:range_class: APInvoiceLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "financial",
+          "quantity_column": "line_amount",
+          "timestamp_column": "invoice_id",
+          "conservation_group": "procure_to_pay",
+          "unit": "USD"
+        }
+
+  ARInvoiceHasLines:
+    description: "AR invoice has line items"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ar_invoice_lines
+      vg:domain_key: invoice_id
+      vg:range_key: '["invoice_id", "line_number"]'
+      vg:domain_class: ARInvoice
+      vg:range_class: ARInvoiceLine
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "financial",
+          "quantity_column": "line_amount",
+          "timestamp_column": "invoice_id",
+          "conservation_group": "order_to_cash",
+          "unit": "USD"
+        }
+
+  APPaymentForInvoice:
+    description: "Payment made against an AP invoice"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ap_payments
+      vg:domain_key: id
+      vg:range_key: invoice_id
+      vg:domain_class: APPayment
+      vg:range_class: APInvoice
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "financial",
+          "quantity_column": "amount",
+          "timestamp_column": "payment_date",
+          "conservation_group": "procure_to_pay",
+          "unit": "USD"
+        }
+
+  ARReceiptForInvoice:
+    description: "Receipt of payment against an AR invoice"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ar_receipts
+      vg:domain_key: id
+      vg:range_key: invoice_id
+      vg:domain_class: ARReceipt
+      vg:range_class: ARInvoice
+      vg:operation_types: '["direct_join"]'
+      vg:flow_config: >-
+        {
+          "flow_type": "financial",
+          "quantity_column": "amount",
+          "timestamp_column": "receipt_date",
+          "conservation_group": "order_to_cash",
+          "unit": "USD"
+        }
+
+  ARInvoiceForShipment:
+    description: "AR invoice generated for a shipment"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ar_invoices
+      vg:domain_key: id
+      vg:range_key: shipment_id
+      vg:domain_class: ARInvoice
+      vg:range_class: Shipment
+      vg:operation_types: '["direct_join"]'
+
+  InvoiceVarianceForAPInvoice:
+    description: "Variance recorded against an AP invoice"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: invoice_variances
+      vg:domain_key: id
+      vg:range_key: invoice_id
+      vg:domain_class: InvoiceVariance
+      vg:range_class: APInvoice
+      vg:operation_types: '["direct_join"]'

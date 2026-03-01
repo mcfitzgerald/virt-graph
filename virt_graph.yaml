@@ -8,7 +8,7 @@
 
 id: https://virt-graph.dev/metamodel
 name: virt_graph_metamodel
-version: "2.1"
+version: "3.0"
 description: >-
   Virtual Graph metamodel extension for LinkML.
   Enables graph-like queries over relational data by mapping
@@ -57,6 +57,8 @@ enums:
         description: "Global graph analysis - NetworkX-based handlers"
       pattern:
         description: "Subgraph pattern matching (future)"
+      kinetic:
+        description: "Flow/state/scenario analysis - virtual kinetics"
 
   OperationType:
     description: >-
@@ -81,6 +83,66 @@ enums:
         description: "Find isolated clusters (category: algorithm)"
       resilience_analysis:
         description: "Impact of node removal (category: algorithm)"
+      flow_analysis:
+        description: "Throughput, bottleneck, and conservation analysis (category: kinetic)"
+      state_analysis:
+        description: "State machine transition and lifecycle analysis (category: kinetic)"
+      scenario_analysis:
+        description: "What-if perturbation and impact propagation (category: kinetic)"
+
+  AxiomSeverity:
+    description: "Severity level for axiom violations"
+    permissible_values:
+      error:
+        description: "Hard constraint - violation indicates data corruption"
+      warning:
+        description: "Soft constraint - violation indicates anomaly worth investigating"
+      info:
+        description: "Informational check - violation is expected in edge cases"
+
+  AxiomType:
+    description: "Classification of axiom constraints"
+    permissible_values:
+      value_range:
+        description: "Column value must be within expected range (e.g., yield_percent BETWEEN 0 AND 100)"
+      temporal_order:
+        description: "Temporal ordering constraint (e.g., arrival_date >= ship_date)"
+      conservation:
+        description: "Quantity/value conservation across related entities (e.g., mass balance)"
+      conditional:
+        description: "Constraint that applies only when a condition is met"
+      referential:
+        description: "Cross-table referential integrity beyond FK constraints"
+
+  FlowType:
+    description: "Classification of material/information/financial flows"
+    permissible_values:
+      material:
+        description: "Physical goods movement (kg, cases, units)"
+      information:
+        description: "Data/document flow (orders, forecasts, plans)"
+      financial:
+        description: "Monetary flow (invoices, payments, receipts)"
+
+  ActionEffectType:
+    description: "Type of effect an action has on entity attributes"
+    permissible_values:
+      set:
+        description: "Set attribute to a specific value"
+      increment:
+        description: "Add to or subtract from attribute value"
+      trigger_transition:
+        description: "Trigger a state machine transition"
+
+  PropagationDirection:
+    description: "Direction of perturbation propagation in scenario analysis"
+    permissible_values:
+      upstream:
+        description: "Propagates to suppliers/predecessors"
+      downstream:
+        description: "Propagates to customers/successors"
+      local:
+        description: "Affects only the entity itself"
 
 # =============================================================================
 # EXTENSION CLASSES
@@ -120,6 +182,27 @@ classes:
         range: ContextBlock
         inlined: true
         description: "Structured context for AI-assisted query generation"
+
+      # === Kinetic Extensions (v3.0) ===
+      axioms:
+        range: Axiom
+        multivalued: true
+        inlined_as_list: true
+        description: "SQL-evaluable constraints for data integrity validation"
+      state_machine:
+        range: StateMachine
+        inlined: true
+        description: "Lifecycle state machine definition for status-bearing entities"
+      actions:
+        range: Action
+        multivalued: true
+        inlined_as_list: true
+        description: "Semantic mutation definitions for what-if reasoning (NOT executable)"
+      scenario_params:
+        range: ScenarioParam
+        multivalued: true
+        inlined_as_list: true
+        description: "Perturbable attributes for scenario/what-if analysis"
 
   # ---------------------------------------------------------------------------
   # SQLMappedRelationship: Extension for relationships (RBox)
@@ -264,6 +347,17 @@ classes:
         range: TypeDiscriminator
         inlined: true
         description: "Configuration for resolving polymorphic target types based on a discriminator column"
+
+      # === Kinetic Extensions (v3.0) ===
+      axioms:
+        range: Axiom
+        multivalued: true
+        inlined_as_list: true
+        description: "SQL-evaluable constraints on this relationship"
+      flow_config:
+        range: FlowConfig
+        inlined: true
+        description: "Material/information/financial flow metadata for throughput analysis"
 
   # ---------------------------------------------------------------------------
   # WeightColumn: Describes a numeric column usable as edge weight
@@ -417,3 +511,204 @@ classes:
         inlined: true
         inlined_as_list: false
         description: "Maps discriminator values to target class names"
+
+  # ===========================================================================
+  # KINETIC EXTENSION CLASSES (v3.0)
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Axiom: SQL-evaluable constraint for data integrity validation
+  # ---------------------------------------------------------------------------
+  Axiom:
+    class_uri: vg:Axiom
+    description: >-
+      A SQL-evaluable constraint that can be checked against live data.
+      Claude evaluates axioms via: SELECT COUNT(*) FROM table WHERE NOT (sql_expression)
+    attributes:
+      name:
+        range: string
+        required: true
+        description: "Unique name for this axiom (e.g., 'mass_balance', 'temporal_order')"
+      description:
+        range: string
+        required: true
+        description: "Human-readable explanation of what this axiom checks"
+      axiom_type:
+        range: AxiomType
+        required: true
+        description: "Classification of the constraint type"
+      sql_expression:
+        range: string
+        required: true
+        description: "SQL boolean expression that should be true for valid rows"
+      severity:
+        range: AxiomSeverity
+        required: true
+        description: "How serious a violation of this axiom is"
+
+  # ---------------------------------------------------------------------------
+  # StateTransition: A valid transition in a state machine
+  # ---------------------------------------------------------------------------
+  StateTransition:
+    class_uri: vg:StateTransition
+    description: "A valid state transition with optional guard condition"
+    attributes:
+      from_state:
+        range: string
+        required: true
+        description: "Source state name"
+      to_state:
+        range: string
+        required: true
+        description: "Target state name"
+      guard:
+        range: string
+        description: "Optional SQL boolean expression that must be true for this transition"
+      description:
+        range: string
+        description: "Human-readable description of when/why this transition occurs"
+
+  # ---------------------------------------------------------------------------
+  # StateMachine: Lifecycle state machine for status-bearing entities
+  # ---------------------------------------------------------------------------
+  StateMachine:
+    class_uri: vg:StateMachine
+    description: >-
+      Declares the lifecycle state machine for an entity's status column.
+      Claude uses this to generate state distribution queries, transition
+      analysis, and dwell-time calculations from SQL data.
+    attributes:
+      state_column:
+        range: string
+        required: true
+        description: "Column containing the current state value"
+      states:
+        range: string
+        multivalued: true
+        required: true
+        minimum_cardinality: 2
+        description: "All valid state values"
+      transitions:
+        range: StateTransition
+        multivalued: true
+        inlined_as_list: true
+        required: true
+        minimum_cardinality: 1
+        description: "Valid state transitions"
+      initial_state:
+        range: string
+        description: "The starting state for new entities"
+      terminal_states:
+        range: string
+        multivalued: true
+        description: "States that represent end-of-lifecycle (no outgoing transitions)"
+
+  # ---------------------------------------------------------------------------
+  # FlowConfig: Material/information/financial flow metadata
+  # ---------------------------------------------------------------------------
+  FlowConfig:
+    class_uri: vg:FlowConfig
+    description: >-
+      Declares flow characteristics for a relationship edge.
+      Enables throughput analysis (Little's Law: L=λW), bottleneck
+      detection, and conservation checking across flow networks.
+    attributes:
+      flow_type:
+        range: FlowType
+        required: true
+        description: "Type of flow (material, information, financial)"
+      quantity_column:
+        range: string
+        required: true
+        description: "Column containing the flow quantity (e.g., quantity_kg, line_amount)"
+      timestamp_column:
+        range: string
+        required: true
+        description: "Column containing the flow timestamp (e.g., production_date, invoice_date)"
+      conservation_group:
+        range: string
+        description: "Name of the conservation group this flow belongs to (e.g., procure_to_pay)"
+      unit:
+        range: string
+        description: "Unit of measurement for quantity_column (e.g., kg, cases, USD)"
+      capacity_column:
+        range: string
+        description: "Optional column containing capacity limit for bottleneck analysis"
+
+  # ---------------------------------------------------------------------------
+  # ActionEffect: A single effect of an action on an entity attribute
+  # ---------------------------------------------------------------------------
+  ActionEffect:
+    class_uri: vg:ActionEffect
+    description: "Describes how an action modifies an entity attribute"
+    attributes:
+      attribute:
+        range: string
+        required: true
+        description: "Name of the affected attribute/column"
+      effect_type:
+        range: ActionEffectType
+        required: true
+        description: "Type of effect (set, increment, trigger_transition)"
+      description:
+        range: string
+        description: "Human-readable description of the effect"
+
+  # ---------------------------------------------------------------------------
+  # Action: Semantic mutation definition for what-if reasoning
+  # ---------------------------------------------------------------------------
+  Action:
+    class_uri: vg:Action
+    description: >-
+      Declares a named business action that mutates entity state.
+      NOT executable — used for what-if reasoning and scenario documentation.
+      Claude uses actions to understand causal chains and predict downstream effects.
+    attributes:
+      name:
+        range: string
+        required: true
+        description: "Action name (e.g., 'allocate', 'dispatch', 'complete_production')"
+      description:
+        range: string
+        required: true
+        description: "What this action does in business terms"
+      preconditions:
+        range: string
+        multivalued: true
+        description: "Conditions that must be true before this action can occur"
+      effects:
+        range: ActionEffect
+        multivalued: true
+        inlined_as_list: true
+        required: true
+        minimum_cardinality: 1
+        description: "What changes when this action executes"
+      affected_relationships:
+        range: string
+        multivalued: true
+        description: "Names of relationships affected by this action"
+
+  # ---------------------------------------------------------------------------
+  # ScenarioParam: Perturbable attribute for what-if analysis
+  # ---------------------------------------------------------------------------
+  ScenarioParam:
+    class_uri: vg:ScenarioParam
+    description: >-
+      Declares an attribute that can be perturbed in what-if scenarios.
+      Claude uses this to understand which parameters are meaningful to vary
+      and how changes propagate through the network.
+    attributes:
+      attribute:
+        range: string
+        required: true
+        description: "Column name of the perturbable attribute"
+      propagation:
+        range: PropagationDirection
+        required: true
+        description: "Direction changes propagate (upstream, downstream, local)"
+      description:
+        range: string
+        description: "What varying this parameter means in business terms"
+      default_perturbation:
+        range: string
+        description: "Suggested perturbation (e.g., '+10%', '-20%', 'double')"

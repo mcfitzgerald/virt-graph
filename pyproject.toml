@@ -1,6 +1,6 @@
 [project]
 name = "virt-graph"
-version = "1.0.0"
+version = "1.1.0"
 description = "Graph-like queries over relational data using LLM reasoning"
 authors = [
     {name = "Your Name", email = "you@example.com"}
@@ -27,7 +27,7 @@ neo4j = [
 packages = [{include = "virt_graph", from = "src"}]
 
 [tool.pytest.ini_options]
-testpaths = ["fmcg_example/tests"]
+testpaths = ["pcg_example/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 

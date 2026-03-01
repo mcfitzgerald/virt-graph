@@ -98,7 +98,7 @@ def validate_ontology(ontology_path: Path) -> bool:
 
 
 def main():
-    example_ontology_dir = Path(__file__).parent.parent / "fmcg_example" / "ontology"
+    example_ontology_dir = Path(__file__).parent.parent / "pcg_example" / "ontology"
 
     if len(sys.argv) > 1:
         if sys.argv[1] == "--all":
@@ -127,7 +127,7 @@ def main():
         print("  poetry run python scripts/validate_ontology.py --all")
         print()
         print("Examples:")
-        print("  poetry run python scripts/validate_ontology.py fmcg_example/ontology/prism_fmcg.yaml")
+        print("  poetry run python scripts/validate_ontology.py pcg_example/ontology/pcg.yaml")
         print("  poetry run python scripts/validate_ontology.py --all")
         sys.exit(1)
 

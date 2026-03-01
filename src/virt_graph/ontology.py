@@ -72,6 +72,13 @@ class OntologyAccessor:
     _valid_operation_categories: set[str] = set()
     _valid_operation_types: set[str] = set()
 
+    # Class-level caches for kinetic enums (v3.0)
+    _valid_axiom_severities: set[str] = set()
+    _valid_axiom_types: set[str] = set()
+    _valid_flow_types: set[str] = set()
+    _valid_action_effect_types: set[str] = set()
+    _valid_propagation_directions: set[str] = set()
+
     # Mapping from OperationType to OperationCategory
     _operation_type_to_category: dict[str, str] = {
         "direct_join": "direct",
@@ -83,6 +90,9 @@ class OntologyAccessor:
         "centrality": "algorithm",
         "connected_components": "algorithm",
         "resilience_analysis": "algorithm",
+        "flow_analysis": "kinetic",
+        "state_analysis": "kinetic",
+        "scenario_analysis": "kinetic",
     }
 
     def __init__(self, ontology_path: Path, validate: bool = True):
@@ -156,7 +166,33 @@ class OntologyAccessor:
         type_enum = sv.get_enum("OperationType")
         cls._valid_operation_types = set(type_enum.permissible_values.keys())
 
+        # Extract valid enum values for kinetic extensions (v3.0)
+        for enum_name, cache_attr in [
+            ("AxiomSeverity", "_valid_axiom_severities"),
+            ("AxiomType", "_valid_axiom_types"),
+            ("FlowType", "_valid_flow_types"),
+            ("ActionEffectType", "_valid_action_effect_types"),
+            ("PropagationDirection", "_valid_propagation_directions"),
+        ]:
+            enum_def = sv.get_enum(enum_name)
+            if enum_def:
+                setattr(cls, cache_attr, set(enum_def.permissible_values.keys()))
+
         cls._metamodel_loaded = True
+
+    @classmethod
+    def _reset_metamodel_cache(cls) -> None:
+        """Reset metamodel cache for test isolation."""
+        cls._metamodel_loaded = False
+        cls._entity_required = set()
+        cls._relationship_required = set()
+        cls._valid_operation_categories = set()
+        cls._valid_operation_types = set()
+        cls._valid_axiom_severities = set()
+        cls._valid_axiom_types = set()
+        cls._valid_flow_types = set()
+        cls._valid_action_effect_types = set()
+        cls._valid_propagation_directions = set()
 
     def _index_classes(self):
         """Partition classes into TBox (entities) and RBox (relationships)."""
@@ -257,6 +293,15 @@ class OntologyAccessor:
         errors.extend(self._validate_relationships())
         return errors
 
+    def _check_sql_injection(self, sql: str) -> Optional[str]:
+        """Check for dangerous SQL patterns. Returns the pattern found or None."""
+        dangerous_patterns = ["--", ";", "/*", "*/", "xp_", "exec ", "execute "]
+        sql_lower = sql.lower()
+        for pattern in dangerous_patterns:
+            if pattern in sql_lower:
+                return pattern
+        return None
+
     def _validate_entities(self) -> list[ValidationError]:
         """Validate SQLMappedClass annotations."""
         errors = []
@@ -272,6 +317,41 @@ class OntologyAccessor:
                         message=f"required annotation 'vg:{field}' is missing",
                     )
                 )
+
+            # Validate axioms if present
+            axioms = self._get_annotation(cls, "axioms")
+            if axioms:
+                parsed = self._parse_json_or_value(axioms, [])
+                if isinstance(parsed, list):
+                    for i, axiom in enumerate(parsed):
+                        if isinstance(axiom, dict):
+                            errors.extend(self._validate_axiom(name, "class", axiom, i))
+
+            # Validate state_machine if present
+            state_machine = self._get_annotation(cls, "state_machine")
+            if state_machine:
+                parsed = self._parse_json_or_value(state_machine, {})
+                if isinstance(parsed, dict):
+                    errors.extend(self._validate_state_machine(name, parsed))
+
+            # Validate actions if present
+            actions = self._get_annotation(cls, "actions")
+            if actions:
+                parsed = self._parse_json_or_value(actions, [])
+                if isinstance(parsed, list):
+                    for i, action in enumerate(parsed):
+                        if isinstance(action, dict):
+                            errors.extend(self._validate_action(name, action, i))
+
+            # Validate scenario_params if present
+            scenario_params = self._get_annotation(cls, "scenario_params")
+            if scenario_params:
+                parsed = self._parse_json_or_value(scenario_params, [])
+                if isinstance(parsed, list):
+                    for i, param in enumerate(parsed):
+                        if isinstance(param, dict):
+                            errors.extend(self._validate_scenario_param(name, param, i))
+
         return errors
 
     def _validate_relationships(self) -> list[ValidationError]:
@@ -393,20 +473,32 @@ class OntologyAccessor:
             # Basic SQL injection check for sql_filter
             sql_filter = self._get_annotation(cls, "sql_filter")
             if sql_filter:
-                # Check for dangerous patterns (basic check, not exhaustive)
-                dangerous_patterns = ["--", ";", "/*", "*/", "xp_", "exec ", "execute "]
-                filter_lower = sql_filter.lower()
-                for pattern in dangerous_patterns:
-                    if pattern in filter_lower:
-                        errors.append(
-                            ValidationError(
-                                element_type="relationship",
-                                element_name=name,
-                                field="sql_filter",
-                                message=f"contains potentially dangerous pattern '{pattern}'",
-                            )
+                pattern_found = self._check_sql_injection(sql_filter)
+                if pattern_found:
+                    errors.append(
+                        ValidationError(
+                            element_type="relationship",
+                            element_name=name,
+                            field="sql_filter",
+                            message=f"contains potentially dangerous pattern '{pattern_found}'",
                         )
-                        break
+                    )
+
+            # Validate axioms if present
+            axioms = self._get_annotation(cls, "axioms")
+            if axioms:
+                parsed = self._parse_json_or_value(axioms, [])
+                if isinstance(parsed, list):
+                    for i, axiom in enumerate(parsed):
+                        if isinstance(axiom, dict):
+                            errors.extend(self._validate_axiom(name, "relationship", axiom, i))
+
+            # Validate flow_config if present
+            flow_config = self._get_annotation(cls, "flow_config")
+            if flow_config:
+                parsed = self._parse_json_or_value(flow_config, {})
+                if isinstance(parsed, dict):
+                    errors.extend(self._validate_flow_config(name, parsed))
 
         return errors
 
@@ -471,6 +563,161 @@ class OntologyAccessor:
     def get_class_row_count(self, name: str) -> Optional[int]:
         """Get estimated row count for a class."""
         return self._get_annotation(self._tbox[name], "row_count")
+
+    # =========================================================================
+    # Kinetic Extensions: Axioms, State Machines, Actions, Scenarios
+    # =========================================================================
+
+    def _validate_axiom(self, element_name: str, element_type: str, axiom: dict, index: int) -> list[ValidationError]:
+        """Validate a single axiom dict."""
+        errors = []
+        for field in ("name", "description", "axiom_type", "sql_expression", "severity"):
+            if field not in axiom:
+                errors.append(ValidationError(element_type, element_name, f"axioms[{index}]", f"missing required field '{field}'"))
+        if "axiom_type" in axiom and axiom["axiom_type"] not in self._valid_axiom_types:
+            errors.append(ValidationError(element_type, element_name, f"axioms[{index}].axiom_type", f"invalid value '{axiom['axiom_type']}', must be one of {self._valid_axiom_types}"))
+        if "severity" in axiom and axiom["severity"] not in self._valid_axiom_severities:
+            errors.append(ValidationError(element_type, element_name, f"axioms[{index}].severity", f"invalid value '{axiom['severity']}', must be one of {self._valid_axiom_severities}"))
+        if "sql_expression" in axiom:
+            pattern = self._check_sql_injection(axiom["sql_expression"])
+            if pattern:
+                errors.append(ValidationError(element_type, element_name, f"axioms[{index}].sql_expression", f"contains potentially dangerous pattern '{pattern}'"))
+        return errors
+
+    def _validate_state_machine(self, class_name: str, sm: dict) -> list[ValidationError]:
+        """Validate a state machine dict."""
+        errors = []
+        for field in ("state_column", "states", "transitions"):
+            if field not in sm:
+                errors.append(ValidationError("class", class_name, "state_machine", f"missing required field '{field}'"))
+
+        declared_states = set(sm.get("states", []))
+
+        # Validate transitions reference declared states
+        for i, t in enumerate(sm.get("transitions", [])):
+            if isinstance(t, dict):
+                for field in ("from_state", "to_state"):
+                    if field not in t:
+                        errors.append(ValidationError("class", class_name, f"state_machine.transitions[{i}]", f"missing required field '{field}'"))
+                    elif declared_states and t[field] not in declared_states:
+                        errors.append(ValidationError("class", class_name, f"state_machine.transitions[{i}].{field}", f"'{t[field]}' not in declared states {declared_states}"))
+                if "guard" in t and t["guard"]:
+                    pattern = self._check_sql_injection(t["guard"])
+                    if pattern:
+                        errors.append(ValidationError("class", class_name, f"state_machine.transitions[{i}].guard", f"contains potentially dangerous pattern '{pattern}'"))
+
+        # Validate initial_state references declared state
+        if "initial_state" in sm and declared_states and sm["initial_state"] not in declared_states:
+            errors.append(ValidationError("class", class_name, "state_machine.initial_state", f"'{sm['initial_state']}' not in declared states {declared_states}"))
+
+        # Validate terminal_states reference declared states
+        for ts in sm.get("terminal_states", []):
+            if declared_states and ts not in declared_states:
+                errors.append(ValidationError("class", class_name, "state_machine.terminal_states", f"'{ts}' not in declared states {declared_states}"))
+
+        return errors
+
+    def _validate_flow_config(self, role_name: str, fc: dict) -> list[ValidationError]:
+        """Validate a flow config dict."""
+        errors = []
+        for field in ("flow_type", "quantity_column", "timestamp_column"):
+            if field not in fc:
+                errors.append(ValidationError("relationship", role_name, "flow_config", f"missing required field '{field}'"))
+        if "flow_type" in fc and fc["flow_type"] not in self._valid_flow_types:
+            errors.append(ValidationError("relationship", role_name, "flow_config.flow_type", f"invalid value '{fc['flow_type']}', must be one of {self._valid_flow_types}"))
+        return errors
+
+    def _validate_action(self, class_name: str, action: dict, index: int) -> list[ValidationError]:
+        """Validate a single action dict."""
+        errors = []
+        for field in ("name", "description", "effects"):
+            if field not in action:
+                errors.append(ValidationError("class", class_name, f"actions[{index}]", f"missing required field '{field}'"))
+        for i, effect in enumerate(action.get("effects", [])):
+            if isinstance(effect, dict):
+                for field in ("attribute", "effect_type"):
+                    if field not in effect:
+                        errors.append(ValidationError("class", class_name, f"actions[{index}].effects[{i}]", f"missing required field '{field}'"))
+                if "effect_type" in effect and effect["effect_type"] not in self._valid_action_effect_types:
+                    errors.append(ValidationError("class", class_name, f"actions[{index}].effects[{i}].effect_type", f"invalid value '{effect['effect_type']}', must be one of {self._valid_action_effect_types}"))
+        # Validate affected_relationships reference known roles
+        for rel_name in action.get("affected_relationships", []):
+            if rel_name not in self._rbox and rel_name not in self._role_aliases:
+                errors.append(ValidationError("class", class_name, f"actions[{index}].affected_relationships", f"references unknown relationship '{rel_name}'"))
+        return errors
+
+    def _validate_scenario_param(self, class_name: str, param: dict, index: int) -> list[ValidationError]:
+        """Validate a single scenario param dict."""
+        errors = []
+        for field in ("attribute", "propagation"):
+            if field not in param:
+                errors.append(ValidationError("class", class_name, f"scenario_params[{index}]", f"missing required field '{field}'"))
+        if "propagation" in param and param["propagation"] not in self._valid_propagation_directions:
+            errors.append(ValidationError("class", class_name, f"scenario_params[{index}].propagation", f"invalid value '{param['propagation']}', must be one of {self._valid_propagation_directions}"))
+        return errors
+
+    def get_class_axioms(self, name: str) -> list[dict]:
+        """Get axioms for an entity class."""
+        value = self._get_annotation(self._tbox[name], "axioms")
+        return self._parse_json_or_value(value, []) or []
+
+    def get_role_axioms(self, name: str) -> list[dict]:
+        """Get axioms for a relationship."""
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "axioms")
+        return self._parse_json_or_value(value, []) or []
+
+    def get_class_state_machine(self, name: str) -> Optional[dict]:
+        """Get state machine definition for an entity class."""
+        value = self._get_annotation(self._tbox[name], "state_machine")
+        return self._parse_json_or_value(value, None)
+
+    def get_role_flow_config(self, name: str) -> Optional[dict]:
+        """Get flow configuration for a relationship."""
+        resolved = self._resolve_role_name(name)
+        value = self._get_annotation(self._rbox[resolved], "flow_config")
+        return self._parse_json_or_value(value, None)
+
+    def get_class_actions(self, name: str) -> list[dict]:
+        """Get action definitions for an entity class."""
+        value = self._get_annotation(self._tbox[name], "actions")
+        return self._parse_json_or_value(value, []) or []
+
+    def get_class_scenario_params(self, name: str) -> list[dict]:
+        """Get scenario parameters for an entity class."""
+        value = self._get_annotation(self._tbox[name], "scenario_params")
+        return self._parse_json_or_value(value, []) or []
+
+    def get_classes_with_state_machines(self) -> list[str]:
+        """Get names of all classes that have state machine definitions."""
+        return [
+            name for name, cls in self._tbox.items()
+            if self._get_annotation(cls, "state_machine") is not None
+        ]
+
+    def get_roles_with_flow_config(self) -> list[str]:
+        """Get names of all relationships that have flow configuration."""
+        return [
+            name for name, cls in self._rbox.items()
+            if self._get_annotation(cls, "flow_config") is not None
+        ]
+
+    def get_conservation_groups(self) -> dict[str, list[str]]:
+        """
+        Get conservation groups mapped to their member relationships.
+
+        Returns:
+            Dict mapping group name to list of relationship names
+        """
+        groups: dict[str, list[str]] = {}
+        for name, cls in self._rbox.items():
+            fc = self._get_annotation(cls, "flow_config")
+            if fc:
+                parsed = self._parse_json_or_value(fc, {})
+                if isinstance(parsed, dict) and "conservation_group" in parsed:
+                    group = parsed["conservation_group"]
+                    groups.setdefault(group, []).append(name)
+        return groups
 
     # =========================================================================
     # RBox: Roles (Relationships)

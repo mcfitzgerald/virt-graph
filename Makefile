@@ -40,17 +40,17 @@ install:
 
 # Testing
 test-ontology:
-	poetry run pytest fmcg_example/tests/test_ontology.py -v
+	poetry run pytest pcg_example/tests/ -v
 
 # Ontology Validation
 validate-ontology:
 	poetry run python scripts/validate_ontology.py --all
 
 validate-linkml:
-	poetry run linkml-lint --validate-only fmcg_example/ontology/prism_fmcg.yaml
+	poetry run linkml-lint --validate-only pcg_example/ontology/pcg.yaml
 
 validate-vg:
-	@poetry run python -c "from virt_graph.ontology import OntologyAccessor; from pathlib import Path; o = OntologyAccessor(Path('fmcg_example/ontology/prism_fmcg.yaml')); print(f'✓ VG validation passed: {len(o.classes)} classes, {len(o.roles)} roles')"
+	@poetry run python -c "from virt_graph.ontology import OntologyAccessor; from pathlib import Path; o = OntologyAccessor(Path('pcg_example/ontology/pcg.yaml')); print(f'✓ VG validation passed: {len(o.classes)} classes, {len(o.roles)} roles')"
 
 show-ontology:
 	@poetry run python scripts/show_ontology.py
@@ -63,17 +63,17 @@ show-rbox:
 
 # Neo4j
 neo4j-up:
-	docker-compose -f fmcg_example/neo4j/docker-compose.yml up -d
+	docker-compose -f pcg_example/neo4j/docker-compose.yml up -d
 
 neo4j-down:
-	docker-compose -f fmcg_example/neo4j/docker-compose.yml down
+	docker-compose -f pcg_example/neo4j/docker-compose.yml down
 
 neo4j-cycle:  ## Full cycle: stop, remove volumes, restart (fixes stale PID issues)
-	docker-compose -f fmcg_example/neo4j/docker-compose.yml stop
-	docker-compose -f fmcg_example/neo4j/docker-compose.yml down -v
+	docker-compose -f pcg_example/neo4j/docker-compose.yml stop
+	docker-compose -f pcg_example/neo4j/docker-compose.yml down -v
 	@echo "Waiting for clean shutdown..."
 	sleep 2
-	docker-compose -f fmcg_example/neo4j/docker-compose.yml up -d
+	docker-compose -f pcg_example/neo4j/docker-compose.yml up -d
 	@echo "Neo4j restarting. Wait ~20s for full startup."
 
 validate-neo4j:  ## Validate Neo4j graph against ontology

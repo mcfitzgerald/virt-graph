@@ -28,8 +28,23 @@ Each relationship is annotated with operation types that determine which handler
 | **Traversal** | `recursive_traversal`, `temporal_traversal` | `traverse()` |
 | **Aggregation** | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
 | **Algorithm** | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | NetworkX-based handlers |
+| **Kinetic** | `flow_analysis`, `state_analysis`, `scenario_analysis` | Ad-hoc SQL via Claude (handlers planned) |
 
 This classification enables the agentic system to dispatch queries appropriately.
+
+### Kinetic Extensions (v3.0)
+
+The metamodel supports virtual kinetics — declaring dynamic behavior (state machines, flows, actions) as metadata annotations on the existing SQL data. No new handlers are required; Claude generates ad-hoc SQL using the metadata.
+
+| Feature | Annotation | Description |
+|---------|------------|-------------|
+| Axioms | `vg:axioms` | SQL-evaluable constraints (mass balance, temporal order, GL balance) |
+| State Machines | `vg:state_machine` | Lifecycle states and valid transitions |
+| Flow Config | `vg:flow_config` | Material/financial flow metadata for throughput analysis |
+| Actions | `vg:actions` | Semantic mutation docs for what-if reasoning |
+| Scenario Params | `vg:scenario_params` | Perturbable attributes with propagation direction |
+
+See [VG Extensions](../ontology/vg-extensions.md) for complete reference.
 
 ## LinkML Format
 
@@ -45,8 +60,8 @@ The VG metamodel is defined in `virt_graph.yaml` (at project root) and serves as
 
 - **Extension classes**: `vg:SQLMappedClass`, `vg:SQLMappedRelationship`
 - **Validation rules**: Required fields are derived from the metamodel automatically
-- **Enums**: `vg:OperationType` (direct_join, recursive_traversal, etc.)
-- **Supporting types**: `vg:WeightColumn`, `vg:DatabaseConnection`
+- **Enums**: `vg:OperationType`, `vg:AxiomType`, `vg:FlowType`, `vg:ActionEffectType`, `vg:PropagationDirection`
+- **Supporting types**: `vg:WeightColumn`, `vg:DatabaseConnection`, `vg:Axiom`, `vg:StateMachine`, `vg:FlowConfig`, `vg:Action`, `vg:ScenarioParam`
 
 The `OntologyAccessor` reads `virt_graph.yaml` (from project root) via LinkML's SchemaView to dynamically extract validation rules. This means:
 - Adding a required field to `SQLMappedClass` in the metamodel automatically updates validation

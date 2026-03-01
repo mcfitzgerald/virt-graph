@@ -52,11 +52,11 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Resource | Location | Purpose |
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
-| Reference Ontology | `fmcg_example/ontology/prism_fmcg.yaml` | FMCG supply chain ontology (71 classes, ~50 relationships) |
+| Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 30 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
 
-### Metamodel Features (v2.1)
+### Metamodel Features (v3.0)
 
 The metamodel supports advanced patterns:
 
@@ -67,6 +67,11 @@ The metamodel supports advanced patterns:
 | Edge Filtering | `vg:sql_filter` | SQL WHERE clause for edge tables |
 | Edge Properties | `vg:edge_attributes` | Property Graph style edge data |
 | Polymorphism | `vg:type_discriminator` | Native YAML format for multi-class domain/range |
+| Axioms | `vg:axioms` | SQL-evaluable data integrity constraints |
+| State Machines | `vg:state_machine` | Lifecycle states and valid transitions |
+| Flow Config | `vg:flow_config` | Material/financial flow metadata for throughput analysis |
+| Actions | `vg:actions` | Semantic mutation docs for what-if reasoning |
+| Scenario Params | `vg:scenario_params` | Perturbable attributes with propagation direction |
 
 ### Operation Types
 
@@ -78,6 +83,7 @@ The ontology classifies relationships by what operations they support:
 | **Traversal** | `traverse()` | Recursive paths (supplier networks, hierarchies) |
 | **Aggregation** | `path_aggregate()` | Value aggregation along paths (e.g., BOM explosion) |
 | **Algorithm** | `shortest_path()`, `centrality()` | Weighted pathfinding, graph algorithms |
+| **Kinetic** | Ad-hoc SQL via Claude | Flow/state/scenario analysis (handlers planned) |
 
 ### Example Handler Usage
 

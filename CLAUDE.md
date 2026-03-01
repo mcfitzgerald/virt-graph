@@ -39,7 +39,7 @@ make show-ontology      # Show TBox/RBox definitions
 
 # Testing
 make test-ontology      # Run ontology validation tests
-poetry run pytest fmcg_example/tests/test_ontology.py -v  # Single test file
+poetry run pytest pcg_example/tests/ -v  # All tests
 
 # Neo4j (for benchmarking)
 make neo4j-up         # Start Neo4j
@@ -78,6 +78,7 @@ src/virt_graph/
 - `recursive_traversal` → `traverse()` handler
 - `path_aggregation`, `hierarchical_aggregation` → `path_aggregate()` handler
 - `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` → Network handlers
+- `flow_analysis`, `state_analysis`, `scenario_analysis` → Kinetic (ad-hoc SQL via Claude)
 
 **Handler pattern**: All handlers are schema-parameterized—they take table/column names as arguments, not hardcoded SQL. Example:
 ```python
@@ -87,7 +88,7 @@ traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
 
 ### Reference Ontology
 
-`fmcg_example/ontology/prism_fmcg.yaml` — a full FMCG supply chain ontology demonstrating all VG patterns (71 classes, ~50 relationships).
+`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 30 relationships) with kinetic annotations (state machines, axioms, flow configs, actions, scenario params).
 
 ### Database Access
 
@@ -100,20 +101,30 @@ conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',
 
 ## Metamodel
 
-`virt_graph.yaml` is the single source of truth for VG extensions. It defines:
+`virt_graph.yaml` is the single source of truth for VG extensions (v3.0). It defines:
 - `SQLMappedClass` - For entity classes (TBox): requires `vg:table`, `vg:primary_key` (supports composite keys)
 - `SQLMappedRelationship` - For relationships (RBox): requires `vg:table`, `vg:domain_key`, `vg:range_key`, `vg:operation_types`
-- `OperationType` enum - Maps to handler functions
-- `OperationCategory` enum - Groups operation types by handler family
+- `OperationType` enum - Maps to handler functions (includes kinetic: flow_analysis, state_analysis, scenario_analysis)
+- `OperationCategory` enum - Groups operation types by handler family (includes kinetic)
 - `ContextBlock` - Structured AI context for query generation (business_logic, llm_prompt_hint, traversal_semantics)
 - `TypeDiscriminator` - Polymorphic relationship target resolution
 - `EdgeAttribute` - Property Graph style edge properties
+- `Axiom` - SQL-evaluable data integrity constraints (on classes and relationships)
+- `StateMachine` / `StateTransition` - Lifecycle state definitions
+- `FlowConfig` - Material/information/financial flow metadata
+- `Action` / `ActionEffect` - Semantic mutation definitions for what-if reasoning
+- `ScenarioParam` - Perturbable attributes with propagation direction
 
 **Key features**:
 - Composite keys: Use JSON arrays for `vg:primary_key`, `vg:domain_key`, `vg:range_key`
 - Polymorphism: Use `vg:range_class` as array + `vg:type_discriminator` for multiple target types
 - Edge filtering: Use `vg:sql_filter` for conditional edge traversal
 - AI context: Use `vg:context` (ContextBlock) to provide domain hints for Claude
+- Axioms: Use `vg:axioms` for SQL-evaluable constraints (class + relationship level)
+- State machines: Use `vg:state_machine` for lifecycle definitions
+- Flow config: Use `vg:flow_config` for throughput/conservation analysis
+- Actions: Use `vg:actions` for what-if reasoning (NOT executable)
+- Scenario params: Use `vg:scenario_params` for perturbation analysis
 
 See `docs/ontology/vg-extensions.md` for detailed documentation.
 
@@ -124,13 +135,25 @@ The `OntologyAccessor` class provides the API for reading ontologies:
 from virt_graph.ontology import OntologyAccessor
 from pathlib import Path
 
-ontology = OntologyAccessor(Path("fmcg_example/ontology/prism_fmcg.yaml"))
+ontology = OntologyAccessor(Path("pcg_example/ontology/pcg.yaml"))
 
 # Get table mapping for a class
 table = ontology.get_class_table("Supplier")       # → "suppliers"
 pk = ontology.get_class_pk("Order")                # → ["id"]
 
 # Get relationship configuration
-op_types = ontology.get_operation_types("SuppliesTo")  # → ["recursive_traversal"]
-domain_keys, range_keys = ontology.get_role_keys("HasBatch")
+op_types = ontology.get_operation_types("OrderHasLines")  # → ["direct_join"]
+domain_keys, range_keys = ontology.get_role_keys("BatchConsumesIngredient")
+
+# Kinetic extensions (v3.0)
+sm = ontology.get_class_state_machine("Order")     # → {"state_column": "status", ...}
+axioms = ontology.get_class_axioms("Shipment")     # → [{"name": "temporal_order", ...}]
+fc = ontology.get_role_flow_config("BatchConsumesIngredient")  # → {"flow_type": "material", ...}
+actions = ontology.get_class_actions("Batch")       # → [{"name": "start_production", ...}]
+params = ontology.get_class_scenario_params("Plant") # → [{"attribute": "capacity_tons_per_day", ...}]
+
+# Discovery queries
+ontology.get_classes_with_state_machines()          # → ["PurchaseOrder", "Order", ...]
+ontology.get_roles_with_flow_config()               # → ["BatchConsumesIngredient", ...]
+ontology.get_conservation_groups()                  # → {"procure_to_pay": [...], ...}
 ```

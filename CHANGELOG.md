@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-02-28
+
+### Added
+
+- **Metamodel v3.0 — Axioms, Virtual Kinetics, Actions**
+  - 5 new enums: `AxiomSeverity`, `AxiomType`, `FlowType`, `ActionEffectType`, `PropagationDirection`
+  - 7 new metamodel classes: `Axiom`, `StateTransition`, `StateMachine`, `FlowConfig`, `ActionEffect`, `Action`, `ScenarioParam`
+  - 3 new kinetic operation types: `flow_analysis`, `state_analysis`, `scenario_analysis` (category: kinetic)
+  - Extended `SQLMappedClass` with: `axioms`, `state_machine`, `actions`, `scenario_params`
+  - Extended `SQLMappedRelationship` with: `axioms`, `flow_config`
+
+- **OntologyAccessor kinetic methods**:
+  - `get_class_axioms()`, `get_role_axioms()` — retrieve SQL-evaluable constraints
+  - `get_class_state_machine()` — retrieve lifecycle state machine definition
+  - `get_role_flow_config()` — retrieve material/financial flow metadata
+  - `get_class_actions()` — retrieve semantic mutation definitions
+  - `get_class_scenario_params()` — retrieve perturbable attributes
+  - `get_classes_with_state_machines()` — discover stateful entities
+  - `get_roles_with_flow_config()` — discover flow-bearing relationships
+  - `get_conservation_groups()` — map conservation group names to member relationships
+  - `_reset_metamodel_cache()` — classmethod for test isolation
+
+- **Validation for kinetic extensions**:
+  - Axiom validation: required fields, enum values, SQL injection detection
+  - State machine validation: states, transitions, initial/terminal state references
+  - Flow config validation: required fields, FlowType enum
+  - Action validation: effects, effect_type enum, affected_relationships references
+  - Scenario param validation: propagation direction enum
+
+- **PCG reference ontology** (`pcg_example/ontology/pcg.yaml`):
+  - 38 entity classes mapping all tables in schema.sql
+  - 30 relationships covering FK relationships
+  - 9 state machines (PurchaseOrder, GoodsReceipt, WorkOrder, Batch, Order, Shipment, Return, APInvoice, ARInvoice)
+  - Axioms on key physics constraints (mass balance, temporal ordering, GL balance, positivity)
+  - Actions on Order (allocate, ship), Shipment (dispatch, deliver), Batch (start/complete production)
+  - Scenario params on Order, Plant, Supplier
+  - 10 flow configs across material and financial flows
+  - 3 conservation groups: procure_to_pay, order_to_cash, production_mass_balance
+
+- **Test suite** (`pcg_example/tests/`):
+  - `test_ontology.py` — structural validation (38 classes, 30 relationships, composite keys)
+  - `test_kinetic_extensions.py` — kinetic extension validation (~20 tests)
+
+- **Documentation for virtual kinetics** in `docs/ontology/vg-extensions.md`:
+  - Axioms, State Machines, Flow Configuration, Actions, Scenario Parameters
+  - Updated Operation Types table with kinetic category
+
+- **Virtual Kinetics Stack** in `docs/concepts/architecture.md`:
+  - 4-layer architecture: declared structure → derived properties → virtual what-if → simulation
+
+### Changed
+
+- Metamodel version `2.1` → `3.0` in `virt_graph.yaml`
+- Project version `1.0.0` → `1.1.0`
+- Replaced `fmcg_example/` with `pcg_example/` (old FMCG ontology archived to git history)
+- Updated all paths in Makefile, scripts, pyproject.toml, README, CLAUDE.md
+- Extended `show_ontology.py` to display state machines, axioms, actions, flow configs
+- Extended `validate_ontology.py` default path to pcg_example
+
+---
+
 ## [1.0.0] - 2026-02-28
 
 ### Changed
