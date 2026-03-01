@@ -114,16 +114,16 @@ Handlers filter out soft-deleted rows during traversal.
 | `vg:operation_types` | JSON array | List of supported operation types |
 
 ```yaml
-SuppliesTo:
+SKUSupersedes:
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: supplier_relationships
-    vg:domain_key: seller_id
-    vg:range_key: buyer_id
-    vg:domain_class: Supplier
-    vg:range_class: Supplier
-    vg:operation_types: "[recursive_traversal, temporal_traversal]"
+    vg:edge_table: skus
+    vg:domain_key: id
+    vg:range_key: supersedes_sku_id
+    vg:domain_class: SKU
+    vg:range_class: SKU
+    vg:operation_types: '["direct_join", "recursive_traversal"]'
 ```
 
 ### Composite Foreign Keys
@@ -167,10 +167,11 @@ Standard OWL 2 axioms for relationship semantics:
 | `vg:inverse_functional` | boolean | At most one domain per range |
 
 ```yaml
-SuppliesTo:
+SKUSupersedes:
   annotations:
-    vg:asymmetric: true      # If A supplies B, B doesn't supply A
-    vg:irreflexive: true     # Supplier can't supply itself
+    vg:asymmetric: true      # If A supersedes B, B doesn't supersede A
+    vg:irreflexive: true     # SKU can't supersede itself
+    vg:acyclic: true         # No circular supersession chains
 ```
 
 ### VG-Specific Extensions
@@ -184,12 +185,11 @@ SuppliesTo:
 | `vg:weight_columns` | JSON array | Weight column definitions |
 
 ```yaml
-SuppliesTo:
+SKUSupersedes:
   annotations:
-    vg:acyclic: true          # Supply chain is a DAG
-    vg:is_hierarchical: true  # Has supplier tiers
+    vg:acyclic: true          # Alias chain is a DAG
 
-ConnectsTo:
+RouteSegmentOrigin:
   annotations:
     vg:is_weighted: true
     vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}]'
@@ -214,9 +214,9 @@ Each weight column can be used with `shortest_path(weight_col="distance_km")`.
 Filter edges during traversal with a SQL WHERE clause:
 
 ```yaml
-ConnectsTo:
+ProductionLineAtPlant:
   annotations:
-    vg:sql_filter: "is_active = true AND status != 'suspended'"
+    vg:sql_filter: "is_active = true"
 ```
 
 The filter is injected into edge queries, allowing you to exclude inactive or invalid edges without modifying the data. Combines with temporal filtering if both are specified.
@@ -228,11 +228,12 @@ The filter is injected into edge queries, allowing you to exclude inactive or in
 Define non-weight columns to retrieve as edge properties (Property Graph style):
 
 ```yaml
-TransportRoute:
+SupplierOffersIngredient:
   annotations:
     vg:edge_attributes: '[
-      {"name": "carrier", "type": "string", "description": "Shipping carrier name"},
-      {"name": "scheduled_date", "type": "date", "description": "Scheduled departure"}
+      {"name": "unit_cost", "type": "decimal", "description": "Cost per kg from this supplier"},
+      {"name": "lead_time_days", "type": "integer", "description": "Supplier lead time in days"},
+      {"name": "min_order_qty", "type": "decimal", "description": "Minimum order quantity in kg"}
     ]'
 ```
 
@@ -262,21 +263,19 @@ When the relationship targets multiple entity types, the discriminator column de
 Provide structured context for AI-assisted query generation:
 
 ```yaml
-SuppliesTo:
+FormulaHasIngredients:
   annotations:
     vg:context: |
       {
-        "definition": "A commercial relationship where one supplier sells to another",
-        "business_logic": "Suppliers change tiers based on performance",
-        "data_quality_notes": "Historical records before 2020 may be incomplete",
-        "llm_prompt_hint": "For 'strategic suppliers', filter tier=1",
+        "business_logic": "BOM explosion semantics — quantity_kg is per-batch requirement. For total requirements, multiply through the hierarchy.",
+        "llm_prompt_hint": "Use path_aggregation with operation=multiply for cost rollups",
         "traversal_semantics": {
-          "inbound": "upstream suppliers (who sells to this supplier)",
-          "outbound": "downstream buyers (who this supplier sells to)"
+          "inbound": "what ingredients go into this formula",
+          "outbound": "what formulas use this ingredient"
         },
         "examples": [
-          "Find all upstream suppliers",
-          "Who are the tier 1 suppliers?"
+          "What ingredients does formula F-001 need?",
+          "Which formulas use ingredient X?"
         ]
       }
 ```
@@ -364,23 +363,24 @@ BelongsToCategory:
     vg:functional: true              # Each product has one category
 ```
 
-### Self-Referential Hierarchy (Traversal)
+### Self-Referential Chain (Traversal)
 
-Entity references itself in a hierarchy:
+Entity references itself (alias chain, hierarchy):
 
 ```yaml
-ReportsTo:
+SKUSupersedes:
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: employees
-    vg:domain_key: manager_id
-    vg:range_key: id
-    vg:domain_class: Employee
-    vg:range_class: Employee
-    vg:operation_types: "[recursive_traversal]"
+    vg:edge_table: skus
+    vg:domain_key: id
+    vg:range_key: supersedes_sku_id
+    vg:domain_class: SKU
+    vg:range_class: SKU
+    vg:operation_types: '["direct_join", "recursive_traversal"]'
+    vg:asymmetric: true
+    vg:irreflexive: true
     vg:acyclic: true
-    vg:is_hierarchical: true
 ```
 
 ### Junction Table with Attributes (Aggregation)
@@ -388,21 +388,20 @@ ReportsTo:
 Many-to-many with edge attributes (e.g., BOM):
 
 ```yaml
-ComponentOf:
+FormulaHasIngredients:
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: bill_of_materials
-    vg:domain_key: child_part_id
-    vg:range_key: parent_part_id
-    vg:domain_class: Part
-    vg:range_class: Part
-    vg:operation_types: "[recursive_traversal, hierarchical_aggregation]"
-    vg:inverse_of: HasComponent
-  attributes:
-    quantity:
-      range: decimal
-      description: "Quantity of child part in parent"
+    vg:edge_table: formula_ingredients
+    vg:domain_key: formula_id
+    vg:range_key: ingredient_id
+    vg:domain_class: Formula
+    vg:range_class: Ingredient
+    vg:operation_types: '["direct_join", "hierarchical_aggregation", "path_aggregation"]'
+    vg:edge_attributes: '[
+      {"name": "sequence", "type": "integer"},
+      {"name": "quantity_kg", "type": "decimal"}
+    ]'
 ```
 
 ### Weighted Network (Algorithm)
@@ -410,29 +409,27 @@ ComponentOf:
 Edges with weights for pathfinding:
 
 ```yaml
-ConnectsTo:
+RouteSegmentOrigin:
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: transport_routes
-    vg:domain_key: origin_facility_id
-    vg:range_key: destination_facility_id
-    vg:domain_class: Facility
-    vg:range_class: Facility
-    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
+    vg:edge_table: route_segments
+    vg:domain_key: id
+    vg:range_key: origin_id
+    vg:domain_class: RouteSegment
+    vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+    vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
     vg:is_weighted: true
     vg:weight_columns: '[
-      {"name": "distance_km", "type": "decimal"},
-      {"name": "cost_usd", "type": "decimal"},
-      {"name": "transit_hours", "type": "integer"}
+      {"name": "distance_km", "type": "decimal", "unit": "km"},
+      {"name": "transit_time_hours", "type": "decimal", "unit": "hours"}
     ]'
-  attributes:
-    distance_km:
-      range: decimal
-    cost_usd:
-      range: decimal
-    transit_hours:
-      range: integer
+    vg:type_discriminator:
+      column: origin_type
+      mapping:
+        plant: Plant
+        dc: DistributionCenter
+        retail: RetailLocation
 ```
 
 ### Polymorphic Relationship
@@ -480,23 +477,22 @@ OrderLineHasProduct:
 Relationship with rich context for query generation:
 
 ```yaml
-SuppliesTo:
+BatchConsumesIngredient:
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: supplier_relationships
-    vg:domain_key: seller_id
-    vg:range_key: buyer_id
-    vg:domain_class: Supplier
-    vg:range_class: Supplier
-    vg:operation_types: "[recursive_traversal]"
+    vg:edge_table: batch_ingredients
+    vg:domain_key: batch_id
+    vg:range_key: ingredient_id
+    vg:domain_class: Batch
+    vg:range_class: Ingredient
+    vg:operation_types: '["direct_join"]'
     vg:context: |
       {
-        "business_logic": "Suppliers change tiers based on performance metrics",
-        "llm_prompt_hint": "For 'strategic suppliers', filter tier=1",
+        "business_logic": "Mass balance — sum of input ingredients should approximate batch output / yield",
         "traversal_semantics": {
-          "inbound": "upstream suppliers",
-          "outbound": "downstream buyers"
+          "inbound": "what batches consumed this ingredient",
+          "outbound": "what ingredients went into this batch"
         }
       }
 ```

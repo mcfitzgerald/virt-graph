@@ -94,43 +94,41 @@ poetry run python scripts/validate_ontology.py ontology/your_ontology.yaml
 
 See [Quick Start Guide](getting-started/quickstart.md) for a complete walkthrough.
 
-## Example: Supply Chain Domain
+## Example: PCG Supply Chain
 
-VG/SQL includes a supply chain proof-of-concept with 500 suppliers, 50 facilities, and complex relationships.
+VG/SQL includes a Prism Consumer Goods (PCG) reference ontology with 38 tables, 50 relationships, and polymorphic patterns.
 
-**Recursive Traversal** (Find upstream suppliers):
+**Recursive Traversal** (Follow SKU alias chain):
 ```python
 from virt_graph.handlers.traversal import traverse
 
 result = traverse(
     conn,
-    nodes_table="suppliers",
-    edges_table="supplier_relationships",
-    edge_from_col="seller_id",
-    edge_to_col="buyer_id",
-    start_id=acme_id,
-    direction="inbound",
+    nodes_table="skus",
+    edges_table="skus",
+    edge_from_col="id",
+    edge_to_col="supersedes_sku_id",
+    start_id=sku_id,
+    direction="outbound",
     max_depth=10,
 )
 ```
 
-**Shortest Path** (Find optimal route):
+**Shortest Path** (Find optimal transport route):
 ```python
 from virt_graph.handlers.pathfinding import shortest_path
 
 result = shortest_path(
     conn,
-    nodes_table="facilities",
-    edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
-    start_id=chicago_id,
-    end_id=la_id,
+    nodes_table="route_segments",
+    edges_table="route_segments",
+    edge_from_col="origin_id",
+    edge_to_col="destination_id",
+    start_id=origin_id,
+    end_id=dest_id,
     weight_col="distance_km",
 )
 ```
-
-See [Supply Chain Tutorial](examples/supply-chain.md) for the complete example.
 
 ## Designed for Agentic Systems
 
@@ -154,8 +152,8 @@ virt-graph/
 │   │   └── network.py         # centrality(), neighbors(), etc.
 │   ├── ontology.py            # OntologyAccessor class
 │   └── estimator/             # Pre-flight size estimation
-├── fmcg_example/              # Reference ontology and tests
-│   ├── ontology/              # FMCG supply chain ontology
+├── pcg_example/               # Reference ontology and tests
+│   ├── ontology/pcg.yaml      # PCG supply chain ontology (38 classes, 50 relationships)
 │   └── tests/                 # Ontology validation tests
 └── scripts/
     └── validate_ontology.py   # Two-layer validation

@@ -52,7 +52,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Resource | Location | Purpose |
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
-| Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 30 relationships) |
+| Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 50 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
 
@@ -87,16 +87,16 @@ The ontology classifies relationships by what operations they support:
 
 ### Example Handler Usage
 
-**Recursive Traversal** (Find all upstream suppliers)
+**Recursive Traversal** (Follow SKU alias chain)
 ```python
 result = traverse(
     conn,
-    nodes_table="suppliers",
-    edges_table="supplier_relationships",
-    edge_from_col="seller_id",
-    edge_to_col="buyer_id",
-    start_id=acme_id,
-    direction="inbound",
+    nodes_table="skus",
+    edges_table="skus",
+    edge_from_col="id",
+    edge_to_col="supersedes_sku_id",
+    start_id=sku_id,
+    direction="outbound",
     max_depth=10,
 )
 ```
@@ -105,25 +105,25 @@ result = traverse(
 ```python
 result = path_aggregate(
     conn,
-    nodes_table="parts",
-    edges_table="bill_of_materials",
-    edge_from_col="parent_part_id",
-    edge_to_col="child_part_id",
-    start_id=part_id,
-    value_col="quantity",
+    nodes_table="ingredients",
+    edges_table="formula_ingredients",
+    edge_from_col="formula_id",
+    edge_to_col="ingredient_id",
+    start_id=formula_id,
+    value_col="quantity_kg",
     operation="multiply",
     max_depth=20,
 )
 ```
 
-**Shortest Path**
+**Shortest Path** (Transport network)
 ```python
 result = shortest_path(
     conn,
-    nodes_table="facilities",
-    edges_table="transport_routes",
-    edge_from_col="origin_facility_id",
-    edge_to_col="destination_facility_id",
+    nodes_table="route_segments",
+    edges_table="route_segments",
+    edge_from_col="origin_id",
+    edge_to_col="destination_id",
     start_id=origin_id,
     end_id=dest_id,
     weight_col="distance_km",

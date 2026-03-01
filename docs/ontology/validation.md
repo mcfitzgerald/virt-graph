@@ -165,12 +165,12 @@ class ValidationError:
 The `scripts/validate_ontology.py` script provides detailed output:
 
 ```bash
-$ poetry run python scripts/validate_ontology.py supply_chain_example/ontology/supply_chain.yaml
+$ poetry run python scripts/validate_ontology.py pcg_example/ontology/pcg.yaml
 
-Validating ontology: supply_chain_example/ontology/supply_chain.yaml
+Validating ontology: pcg_example/ontology/pcg.yaml
 
 Layer 1: LinkML Structure
-  Running: linkml-lint --validate-only supply_chain_example/ontology/supply_chain.yaml
+  Running: linkml-lint --validate-only pcg_example/ontology/pcg.yaml
   ✓ LinkML structure valid
 
 Layer 2: VG Annotations

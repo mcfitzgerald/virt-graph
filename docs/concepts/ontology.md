@@ -201,45 +201,39 @@ BelongsToCategory:
     vg:functional: true
 ```
 
-**Example (Traversal - Recursive)** *Supply Chain Use Case:*
+**Example (Traversal - Recursive)** *PCG Supply Chain Use Case:*
 ```yaml
-SuppliesTo:
-  description: "Supplier sells to another supplier"
+SKUSupersedes:
+  description: "SKU supersedes another SKU (alias/replacement chain)"
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: supplier_relationships
-    vg:domain_key: seller_id
-    vg:range_key: buyer_id
-    vg:domain_class: Supplier
-    vg:range_class: Supplier
-    vg:operation_types: "[recursive_traversal, temporal_traversal]"
+    vg:edge_table: skus
+    vg:domain_key: id
+    vg:range_key: supersedes_sku_id
+    vg:domain_class: SKU
+    vg:range_class: SKU
+    vg:operation_types: '["direct_join", "recursive_traversal"]'
     vg:asymmetric: true
     vg:irreflexive: true
     vg:acyclic: true
-    vg:is_hierarchical: true
 ```
 
-**Example (Algorithm - Network)** *Supply Chain Use Case:*
+**Example (Algorithm - Network)** *PCG Transport Network:*
 ```yaml
-TransportRoute:
-  description: "Transport connection between facilities"
+RouteSegmentOrigin:
+  description: "Route segment originates from a location (polymorphic)"
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: transport_routes
-    vg:domain_key: origin_facility_id
-    vg:range_key: destination_facility_id
-    vg:domain_class: Facility
-    vg:range_class: Facility
-    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
+    vg:edge_table: route_segments
+    vg:domain_key: id
+    vg:range_key: origin_id
+    vg:domain_class: RouteSegment
+    vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+    vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
     vg:is_weighted: true
-    vg:weight_columns: '[{"name": "distance_km", "type": "decimal"}, {"name": "cost_usd", "type": "decimal"}]'
-  attributes:
-    distance_km:
-      range: decimal
-    cost_usd:
-      range: decimal
+    vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}, {"name": "transit_time_hours", "type": "decimal", "unit": "hours"}]'
 ```
 
 ## Cardinality Notation

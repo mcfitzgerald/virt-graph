@@ -4,8 +4,11 @@ Ontology Validation Tests for Prism Consumer Goods (PCG)
 Structural validation of pcg.yaml ontology:
   - File exists, valid YAML, loads with OntologyAccessor
   - All 38 classes have required annotations
-  - All relationships have operation_types, domain_class, range_class
+  - All 50 relationships have operation_types, domain_class, range_class
   - Composite keys declared correctly
+  - Polymorphic relationships with type_discriminator
+  - Context blocks on entities and relationships
+  - Edge attributes on junction table relationships
   - Version and database metadata correct
 """
 
@@ -53,7 +56,7 @@ class TestOntologyStructure:
         assert ontology.name == "pcg"
 
     def test_ontology_version(self, ontology):
-        assert ontology.version == "1.0.0"
+        assert ontology.version == "2.0.0"
 
     def test_database_type(self, ontology):
         db = ontology.database
@@ -88,7 +91,7 @@ class TestEntityClasses:
 class TestRelationships:
     """Test all relationships have required annotations."""
 
-    EXPECTED_ROLE_COUNT = 30
+    EXPECTED_ROLE_COUNT = 50
 
     def test_role_count(self, ontology):
         assert len(ontology.roles) == self.EXPECTED_ROLE_COUNT

@@ -138,7 +138,7 @@ For traversal/algorithm operations:
 │                                                               │
 │  traverse(conn,                                              │
 │      nodes_table="suppliers",                                │
-│      edges_table="supplier_relationships",                   │
+│      edges_table="skus",                                     │
 │      edge_from_col="seller_id",                             │
 │      edge_to_col="buyer_id",                                │
 │      start_id=acme_id,                                       │
@@ -154,7 +154,7 @@ Handlers never hardcode table names:
 
 ```python
 # Good: Schema-parameterized
-traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships", ...)
+traverse(conn, nodes_table="skus", edges_table="skus", ...)
 
 # Bad: Hardcoded (we don't do this)
 traverse_suppliers(conn, start_id=123)

@@ -2,8 +2,20 @@
 # Prism Consumer Goods (PCG) - ERP Supply Chain Ontology
 # ============================================================================
 #
-# First-pass ontology for the PCG schema (38 tables, ~395M rows, 365-day sim).
+# Virtual twin declaration for the PCG schema (38 tables, ~395M rows, 365-day sim).
 # Flat class hierarchy (no is_a). All 38 tables mapped as entity classes.
+#
+# v2.0 — Complete Virtual Twin Declaration:
+#   - 49 relationships (30→49): all FK columns mapped, including polymorphic
+#   - Operation types: 8 of 11 types used (direct_join, hierarchical_aggregation,
+#     path_aggregation, recursive_traversal, shortest_path, centrality,
+#     connected_components, resilience_analysis)
+#   - Transport network: route_segments declared as weighted graph
+#   - SKU alias chain: recursive_traversal for supersedes_sku_id
+#   - Polymorphic relationships: 5 with vg:type_discriminator
+#   - Context blocks: domain semantics for AI query generation
+#   - Edge attributes: junction table properties (cost, quantity, lead time)
+#   - OWL 2 role axioms: functional, asymmetric, irreflexive, acyclic
 #
 # Kinetic Annotations (v3.0):
 #   - State machines: 9 entities with status lifecycle
@@ -21,12 +33,14 @@
 
 id: https://virt-graph.dev/schemas/pcg
 name: pcg
-version: "1.0.0"
+version: "2.0.0"
 description: >-
   Prism Consumer Goods ERP ontology for Virtual Graph.
   Models a full FMCG supply chain across 8 domains: Source, Transform,
   Product, Order, Fulfill, Logistics, Plan, Return, and Finance.
-  38 tables with kinetic annotations for state/flow/scenario analysis.
+  38 entity classes, 49 relationships with polymorphic patterns,
+  transport network graph, recursive alias chains, context blocks,
+  and kinetic annotations for state/flow/scenario analysis.
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -301,6 +315,11 @@ classes:
       vg:table: batches
       vg:primary_key: id
       vg:identifier: batch_number
+      vg:context: >-
+        {
+          "business_logic": "product_type discriminates output: finished_good → SKU, bulk_intermediate → BulkIntermediate. bom_level indicates BOM depth (0=finished, 1=intermediate). Mass balance holds between input ingredients and output quantity.",
+          "llm_prompt_hint": "Use product_type to determine which product table to join. For BOM tracing, follow formula_id → formula_ingredients."
+        }
       vg:state_machine: >-
         {
           "state_column": "status",
@@ -353,6 +372,10 @@ classes:
         range: string
       production_date:
         range: integer
+      product_type:
+        range: string
+      bom_level:
+        range: integer
 
   BatchIngredient:
     description: "Actual ingredient consumption in a batch"
@@ -404,6 +427,8 @@ classes:
         range: string
       price_per_case:
         range: decimal
+      supersedes_sku_id:
+        range: integer
 
   # ===========================================================================
   # DOMAIN D: ORDER (Demand Signal)
@@ -433,6 +458,11 @@ classes:
       vg:table: orders
       vg:primary_key: id
       vg:identifier: order_number
+      vg:context: >-
+        {
+          "business_logic": "Multi-step fulfillment lifecycle (pending→allocated→shipped→delivered). source_id references a channel, retail_location_id is the delivery destination.",
+          "llm_prompt_hint": "Join source_id → channels for channel analysis. Join retail_location_id → retail_locations for geographic analysis."
+        }
       vg:state_machine: >-
         {
           "state_column": "status",
@@ -537,6 +567,11 @@ classes:
       vg:table: shipments
       vg:primary_key: id
       vg:identifier: shipment_number
+      vg:context: >-
+        {
+          "business_logic": "origin_id and destination_id are polymorphic — they reference plants, distribution centers, or retail locations without explicit type columns. route_type may indicate the pattern (e.g., plant_to_dc, dc_to_retail).",
+          "llm_prompt_hint": "Use route_type to infer origin/destination types. For precise resolution, cross-reference with route_segments which have explicit type columns."
+        }
       vg:state_machine: >-
         {
           "state_column": "status",
@@ -586,6 +621,8 @@ classes:
         range: integer
       status:
         range: string
+      route_type:
+        range: string
       freight_cost:
         range: decimal
 
@@ -609,6 +646,11 @@ classes:
     annotations:
       vg:table: inventory
       vg:primary_key: id
+      vg:context: >-
+        {
+          "business_logic": "Daily snapshots of inventory levels. location_type discriminates the polymorphic location_id (plant, dc, retail). Use day column for temporal queries.",
+          "llm_prompt_hint": "Filter by location_type to determine which location table to join. For trend analysis, GROUP BY day."
+        }
       vg:axioms: >-
         [
           {
@@ -622,6 +664,8 @@ classes:
     attributes:
       day:
         range: integer
+      location_type:
+        range: string
       quantity_cases:
         range: decimal
 
@@ -637,8 +681,17 @@ classes:
       vg:table: route_segments
       vg:primary_key: id
       vg:identifier: segment_code
+      vg:context: >-
+        {
+          "business_logic": "This IS the transport network graph. Origin and destination are polymorphic locations (plant, dc, retail) with explicit type columns. distance_km and transit_time_hours are edge weights for pathfinding.",
+          "llm_prompt_hint": "Use RouteSegmentOrigin/RouteSegmentDestination relationships for graph traversal. Weight by distance_km for shortest distance, transit_time_hours for fastest route."
+        }
     attributes:
       segment_code:
+        range: string
+      origin_type:
+        range: string
+      destination_type:
         range: string
       transport_mode:
         range: string
@@ -660,6 +713,8 @@ classes:
       vg:primary_key: id
     attributes:
       forecast_version:
+        range: string
+      location_type:
         range: string
       forecast_date:
         range: integer
@@ -752,6 +807,11 @@ classes:
     annotations:
       vg:table: gl_journal
       vg:primary_key: id
+      vg:context: >-
+        {
+          "business_logic": "reference_type determines what the entry relates to (purchase_order, goods_receipt, batch, order, shipment, etc.). is_reversal marks correction entries. GL balance must hold per day (debits = credits).",
+          "llm_prompt_hint": "Use reference_type and reference_id to trace GL entries back to source documents. Filter is_reversal = false for net balances."
+        }
       vg:axioms: >-
         [
           {
@@ -917,6 +977,12 @@ classes:
       vg:domain_class: Supplier
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:edge_attributes: >-
+        [
+          {"name": "unit_cost", "type": "decimal", "description": "Cost per kg from this supplier"},
+          {"name": "lead_time_days", "type": "integer", "description": "Supplier lead time in days"},
+          {"name": "min_order_qty", "type": "decimal", "description": "Minimum order quantity in kg"}
+        ]
       vg:flow_config: >-
         {
           "flow_type": "material",
@@ -984,6 +1050,32 @@ classes:
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
 
+  GRFromShipment:
+    description: "Goods receipt received from a shipment"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: goods_receipts
+      vg:domain_key: id
+      vg:range_key: shipment_id
+      vg:domain_class: GoodsReceipt
+      vg:range_class: Shipment
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  GRAtPlant:
+    description: "Goods receipt delivered to a plant"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: goods_receipts
+      vg:domain_key: id
+      vg:range_key: plant_id
+      vg:domain_class: GoodsReceipt
+      vg:range_class: Plant
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
   GRHasLines:
     description: "Goods receipt has line items"
     instantiates:
@@ -1030,6 +1122,25 @@ classes:
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
       vg:functional: true
+      vg:sql_filter: "is_active = true"
+
+  FormulaForProduct:
+    description: "Formula produces a product (polymorphic: SKU or BulkIntermediate)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: formulas
+      vg:domain_key: id
+      vg:range_key: product_id
+      vg:domain_class: Formula
+      vg:range_class: '["SKU", "BulkIntermediate"]'
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+      vg:type_discriminator:
+        column: bom_level
+        mapping:
+          0: SKU
+          1: BulkIntermediate
 
   FormulaHasIngredients:
     description: "Formula requires ingredients (BOM)"
@@ -1041,7 +1152,20 @@ classes:
       vg:range_key: ingredient_id
       vg:domain_class: Formula
       vg:range_class: Ingredient
-      vg:operation_types: '["direct_join", "hierarchical_aggregation"]'
+      vg:operation_types: '["direct_join", "hierarchical_aggregation", "path_aggregation"]'
+      vg:context: >-
+        {
+          "business_logic": "BOM explosion semantics — quantity_kg is per-batch requirement. For total requirements, multiply through the hierarchy (formula → sub-formula → ingredients).",
+          "traversal_semantics": {
+            "inbound": "what ingredients go into this formula",
+            "outbound": "what formulas use this ingredient"
+          }
+        }
+      vg:edge_attributes: >-
+        [
+          {"name": "sequence", "type": "integer", "description": "Ingredient addition sequence"},
+          {"name": "quantity_kg", "type": "decimal", "description": "Quantity per batch in kg"}
+        ]
       vg:axioms: >-
         [
           {
@@ -1115,6 +1239,24 @@ classes:
       vg:range_class: Formula
       vg:operation_types: '["direct_join"]'
 
+  BatchProducesProduct:
+    description: "Batch produces a product (polymorphic: SKU or BulkIntermediate)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: batches
+      vg:domain_key: id
+      vg:range_key: product_id
+      vg:domain_class: Batch
+      vg:range_class: '["SKU", "BulkIntermediate"]'
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+      vg:type_discriminator:
+        column: product_type
+        mapping:
+          finished_good: SKU
+          bulk_intermediate: BulkIntermediate
+
   BatchConsumesIngredient:
     description: "Batch consumed ingredients during production"
     instantiates:
@@ -1126,6 +1268,18 @@ classes:
       vg:domain_class: Batch
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:context: >-
+        {
+          "business_logic": "Mass balance — sum of input ingredient quantities should approximate batch output / yield. Use for traceability and cost analysis.",
+          "traversal_semantics": {
+            "inbound": "what batches consumed this ingredient",
+            "outbound": "what ingredients went into this batch"
+          }
+        }
+      vg:edge_attributes: >-
+        [
+          {"name": "quantity_kg", "type": "decimal", "description": "Actual quantity consumed in kg"}
+        ]
       vg:flow_config: >-
         {
           "flow_type": "material",
@@ -1135,7 +1289,50 @@ classes:
           "unit": "kg"
         }
 
+  # --- PRODUCT domain ---
+
+  SKUSupersedes:
+    description: "SKU supersedes another SKU (alias/replacement chain)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: skus
+      vg:domain_key: id
+      vg:range_key: supersedes_sku_id
+      vg:domain_class: SKU
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join", "recursive_traversal"]'
+      vg:asymmetric: true
+      vg:irreflexive: true
+      vg:acyclic: true
+
   # --- ORDER domain ---
+
+  OrderFromChannel:
+    description: "Order placed through a sales channel"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: source_id
+      vg:domain_class: Order
+      vg:range_class: Channel
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  OrderForRetailLocation:
+    description: "Order delivered to a retail location"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: orders
+      vg:domain_key: id
+      vg:range_key: retail_location_id
+      vg:domain_class: Order
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
 
   OrderHasLines:
     description: "Order has line items"
@@ -1171,6 +1368,42 @@ classes:
 
   # --- FULFILL domain ---
 
+  ShipmentFromOrigin:
+    description: "Shipment originates from a location (polymorphic: plant, DC, or retail)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: origin_id
+      vg:domain_class: Shipment
+      vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "origin_id is polymorphic without an explicit type column. Use route_type to infer origin type: plant_to_dc implies Plant origin, dc_to_retail implies DC origin.",
+          "llm_prompt_hint": "Cross-reference with route_segments for explicit type resolution, or filter by route_type."
+        }
+
+  ShipmentToDestination:
+    description: "Shipment delivered to a location (polymorphic: plant, DC, or retail)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: shipments
+      vg:domain_key: id
+      vg:range_key: destination_id
+      vg:domain_class: Shipment
+      vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "destination_id is polymorphic without an explicit type column. Use route_type to infer destination type: plant_to_dc implies DC destination, dc_to_retail implies RetailLocation.",
+          "llm_prompt_hint": "Cross-reference with route_segments for explicit type resolution, or filter by route_type."
+        }
+
   ShipmentHasLines:
     description: "Shipment has line items"
     instantiates:
@@ -1203,7 +1436,130 @@ classes:
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
 
+  InventoryForSKU:
+    description: "Inventory snapshot for a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: Inventory
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+
+  InventoryAtLocation:
+    description: "Inventory at a location (polymorphic: plant, DC, or retail)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: inventory
+      vg:domain_key: id
+      vg:range_key: location_id
+      vg:domain_class: Inventory
+      vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+      vg:operation_types: '["direct_join"]'
+      vg:type_discriminator:
+        column: location_type
+        mapping:
+          plant: Plant
+          dc: DistributionCenter
+          retail: RetailLocation
+
+  # --- LOGISTICS domain ---
+
+  RouteSegmentOrigin:
+    description: "Route segment originates from a location (polymorphic)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: route_segments
+      vg:domain_key: id
+      vg:range_key: origin_id
+      vg:domain_class: RouteSegment
+      vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+      vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
+      vg:functional: true
+      vg:type_discriminator:
+        column: origin_type
+        mapping:
+          plant: Plant
+          dc: DistributionCenter
+          retail: RetailLocation
+      vg:is_weighted: true
+      vg:weight_columns: >-
+        [
+          {"name": "distance_km", "type": "decimal", "unit": "km", "description": "Segment distance"},
+          {"name": "transit_time_hours", "type": "decimal", "unit": "hours", "description": "Transit time"}
+        ]
+      vg:context: >-
+        {
+          "traversal_semantics": {
+            "inbound": "what route segments arrive at this location",
+            "outbound": "what locations does this segment connect from"
+          }
+        }
+
+  RouteSegmentDestination:
+    description: "Route segment ends at a location (polymorphic)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: route_segments
+      vg:domain_key: id
+      vg:range_key: destination_id
+      vg:domain_class: RouteSegment
+      vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+      vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
+      vg:functional: true
+      vg:type_discriminator:
+        column: destination_type
+        mapping:
+          plant: Plant
+          dc: DistributionCenter
+          retail: RetailLocation
+      vg:is_weighted: true
+      vg:weight_columns: >-
+        [
+          {"name": "distance_km", "type": "decimal", "unit": "km", "description": "Segment distance"},
+          {"name": "transit_time_hours", "type": "decimal", "unit": "hours", "description": "Transit time"}
+        ]
+      vg:context: >-
+        {
+          "traversal_semantics": {
+            "inbound": "what route segments depart from this location",
+            "outbound": "what locations does this segment connect to"
+          }
+        }
+
+  # --- PLAN domain ---
+
+  DemandForecastForSKU:
+    description: "Demand forecast for a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: demand_forecasts
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: DemandForecast
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+
   # --- RETURN domain ---
+
+  ReturnFromRetailLocation:
+    description: "Return originated from a retail location"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: returns
+      vg:domain_key: id
+      vg:range_key: source_id
+      vg:domain_class: Return
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
 
   ReturnHasLines:
     description: "Return has line items"
@@ -1239,6 +1595,19 @@ classes:
       vg:range_key: dc_id
       vg:domain_class: Return
       vg:range_class: DistributionCenter
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
+  DispositionForReturn:
+    description: "Disposition action for a specific return"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: disposition_logs
+      vg:domain_key: return_id
+      vg:range_key: return_id
+      vg:domain_class: DispositionLog
+      vg:range_class: Return
       vg:operation_types: '["direct_join"]'
       vg:functional: true
 
@@ -1289,6 +1658,31 @@ classes:
           "unit": "USD"
         }
 
+  APInvoiceLineForIngredient:
+    description: "AP invoice line is for a specific ingredient"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ap_invoice_lines
+      vg:domain_key: '["invoice_id", "line_number"]'
+      vg:range_key: ingredient_id
+      vg:domain_class: APInvoiceLine
+      vg:range_class: Ingredient
+      vg:operation_types: '["direct_join"]'
+
+  ARInvoiceForCustomer:
+    description: "AR invoice is for a customer location"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ar_invoices
+      vg:domain_key: id
+      vg:range_key: customer_location_id
+      vg:domain_class: ARInvoice
+      vg:range_class: RetailLocation
+      vg:operation_types: '["direct_join"]'
+      vg:functional: true
+
   ARInvoiceHasLines:
     description: "AR invoice has line items"
     instantiates:
@@ -1308,6 +1702,18 @@ classes:
           "conservation_group": "order_to_cash",
           "unit": "USD"
         }
+
+  ARInvoiceLineForSKU:
+    description: "AR invoice line is for a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: ar_invoice_lines
+      vg:domain_key: '["invoice_id", "line_number"]'
+      vg:range_key: sku_id
+      vg:domain_class: ARInvoiceLine
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
 
   APPaymentForInvoice:
     description: "Payment made against an AP invoice"
@@ -1359,6 +1765,18 @@ classes:
       vg:range_key: shipment_id
       vg:domain_class: ARInvoice
       vg:range_class: Shipment
+      vg:operation_types: '["direct_join"]'
+
+  GLJournalToAccount:
+    description: "GL journal entry posts to a chart of accounts entry"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: gl_journal
+      vg:domain_key: id
+      vg:range_key: account_code
+      vg:domain_class: GLJournal
+      vg:range_class: ChartOfAccounts
       vg:operation_types: '["direct_join"]'
 
   InvoiceVarianceForAPInvoice:

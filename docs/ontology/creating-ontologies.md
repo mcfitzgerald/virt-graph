@@ -56,7 +56,7 @@ Review the table summary. Correct any misunderstandings:
 
 - "The `audit_log` table is for logging, not a domain entity"
 - "The `supplier_code` column is the business identifier"
-- "The `supplier_relationships` table represents a DAG, not a general graph"
+- "The `route_segments` table represents a transport network graph"
 
 ## Round 2: Entity Discovery (TBox)
 
@@ -125,39 +125,38 @@ PlacedBy:
 ### Example Traversal Relationship
 
 ```yaml
-SuppliesTo:
-  description: "Supplier sells to another supplier"
+SKUSupersedes:
+  description: "SKU supersedes another SKU (alias/replacement chain)"
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: supplier_relationships
-    vg:domain_key: seller_id
-    vg:range_key: buyer_id
-    vg:domain_class: Supplier
-    vg:range_class: Supplier
-    vg:operation_types: "[recursive_traversal, temporal_traversal]"
+    vg:edge_table: skus
+    vg:domain_key: id
+    vg:range_key: supersedes_sku_id
+    vg:domain_class: SKU
+    vg:range_class: SKU
+    vg:operation_types: '["direct_join", "recursive_traversal"]'
     vg:asymmetric: true
     vg:irreflexive: true
     vg:acyclic: true
-    vg:is_hierarchical: true
 ```
 
 ### Example Algorithm Relationship
 
 ```yaml
-ConnectsTo:
-  description: "Transport route between facilities"
+RouteSegmentOrigin:
+  description: "Route segment originates from a location (polymorphic)"
   instantiates:
     - vg:SQLMappedRelationship
   annotations:
-    vg:edge_table: transport_routes
-    vg:domain_key: origin_facility_id
-    vg:range_key: destination_facility_id
-    vg:domain_class: Facility
-    vg:range_class: Facility
-    vg:operation_types: "[shortest_path, centrality, connected_components, resilience_analysis]"
+    vg:edge_table: route_segments
+    vg:domain_key: id
+    vg:range_key: origin_id
+    vg:domain_class: RouteSegment
+    vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+    vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
     vg:is_weighted: true
-    vg:weight_columns: '[{"name": "distance_km", "type": "decimal"}]'
+    vg:weight_columns: '[{"name": "distance_km", "type": "decimal", "unit": "km"}]'
 ```
 
 ### Key Questions Claude Will Ask
@@ -181,8 +180,8 @@ For traversal/algorithm relationships:
 
 Review relationship proposals:
 
-- "The `SuppliesTo` relationship should be `acyclic: true` since we don't allow circular supplier chains"
-- "Add an inverse `SuppliedBy` relationship"
+- "The `SKUSupersedes` relationship should be `acyclic: true` since we don't allow circular alias chains"
+- "Route segments need algorithm operation types for pathfinding"
 - "The `distance_km` weight column is the one used for routing"
 
 ## Round 4: Draft & Validate

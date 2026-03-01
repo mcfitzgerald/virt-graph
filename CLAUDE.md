@@ -88,7 +88,7 @@ traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
 
 ### Reference Ontology
 
-`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 30 relationships) with kinetic annotations (state machines, axioms, flow configs, actions, scenario params).
+`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 50 relationships) with polymorphic patterns, transport network graph, recursive alias chains, context blocks, edge attributes, and kinetic annotations (state machines, axioms, flow configs, actions, scenario params).
 
 ### Database Access
 

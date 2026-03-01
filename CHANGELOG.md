@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-02-28
+
+### Added
+
+- **PCG Ontology v2.0 — Complete Virtual Twin Declaration**
+  - 20 new relationships (30→50): all FK columns in schema.sql now mapped
+  - 7 polymorphic relationships: BatchProducesProduct, FormulaForProduct, RouteSegmentOrigin, RouteSegmentDestination, InventoryAtLocation, ShipmentFromOrigin, ShipmentToDestination
+  - 5 `vg:type_discriminator` declarations for polymorphic target resolution
+  - Transport network: `route_segments` declared with `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` operations and weight columns (distance_km, transit_time_hours)
+  - SKU alias chain: `SKUSupersedes` with `recursive_traversal`, asymmetric/irreflexive/acyclic axioms
+  - BOM hierarchy: `FormulaHasIngredients` now includes `path_aggregation` for cost rollups
+  - 6 entity context blocks: Batch, Order, Shipment, Inventory, RouteSegment, GLJournal
+  - 6 relationship context blocks: FormulaHasIngredients, BatchConsumesIngredient, RouteSegmentOrigin/Destination, ShipmentFromOrigin/ToDestination
+  - 3 relationships with `vg:edge_attributes`: SupplierOffersIngredient, FormulaHasIngredients, BatchConsumesIngredient
+  - `vg:sql_filter` on ProductionLineAtPlant (is_active = true)
+  - 8 of 11 operation types now used (was 2)
+
+- **New entity class attributes**:
+  - Batch: `product_type`, `bom_level` (discriminators)
+  - SKU: `supersedes_sku_id` (self-referential FK)
+  - Shipment: `route_type` (polymorphism hint)
+  - Inventory: `location_type` (discriminator)
+  - RouteSegment: `origin_type`, `destination_type` (discriminators)
+  - DemandForecast: `location_type`
+
+- **Test suite** (`pcg_example/tests/test_graph_operations.py`):
+  - Transport network operation tests (shortest_path, centrality, etc.)
+  - SKU alias chain recursive traversal tests
+  - Polymorphic relationship and type_discriminator tests
+  - Context block coverage tests
+  - Edge attribute tests
+  - Operation type coverage tests (8 of 11)
+  - New relationship existence and functional property tests
+
+### Changed
+
+- PCG ontology version `1.0.0` → `2.0.0`
+- Project version `1.1.0` → `1.2.0`
+- Updated test_ontology.py: EXPECTED_ROLE_COUNT `30` → `50`
+- Scrubbed docs/ of legacy references (supplier_relationships, transport_routes, facilities → PCG table names)
+- Updated README.md handler examples to use PCG patterns
+- Updated docs/index.md project structure (fmcg_example → pcg_example)
+
+---
+
 ## [1.1.0] - 2026-02-28
 
 ### Added
