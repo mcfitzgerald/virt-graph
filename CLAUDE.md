@@ -82,13 +82,28 @@ src/virt_graph/
 
 **Handler pattern**: All handlers are schema-parameterized—they take table/column names as arguments, not hardcoded SQL. Example:
 ```python
-traverse(conn, nodes_table="suppliers", edges_table="supplier_relationships",
-         edge_from_col="seller_id", edge_to_col="buyer_id", start_id=123)
+traverse(conn, nodes_table="skus", edges_table="skus",
+         edge_from_col="id", edge_to_col="supersedes_sku_id", start_id=sku_id)
 ```
 
 ### Reference Ontology
 
-`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 50 relationships) with polymorphic patterns, transport network graph, recursive alias chains, context blocks, edge attributes, and kinetic annotations (state machines, axioms, flow configs, actions, scenario params).
+`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 50 relationships).
+
+**Graph operations declared in the ontology:**
+
+| Graph Pattern | Relationships | Operation Types | Handler |
+|---|---|---|---|
+| Transport network | `RouteSegmentOrigin`, `RouteSegmentDestination` | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | `shortest_path()`, `centrality()`, etc. |
+| SKU alias chain | `SKUSupersedes` | `recursive_traversal` | `traverse()` |
+| BOM explosion | `FormulaHasIngredients` | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
+| All other FKs | 47 relationships | `direct_join` | SQL joins |
+
+**Polymorphic relationships** (5 with `type_discriminator`): `BatchProducesProduct`, `FormulaForProduct`, `RouteSegmentOrigin`, `RouteSegmentDestination`, `InventoryAtLocation`. Two more (`ShipmentFromOrigin`, `ShipmentToDestination`) are polymorphic without a clean discriminator column — use `vg:context` blocks instead.
+
+**Edge attributes** on 3 junction tables: `SupplierOffersIngredient` (unit_cost, lead_time_days, min_order_qty), `FormulaHasIngredients` (sequence, quantity_kg), `BatchConsumesIngredient` (quantity_kg).
+
+**Context blocks** on 6 entities (Batch, Order, Shipment, Inventory, RouteSegment, GLJournal) and 6 relationships — provide domain semantics for query generation.
 
 ### Database Access
 
@@ -101,32 +116,27 @@ conn = psycopg2.connect(host='localhost', port=5433, database='prism_fmcg',
 
 ## Metamodel
 
-`virt_graph.yaml` is the single source of truth for VG extensions (v3.0). It defines:
-- `SQLMappedClass` - For entity classes (TBox): requires `vg:table`, `vg:primary_key` (supports composite keys)
-- `SQLMappedRelationship` - For relationships (RBox): requires `vg:table`, `vg:domain_key`, `vg:range_key`, `vg:operation_types`
-- `OperationType` enum - Maps to handler functions (includes kinetic: flow_analysis, state_analysis, scenario_analysis)
-- `OperationCategory` enum - Groups operation types by handler family (includes kinetic)
-- `ContextBlock` - Structured AI context for query generation (business_logic, llm_prompt_hint, traversal_semantics)
-- `TypeDiscriminator` - Polymorphic relationship target resolution
-- `EdgeAttribute` - Property Graph style edge properties
-- `Axiom` - SQL-evaluable data integrity constraints (on classes and relationships)
-- `StateMachine` / `StateTransition` - Lifecycle state definitions
-- `FlowConfig` - Material/information/financial flow metadata
-- `Action` / `ActionEffect` - Semantic mutation definitions for what-if reasoning
-- `ScenarioParam` - Perturbable attributes with propagation direction
+`virt_graph.yaml` (v3.0) is the single source of truth for VG extensions. The two core extension classes:
+- `SQLMappedClass` (TBox): requires `vg:table`, `vg:primary_key`
+- `SQLMappedRelationship` (RBox): requires `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:operation_types`
 
-**Key features**:
-- Composite keys: Use JSON arrays for `vg:primary_key`, `vg:domain_key`, `vg:range_key`
-- Polymorphism: Use `vg:range_class` as array + `vg:type_discriminator` for multiple target types
-- Edge filtering: Use `vg:sql_filter` for conditional edge traversal
-- AI context: Use `vg:context` (ContextBlock) to provide domain hints for Claude
-- Axioms: Use `vg:axioms` for SQL-evaluable constraints (class + relationship level)
-- State machines: Use `vg:state_machine` for lifecycle definitions
-- Flow config: Use `vg:flow_config` for throughput/conservation analysis
-- Actions: Use `vg:actions` for what-if reasoning (NOT executable)
-- Scenario params: Use `vg:scenario_params` for perturbation analysis
+**Features used in the PCG ontology:**
 
-See `docs/ontology/vg-extensions.md` for detailed documentation.
+| Feature | Annotation | Where Used |
+|---|---|---|
+| Polymorphism | `vg:type_discriminator` + `vg:range_class` as list | 5 relationships (BatchProducesProduct, FormulaForProduct, RouteSegment*, InventoryAtLocation) |
+| Edge weights | `vg:weight_columns` | RouteSegmentOrigin/Destination (distance_km, transit_time_hours) |
+| Edge properties | `vg:edge_attributes` | SupplierOffersIngredient, FormulaHasIngredients, BatchConsumesIngredient |
+| Edge filtering | `vg:sql_filter` | ProductionLineAtPlant (`is_active = true`) |
+| AI context | `vg:context` | 6 entities + 6 relationships |
+| State machines | `vg:state_machine` | PurchaseOrder, Order, Batch, Shipment, GoodsReceipt, Return |
+| Flow config | `vg:flow_config` | 10 relationships (material/financial/information flows) |
+| Axioms | `vg:axioms` | Mass balance, temporal ordering, GL balance constraints |
+| Actions | `vg:actions` | What-if mutation docs on Batch, Order, Plant, etc. |
+| Scenario params | `vg:scenario_params` | Perturbable attributes on Plant, Supplier, RouteSegment, etc. |
+| OWL 2 axioms | `vg:functional`, `vg:acyclic`, etc. | SKUSupersedes (asymmetric, irreflexive, acyclic), many functional FKs |
+
+See `docs/ontology/vg-extensions.md` for full reference.
 
 ## Working with Ontologies
 
@@ -137,13 +147,20 @@ from pathlib import Path
 
 ontology = OntologyAccessor(Path("pcg_example/ontology/pcg.yaml"))
 
-# Get table mapping for a class
+# Basic lookups
 table = ontology.get_class_table("Supplier")       # → "suppliers"
 pk = ontology.get_class_pk("Order")                # → ["id"]
-
-# Get relationship configuration
-op_types = ontology.get_operation_types("OrderHasLines")  # → ["direct_join"]
+op_types = ontology.get_operation_types("SKUSupersedes")  # → ["direct_join", "recursive_traversal"]
 domain_keys, range_keys = ontology.get_role_keys("BatchConsumesIngredient")
+
+# Graph structure (v2.0)
+disc = ontology.get_role_type_discriminator("RouteSegmentOrigin")  # → {"column": "origin_type", "mapping": {...}}
+poly = ontology.is_role_polymorphic("InventoryAtLocation")        # → True
+weights = ontology.get_role_weight_columns("RouteSegmentOrigin")  # → [{"name": "distance_km", ...}]
+attrs = ontology.get_role_edge_attributes("SupplierOffersIngredient")  # → [{"name": "unit_cost", ...}]
+filt = ontology.get_role_filter("ProductionLineAtPlant")          # → "is_active = true"
+ctx = ontology.get_role_context("FormulaHasIngredients")          # → {"business_logic": "...", ...}
+ctx = ontology.get_class_context("RouteSegment")                  # → {"definition": "...", ...}
 
 # Kinetic extensions (v3.0)
 sm = ontology.get_class_state_machine("Order")     # → {"state_column": "status", ...}
