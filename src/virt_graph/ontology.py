@@ -511,8 +511,20 @@ class OntologyAccessor:
 
     @property
     def classes(self) -> dict:
-        """Get all entity class definitions (TBox)."""
-        return self._tbox
+        """Get all entity class definitions (TBox) with key annotations surfaced."""
+        result = {}
+        for name, cls in self._tbox.items():
+            result[name] = {
+                "name": name,
+                "description": cls.get("description", ""),
+                "table": self._get_annotation(cls, "table"),
+                "primary_key": self._normalize_to_list(
+                    self._get_annotation(cls, "primary_key")
+                ),
+                "attributes": cls.get("attributes", {}),
+                "annotations": cls.get("annotations", {}),
+            }
+        return result
 
     def get_class(self, name: str) -> dict:
         """Get an entity class definition by name."""
@@ -755,8 +767,29 @@ class OntologyAccessor:
 
     @property
     def roles(self) -> dict:
-        """Get all relationship definitions (RBox)."""
-        return self._rbox
+        """Get all relationship definitions (RBox) with key annotations surfaced."""
+        result = {}
+        for name, cls in self._rbox.items():
+            result[name] = {
+                "name": name,
+                "description": cls.get("description", ""),
+                "edge_table": self._get_annotation(cls, "edge_table"),
+                "domain_key": self._normalize_to_list(
+                    self._get_annotation(cls, "domain_key")
+                ),
+                "range_key": self._normalize_to_list(
+                    self._get_annotation(cls, "range_key")
+                ),
+                "domain_class": self._normalize_to_list(
+                    self._get_annotation(cls, "domain_class")
+                ),
+                "range_class": self._normalize_to_list(
+                    self._get_annotation(cls, "range_class")
+                ),
+                "operation_types": self.get_operation_types(name),
+                "annotations": cls.get("annotations", {}),
+            }
+        return result
 
     def get_role(self, name: str) -> dict:
         """Get a relationship definition by name."""

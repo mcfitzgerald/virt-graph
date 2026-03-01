@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
   - `SchemaView(merge_imports=True)` loaded alongside raw YAML for slot inheritance
   - New `get_class_inherited_attributes(name)` method returns all attributes including inherited ones
   - Abstract/mixin classes automatically excluded from TBox/RBox (no `instantiates`)
+  - `.classes` property now surfaces `name`, `table`, `primary_key`, `description`, `attributes`
+  - `.roles` property now surfaces `name`, `edge_table`, `domain_key`, `range_key`, `domain_class`, `range_class`, `operation_types`, `description`
 
 - **Test suite** (`pcg_example/tests/test_structural_patterns.py`):
   - scm_base.yaml validity and LinkML loading (~5 tests)
