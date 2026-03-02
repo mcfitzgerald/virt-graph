@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-03-01
+
+### Fixed
+
+- **Type discriminator mappings** — RouteSegmentOrigin, RouteSegmentDestination, InventoryAtLocation now match actual DB values (`rdc`, `customer_dc`, `store`, `supplier` instead of `dc`, `retail`)
+- **State machine status values** — added `data_note` to all 9 state machines documenting observed status values vs declared lifecycle; WorkOrder terminal state changed from `completed` to `complete`; ARInvoice states expanded to include `disputed` and `partial`
+
+### Changed
+
+- **PCG ontology overhaul** (`pcg_example/ontology/pcg.yaml` v3.0 → v3.1)
+  - All 38 classes now have `vg:context` blocks (was 6/38, now 38/38)
+  - All 50 relationships now have `vg:context` blocks (was 6/50, now 50/50)
+  - Context blocks include `business_logic`, `llm_prompt_hint`, and `traversal_semantics`
+  - Documents undocumented polymorphism: BOM ingredient_id → ingredients OR bulk_intermediates, order source_id → channels OR retail_locations, revenue lives in AR invoices not order_lines
+  - DistributionCenter context explains RDC vs customer_dc type column distinction
+  - RouteSegmentOrigin range_class updated to include Supplier (origins include supplier nodes)
+
+### Added
+
+- **New scenario_params** on Ingredient (cost_per_kg), ProductionLine (capacity_units_per_hour), RouteSegment (distance_km, transit_time_hours), Shipment (freight_cost)
+- **New axioms** on Supplier (no_duplicate_suppliers) and APInvoice (no_duplicate_invoices) for data quality friction detection
+
+## [1.7.0] - 2026-03-01
+
+### Added
+
+- **PCG benchmark questions** (`pcg_example/benchmark/questions.md`)
+  - 85 natural-language questions (Q01–Q85) across 9 sections
+  - Written from VP Supply Chain / Finance Controller / Procurement Director perspective
+  - Covers all 11 operation types and 16 VG metamodel features
+  - PCG-specific references (Dallas, Columbus, Oral Care, Mass Retail, etc.)
+  - ~12 questions naturally surface data quality friction (duplicate suppliers, SKU renames, invoice variances, bad debt, missing FKs)
+  - Complements `question_categories.md` mapping rubric (no answer keys — future file)
+
 ## [1.6.0] - 2026-03-01
 
 ### Added

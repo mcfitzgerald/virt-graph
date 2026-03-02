@@ -56,7 +56,7 @@ class TestOntologyStructure:
         assert ontology.name == "pcg"
 
     def test_ontology_version(self, ontology):
-        assert ontology.version == "3.0.0"
+        assert ontology.version == "3.1.0"
 
     def test_imports_scm_base(self, raw_yaml):
         """pcg.yaml imports scm_base for structural patterns."""

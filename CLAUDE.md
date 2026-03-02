@@ -116,7 +116,7 @@ traverse(conn, nodes_table="skus", edges_table="skus",
 
 **Edge attributes** on 3 junction tables: `SupplierOffersIngredient` (unit_cost, lead_time_days, min_order_qty), `FormulaHasIngredients` (sequence, quantity_kg), `BatchConsumesIngredient` (quantity_kg).
 
-**Context blocks** on 6 entities (Batch, Order, Shipment, Inventory, RouteSegment, GLJournal) and 6 relationships — provide domain semantics for query generation.
+**Context blocks** on all 38 classes and all 50 relationships — provide domain semantics (business_logic, llm_prompt_hint, traversal_semantics) for query generation.
 
 ### Database Access
 

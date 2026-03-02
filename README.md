@@ -63,6 +63,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
 | Base Schema | `scm_base.yaml` | Supply chain structural patterns (abstract classes, mixins, enums) |
 | Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 50 relationships) |
+| Benchmark | `pcg_example/benchmark/` | 85 natural-language questions + category mappings |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
 | Neo4j Tools | `src/virt_graph/neo4j/` | Ontology-driven schema generation and PG→Neo4j data loading |
@@ -102,7 +103,7 @@ The metamodel (`virt_graph.yaml` v3.0) supports rich graph declarations. Here's 
 | **Polymorphism** | `vg:type_discriminator` resolves FKs that point to multiple table types | 5 relationships — route segments, batches, formulas, inventory |
 | **Edge weights** | `vg:weight_columns` for pathfinding algorithms | `distance_km`, `transit_time_hours` on transport network |
 | **Edge properties** | `vg:edge_attributes` for Property Graph style data on edges | `unit_cost`/`lead_time_days` on supplier offers, `quantity_kg` on BOM |
-| **Context blocks** | `vg:context` provides domain semantics for AI query generation | 6 entities + 6 relationships with business logic hints |
+| **Context blocks** | `vg:context` provides domain semantics for AI query generation | All 38 classes + all 50 relationships with business logic, traversal semantics, and prompt hints |
 | **State machines** | `vg:state_machine` declares lifecycle states and transitions | Orders, POs, batches, shipments, goods receipts, returns |
 | **Flow config** | `vg:flow_config` declares material/financial/information flows | 10 relationships with conservation groups |
 | **Axioms** | `vg:axioms` are SQL-evaluable integrity constraints | Mass balance, temporal ordering, GL balance |

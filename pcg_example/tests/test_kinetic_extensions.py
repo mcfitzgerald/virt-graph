@@ -304,7 +304,7 @@ class TestScenarioParamValidation:
             _make_ontology(yaml_str)
 
     def test_class_without_scenario_params_returns_empty(self, ontology):
-        params = ontology.get_class_scenario_params("Ingredient")
+        params = ontology.get_class_scenario_params("Channel")
         assert params == []
 
 

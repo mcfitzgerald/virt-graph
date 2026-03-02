@@ -161,4 +161,5 @@ virt-graph/
 - [Quick Start](quickstart.md) - Get running in 5 minutes
 - [Architecture](architecture.md) - Understand the design
 - [Ontology System](ontology-system.md) - Define your own ontology
+- [Ontology Building Guide](ontology-building-guide.md) - Practical cookbook for building ontologies
 - [Handlers Reference](handlers.md) - Available graph operations
