@@ -510,7 +510,7 @@ All VG extensions are defined in `virt_graph.yaml` (at project root), which serv
 To see the complete metamodel:
 
 ```bash
-make show-ontology
+poetry run python scripts/show_ontology.py
 ```
 
 ## Axioms (v3.0)
@@ -782,6 +782,6 @@ Claude uses scenario params to answer questions like:
 
 ## Next Steps
 
-- [LinkML Format](linkml-format.md) - LinkML basics
-- [Creating Ontologies](creating-ontologies.md) - Step-by-step guide
+- [Ontology System](ontology-system.md) - Core concepts and LinkML format
+- [Creating Ontologies](ontology-creation.md) - Step-by-step guide
 - [Validation](validation.md) - How validation works

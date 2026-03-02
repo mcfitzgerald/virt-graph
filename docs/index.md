@@ -77,22 +77,19 @@ VG/SQL uses [LinkML](https://linkml.io) with custom extensions (`vg:` prefix) to
 - **Relationship classes** (RBox): Map to foreign keys via `vg:SQLMappedRelationship`
 - **Operation types**: `vg:operation_types` specifies which handlers are applicable
 
-See [Ontology System](concepts/ontology.md) for details.
+See [Ontology System](ontology-system.md) for details.
 
 ## Quick Start
 
 ```bash
 # Install dependencies
-make install
-
-# Start PostgreSQL
-make db-up
+poetry install
 
 # Validate your ontology
-poetry run python scripts/validate_ontology.py ontology/your_ontology.yaml
+poetry run python scripts/validate_ontology.py --all
 ```
 
-See [Quick Start Guide](getting-started/quickstart.md) for a complete walkthrough.
+See [Quick Start Guide](quickstart.md) for a complete walkthrough.
 
 ## Example: PCG Supply Chain
 
@@ -161,7 +158,7 @@ virt-graph/
 
 ## Next Steps
 
-- [Quick Start](getting-started/quickstart.md) - Get running in 5 minutes
-- [Architecture](concepts/architecture.md) - Understand the design
-- [Ontology System](concepts/ontology.md) - Define your own ontology
-- [Handlers Overview](handlers/overview.md) - Available graph operations
+- [Quick Start](quickstart.md) - Get running in 5 minutes
+- [Architecture](architecture.md) - Understand the design
+- [Ontology System](ontology-system.md) - Define your own ontology
+- [Handlers Reference](handlers.md) - Available graph operations

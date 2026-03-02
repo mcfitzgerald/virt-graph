@@ -13,6 +13,7 @@ import pytest
 PCG_TABLES = [
     "suppliers",
     "ingredients",
+    "supplier_ingredients",
     "formulas",
     "formula_ingredients",
     "skus",
@@ -22,13 +23,14 @@ PCG_TABLES = [
     "retail_locations",
     "production_lines",
     "route_segments",
-    "supplier_offers",
     "purchase_orders",
     "purchase_order_lines",
     "goods_receipts",
     "goods_receipt_lines",
     "work_orders",
     "batches",
+    "batch_ingredients",
+    "bulk_intermediates",
     "orders",
     "order_lines",
     "shipments",
@@ -42,7 +44,11 @@ PCG_TABLES = [
     "ap_invoice_lines",
     "ar_invoices",
     "ar_invoice_lines",
-    "gl_journals",
+    "gl_journal",
+    "chart_of_accounts",
+    "invoice_variances",
+    "ap_payments",
+    "ar_receipts",
 ]
 
 

@@ -232,6 +232,6 @@ Layer 0: SQL Data
 
 ## Next Steps
 
-- [Ontology System](ontology.md) - Defining your domain
-- [Handlers Overview](../handlers/overview.md) - Available operations
-- [Creating Ontologies](../ontology/creating-ontologies.md) - Build your own
+- [Ontology System](ontology-system.md) - Defining your domain
+- [Handlers Reference](handlers.md) - Available operations
+- [Creating Ontologies](ontology-creation.md) - Build your own

@@ -115,19 +115,15 @@ with connection() as conn:
 
 ## Next Steps
 
-- [Architecture](../concepts/architecture.md) - Understand the design
-- [Ontology System](../concepts/ontology.md) - Define your own ontology
-- [Handlers Overview](../handlers/overview.md) - All available handlers
-- [Supply Chain Tutorial](../examples/supply-chain.md) - Complete example
+- [Architecture](architecture.md) - Understand the design
+- [Ontology System](ontology-system.md) - Define your own ontology
+- [Handlers Reference](handlers.md) - All available handlers
 
 ## Common Commands
 
 ```bash
-make help              # Show all commands
-make db-up             # Start PostgreSQL
-make db-down           # Stop PostgreSQL
-make db-reset          # Reset database (regenerate data)
-make validate-ontology # Validate all ontologies
-make test              # Run tests
-make serve-docs        # Serve documentation locally
+poetry install                                        # Install dependencies
+poetry run python scripts/validate_ontology.py --all  # Validate all ontologies
+poetry run pytest pcg_example/tests/ -v               # Run tests
+poetry run python scripts/show_ontology.py            # Show TBox/RBox definitions
 ```

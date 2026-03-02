@@ -794,7 +794,6 @@ classes:
     description: "General ledger chart of accounts"
     mixins:
       - HasActiveFlag
-      - HasName
     instantiates:
       - vg:SQLMappedClass
     annotations:

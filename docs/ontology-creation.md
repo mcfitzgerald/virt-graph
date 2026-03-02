@@ -563,4 +563,4 @@ Re-query if data volume changes significantly.
 
 - [VG Extensions](vg-extensions.md) - Complete metamodel annotation reference
 - [Validation](validation.md) - Validation details
-- [LinkML Format](linkml-format.md) - LinkML basics
+- [Ontology System](ontology-system.md) - LinkML format and core concepts

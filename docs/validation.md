@@ -1,43 +1,40 @@
 # Ontology Validation
 
-VG/SQL uses two-layer validation to ensure ontologies are both structurally correct (valid LinkML) and semantically complete (all VG requirements met).
+VG/SQL uses multi-layer validation to ensure ontologies are structurally correct (valid LinkML), semantically complete (all VG requirements met), and consistent with the live database.
 
-## Two-Layer Validation
+## Validation Layers
 
 | Layer | Tool | What It Checks |
 |-------|------|----------------|
 | 1. Structure | `linkml-lint` | YAML syntax, LinkML schema rules |
 | 2. Semantics | `OntologyAccessor` | VG annotations, complexity values, class references |
+| 3. Schema Match | `validate_schema_match.py` | Ontology vs live database consistency |
 
-Both layers must pass for an ontology to be valid.
+All layers should pass for an ontology to be considered valid.
 
 ## Quick Validation
 
-### Full Validation (Both Layers)
+### Full Validation (Layers 1 + 2)
 
 ```bash
-make validate-ontology
+poetry run python scripts/validate_ontology.py --all
 ```
 
 Or specify a file:
 
 ```bash
-poetry run python scripts/validate_ontology.py ontology/my_domain.yaml
+poetry run python scripts/validate_ontology.py pcg_example/ontology/pcg.yaml
 ```
 
 ### Layer 1 Only (LinkML Structure)
 
 ```bash
-make validate-linkml
-# or
 poetry run linkml-lint --validate-only ontology/my_domain.yaml
 ```
 
 ### Layer 2 Only (VG Annotations)
 
 ```bash
-make validate-vg
-# or
 poetry run python scripts/validate_ontology.py --vg-only ontology/my_domain.yaml
 ```
 
@@ -118,6 +115,27 @@ Fix: Match the exact class name (case-sensitive):
 ```yaml
 vg:domain_class: Supplier
 ```
+
+## Schema Match Validation (Layer 3)
+
+Cross-reference the ontology against a live PostgreSQL database:
+
+```bash
+poetry run python scripts/validate_schema_match.py pcg_example/ontology/pcg.yaml
+poetry run python scripts/validate_schema_match.py --all
+```
+
+### What It Checks
+
+| Check | Ontology Source | Database Source |
+|-------|----------------|----------------|
+| Table exists | `vg:table` per class | `information_schema.tables` |
+| Columns exist | `attributes` block | `information_schema.columns` |
+| Primary key matches | `vg:primary_key` | `table_constraints` + `key_column_usage` |
+| FK existence | `vg:domain_key`/`vg:range_key` | `referential_constraints` |
+| Row count plausibility | `vg:row_count` | `SELECT COUNT(*)` |
+
+The script exits with code 0 on pass, 2 if the database is unavailable, and 1 on failure.
 
 ## Programmatic Validation
 
@@ -223,19 +241,19 @@ poetry run pytest tests/test_handler_safety.py -v
 poetry run pytest tests/test_ontology_validation.py -v
 
 # All tests
-make test
+poetry run pytest pcg_example/tests/ -v
 ```
 
 ## Validation Checklist
 
 After creating or modifying an ontology:
 
-- [ ] `make validate-ontology` passes
+- [ ] `poetry run python scripts/validate_ontology.py --all` passes
 - [ ] All entity classes have `vg:table` and `vg:primary_key`
 - [ ] All relationship classes have all six required annotations
 - [ ] `operation_types` contains valid values (direct_join, recursive_traversal, etc.)
 - [ ] `domain_class` and `range_class` reference existing entity classes
-- [ ] `make test` passes
+- [ ] `poetry run pytest pcg_example/tests/ -v` passes
 
 ## Debugging Tips
 
@@ -261,59 +279,13 @@ for role in ontology.rbox:
 ### Check Metamodel Requirements
 
 ```bash
-make show-ontology
+poetry run python scripts/show_ontology.py
 ```
 
 This displays the metamodel's required fields for SQLMappedClass and SQLMappedRelationship.
 
-## Neo4j Graph Validation
-
-After migrating data to Neo4j, use the graph validator to verify the structure matches the ontology:
-
-```bash
-# Validate against default ontology
-make validate-neo4j
-
-# Validate against custom ontology
-poetry run python scripts/validate_neo4j.py path/to/ontology.yaml
-
-# JSON output for CI
-poetry run python scripts/validate_neo4j.py --json
-```
-
-### What It Checks
-
-| Check | Description |
-|-------|-------------|
-| Node Labels | All ontology classes exist as Neo4j labels |
-| Node Counts | Counts match `row_count` annotations (if present) |
-| Relationship Types | All ontology roles exist as Neo4j relationship types |
-| Relationship Endpoints | Domain/range match ontology declarations |
-| Relationship Counts | Counts match `row_count` annotations (if present) |
-| Constraints | Irreflexive (no self-loops), Asymmetric (no bidirectional) |
-
-### Sample Output
-
-```
-Neo4j Graph Validation Report
-==================================================
-Ontology: supply_chain v1.0
-Database: bolt://localhost:7687
-
-Node Labels
---------------------------------------------------
-  [pass] Supplier: Label 'Supplier' exists
-  [pass] Part: Label 'Part' exists
-  ...
-
-Summary
---------------------------------------------------
-Passed: 67/67 checks
-[pass] All validations passed
-```
-
 ## Next Steps
 
-- [Creating Ontologies](creating-ontologies.md) - Step-by-step guide
+- [Creating Ontologies](ontology-creation.md) - Step-by-step guide
 - [VG Extensions](vg-extensions.md) - Complete annotation reference
-- [LinkML Format](linkml-format.md) - LinkML basics
+- [Ontology System](ontology-system.md) - Core concepts and LinkML format

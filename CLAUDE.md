@@ -39,6 +39,9 @@ poetry run pytest pcg_example/tests/ -v           # All tests
 # Ontology validation
 poetry run python scripts/validate_ontology.py --all   # Full two-layer validation (LinkML + VG)
 poetry run python scripts/show_ontology.py             # Show TBox/RBox definitions
+
+# Schema match validation (requires live DB)
+poetry run python scripts/validate_schema_match.py --all   # Ontology vs DB cross-reference
 ```
 
 ## Architecture
@@ -53,11 +56,14 @@ src/virt_graph/
 │   ├── traversal.py      # traverse(), path_aggregate(), traverse_collecting()
 │   ├── pathfinding.py    # shortest_path(), all_shortest_paths()
 │   └── network.py        # centrality(), connected_components(), resilience_analysis()
-└── estimator/            # Runtime estimation and guards
-    ├── sampler.py        # Graph sampling for property detection
-    ├── models.py         # Estimation models with damping
-    ├── bounds.py         # DDL-derived table statistics
-    └── guards.py         # Runtime safety guards
+├── estimator/            # Runtime estimation and guards
+│   ├── sampler.py        # Graph sampling for property detection
+│   ├── models.py         # Estimation models with damping
+│   ├── bounds.py         # DDL-derived table statistics
+│   └── guards.py         # Runtime safety guards
+└── neo4j/                # Neo4j integration (optional)
+    ├── schema.py         # generate_schema() — ontology-driven Cypher DDL
+    └── loader.py         # load_data() — PG→Neo4j migration with UNWIND batching
 ```
 
 ### Schema Layers
@@ -154,7 +160,7 @@ The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 | Scenario params | `vg:scenario_params` | Perturbable attributes on Plant, Supplier, RouteSegment, etc. |
 | OWL 2 axioms | `vg:functional`, `vg:acyclic`, etc. | SKUSupersedes (asymmetric, irreflexive, acyclic), many functional FKs |
 
-See `docs/ontology/vg-extensions.md` for full reference.
+See `docs/vg-extensions.md` for full reference.
 
 ## Working with Ontologies
 

@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-03-01
+
+### Added
+
+- **Neo4j schema generator** (`src/virt_graph/neo4j/schema.py`)
+  - Reads any VG ontology and generates Neo4j Cypher DDL (uniqueness constraints)
+  - Supports composite primary keys
+  - `generate_schema(ontology)` returns statements; optional `driver` param executes them
+
+- **Neo4j data loader** (`src/virt_graph/neo4j/loader.py`)
+  - Ontology-driven migration from PostgreSQL to Neo4j
+  - Handles polymorphic relationships via `vg:type_discriminator`
+  - Edge attributes become relationship properties
+  - Batch UNWIND for performance (configurable batch size)
+  - `load_data(ontology, pg_conn, neo4j_driver)` returns MigrationMetrics
+  - Distinguishes FK relationships from junction table relationships
+
+- **PCG Neo4j infrastructure**
+  - `pcg_example/neo4j/docker-compose.yml` — Neo4j 5 Community container
+  - `pcg_example/tests/test_neo4j.py` — integration tests (skip if Neo4j unavailable)
+
+## [1.5.0] - 2026-03-01
+
+### Added
+
+- **Schema match validation** (`scripts/validate_schema_match.py`)
+  - Cross-references VG ontology against live PostgreSQL database
+  - Checks: table existence, column existence, PK match, FK existence, row count plausibility
+  - Exit codes: 0 (pass), 1 (fail), 2 (DB unavailable)
+  - `pcg_example/tests/test_schema_match.py` — integration test (skips if DB unavailable)
+
+### Changed
+
+- **Docs refactor** — flattened from 12 files in 4 subdirectories to 8 flat files
+  - Merged `concepts/ontology.md` + `ontology/linkml-format.md` → `ontology-system.md`
+  - Merged `handlers/overview.md` + `traversal.md` + `pathfinding.md` + `network.md` → `handlers.md`
+  - Removed stale `make` commands, replaced with `poetry run` equivalents
+  - Removed Neo4j validation section from `validation.md`
+  - Added schema match validation to `validation.md`
+
+### Fixed
+
+- **ChartOfAccounts** — removed `HasName` mixin (DB column is `account_name`, not `name`)
+- **test_db_connection.py** — fixed PCG table list (`supplier_ingredients` not `supplier_offers`, `gl_journal` not `gl_journals`, added missing tables)
+
 ## [1.4.0] - 2026-03-01
 
 ### Added

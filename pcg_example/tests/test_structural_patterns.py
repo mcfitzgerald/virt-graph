@@ -184,7 +184,7 @@ class TestMixinApplication:
 
     HAS_NAME_CLASSES = [
         "Supplier", "Ingredient", "BulkIntermediate", "SKU",
-        "Channel", "ChartOfAccounts",
+        "Channel",
         # Location children get it through Location
         "Plant", "DistributionCenter", "RetailLocation",
     ]

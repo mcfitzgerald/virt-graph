@@ -65,6 +65,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 | Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 50 relationships) |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
+| Neo4j Tools | `src/virt_graph/neo4j/` | Ontology-driven schema generation and PG→Neo4j data loading |
 
 ### The Virtual Twin
 
@@ -203,8 +204,9 @@ The ontology + handlers are the contribution; Claude Code is the enabler.
 ## Documentation
 
 Documentation lives in `docs/` and covers:
-- **[Architecture](docs/concepts/architecture.md)** - System design and dispatch pattern
-- **[Operation Types](docs/concepts/ontology.md)** - How operations are classified
-- **[Handlers](docs/handlers/overview.md)** - All available graph operations
-- **[Creating Ontologies](docs/ontology/creating-ontologies.md)** - 4-round discovery protocol
-- **[VG Extensions](docs/ontology/vg-extensions.md)** - Complete metamodel annotation reference
+- **[Architecture](docs/architecture.md)** - System design and dispatch pattern
+- **[Ontology System](docs/ontology-system.md)** - How operations are classified
+- **[Handlers](docs/handlers.md)** - All available graph operations
+- **[Creating Ontologies](docs/ontology-creation.md)** - 5-phase discovery protocol
+- **[VG Extensions](docs/vg-extensions.md)** - Complete metamodel annotation reference
+- **[Validation](docs/validation.md)** - Three-layer validation (LinkML + VG + schema match)
