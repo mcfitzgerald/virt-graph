@@ -163,3 +163,4 @@ virt-graph/
 - [Ontology System](ontology-system.md) - Define your own ontology
 - [Ontology Building Guide](ontology-building-guide.md) - Practical cookbook for building ontologies
 - [Handlers Reference](handlers.md) - Available graph operations
+- [Process Flows](process-flows.md) - End-to-end supply chain process flows (O2C, P2P, BOM, Network, Returns)

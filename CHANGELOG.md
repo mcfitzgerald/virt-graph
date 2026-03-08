@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.1] - 2026-03-07
+
+### Added
+
+- **Supply chain process flows documentation** (`docs/process-flows.md`)
+  - 5 end-to-end process flows mapped to SCOR Digital Standard (Plan, Source, Make, Deliver, Return)
+  - Order-to-Cash (O2C): demand-to-revenue cycle with state machines and GL traceability
+  - Procure-to-Pay (P2P): supplier sourcing with three-way match and variance detection
+  - BOM Explosion & Production (M2S): hierarchical aggregation, polymorphic production, mass balance
+  - Network Resilience & Disruption: graph algorithm handlers (shortest_path, centrality, resilience_analysis)
+  - Return & Disposition: reverse logistics with condition-based branching
+  - Cross-flow connections showing how a single question can traverse all 5 flows
+  - What-if scenario examples for each flow using existing `vg:scenario_params` and `vg:actions`
+  - Mapping to Virtual Twin strategic roadmap phases (Semantic Mapping -> Kinetic Modeling -> Intelligence Layer)
+- **O2C trace demo** (`pcg_example/demos/trace_o2c.py`) — traces a single order through the full Order-to-Cash cycle (Order -> Shipment -> ARInvoice -> ARReceipt -> GL), demonstrates polymorphic source resolution, state machines, revenue source of truth, and conservation checks
+- Added process flows link to `docs/index.md` and `README.md`
+
 ## [1.8.0] - 2026-03-01
 
 ### Fixed

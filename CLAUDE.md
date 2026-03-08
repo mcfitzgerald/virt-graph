@@ -152,7 +152,7 @@ The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 | Edge weights | `vg:weight_columns` | RouteSegmentOrigin/Destination (distance_km, transit_time_hours) |
 | Edge properties | `vg:edge_attributes` | SupplierOffersIngredient, FormulaHasIngredients, BatchConsumesIngredient |
 | Edge filtering | `vg:sql_filter` | ProductionLineAtPlant (`is_active = true`) |
-| AI context | `vg:context` | 6 entities + 6 relationships |
+| AI context | `vg:context` | All 38 classes + all 50 relationships |
 | State machines | `vg:state_machine` | PurchaseOrder, Order, Batch, Shipment, GoodsReceipt, Return |
 | Flow config | `vg:flow_config` | 10 relationships (material/financial/information flows) |
 | Axioms | `vg:axioms` | Mass balance, temporal ordering, GL balance constraints |

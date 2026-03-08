@@ -208,6 +208,8 @@ Documentation lives in `docs/` and covers:
 - **[Architecture](docs/architecture.md)** - System design and dispatch pattern
 - **[Ontology System](docs/ontology-system.md)** - How operations are classified
 - **[Handlers](docs/handlers.md)** - All available graph operations
+- **[Process Flows](docs/process-flows.md)** - End-to-end supply chain process flows (O2C, P2P, BOM, Network, Returns) mapped to SCOR
 - **[Creating Ontologies](docs/ontology-creation.md)** - 5-phase discovery protocol
 - **[VG Extensions](docs/vg-extensions.md)** - Complete metamodel annotation reference
 - **[Validation](docs/validation.md)** - Three-layer validation (LinkML + VG + schema match)
+- **Demos** (`pcg_example/demos/`) - Runnable scripts demonstrating ontology-driven queries
