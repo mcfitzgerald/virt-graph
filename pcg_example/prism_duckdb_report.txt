@@ -1,0 +1,187 @@
+================================================================================
+TABLES BY DOMAIN
+================================================================================
+
+  DOMAIN A: SOURCE (Procurement & Inbound)
+  ----------------------------------------
+    goods_receipt_lines                       4,789,018 rows
+    goods_receipts                            4,786,734 rows
+    ingredients                                      78 rows
+    purchase_order_lines                         11,899 rows
+    purchase_orders                               5,964 rows
+    supplier_ingredients                            176 rows
+    suppliers                                        56 rows
+
+  DOMAIN B: TRANSFORM (Manufacturing)
+  -----------------------------------
+    batch_ingredients                           982,783 rows
+    batches                                     124,418 rows
+    formula_ingredients                           4,207 rows
+    formulas                                        562 rows
+    plants                                            4 rows
+    production_lines                                 15 rows
+    work_orders                                 135,503 rows
+
+  DOMAIN C: PRODUCT (SKU Master)
+  ------------------------------
+    bulk_intermediates                               62 rows
+    skus                                            521 rows
+
+  DOMAIN D: ORDER (Demand Signal)
+  -------------------------------
+    channels                                          7 rows
+    order_lines                              56,074,917 rows
+    orders                                    1,316,677 rows
+
+  DOMAIN E2: LOGISTICS (Transport Network)
+  ----------------------------------------
+    route_segments                                4,025 rows
+
+  DOMAIN E: FULFILL (Outbound)
+  ----------------------------
+    distribution_centers                             62 rows
+    inventory                                79,162,388 rows
+    retail_locations                              3,817 rows
+    shipment_lines                           62,585,842 rows
+    shipments                                 6,310,729 rows
+
+  DOMAIN F: PLAN (Demand & Supply Planning)
+  -----------------------------------------
+    demand_forecasts                            191,080 rows
+
+  DOMAIN G: RETURN (Regenerate)
+  -----------------------------
+    disposition_logs                             66,419 rows
+    return_lines                                 66,419 rows
+    returns                                      66,419 rows
+
+  DOMAIN H2: DATA QUALITY & VARIANCES
+  -----------------------------------
+    ap_payments                               4,810,512 rows
+    ar_receipts                               1,322,563 rows
+    invoice_variances                           623,337 rows
+
+  DOMAIN H: FINANCE
+  -----------------
+    ap_invoice_lines                          4,812,812 rows
+    ap_invoices                               4,810,512 rows
+    ar_invoice_lines                         52,694,322 rows
+    ar_invoices                               1,329,220 rows
+    chart_of_accounts                                14 rows
+    gl_journal                               48,380,683 rows
+
+  Total: 38 tables
+
+================================================================================
+PRIMARY KEYS
+================================================================================
+  ap_invoice_lines                    ['invoice_id', 'line_number']
+  ap_invoices                         ['id']
+  ap_payments                         ['id']
+  ar_invoice_lines                    ['invoice_id', 'line_number']
+  ar_invoices                         ['id']
+  ar_receipts                         ['id']
+  batch_ingredients                   ['id']
+  batches                             ['id']
+  bulk_intermediates                  ['id']
+  channels                            ['id']
+  chart_of_accounts                   ['id']
+  demand_forecasts                    ['id']
+  distribution_centers                ['id']
+  formula_ingredients                 ['formula_id', 'ingredient_id', 'sequence']
+  formulas                            ['id']
+  gl_journal                          ['id']
+  goods_receipt_lines                 ['gr_id', 'line_number']
+  goods_receipts                      ['id']
+  ingredients                         ['id']
+  inventory                           ['id']
+  invoice_variances                   ['id']
+  order_lines                         ['order_id', 'line_number']
+  orders                              ['id']
+  plants                              ['id']
+  production_lines                    ['id']
+  purchase_order_lines                ['po_id', 'line_number']
+  purchase_orders                     ['id']
+  retail_locations                    ['id']
+  return_lines                        ['return_id', 'line_number']
+  returns                             ['id']
+  route_segments                      ['id']
+  shipment_lines                      ['shipment_id', 'line_number']
+  shipments                           ['id']
+  skus                                ['id']
+  supplier_ingredients                ['id']
+  suppliers                           ['id']
+  work_orders                         ['id']
+
+  Total: 37 PKs
+
+================================================================================
+FOREIGN KEYS
+================================================================================
+  ap_invoice_lines                    ['invoice_id']
+  ap_invoices                         ['supplier_id']
+  ap_invoices                         ['gr_id']
+  ap_payments                         ['invoice_id']
+  ar_invoice_lines                    ['invoice_id']
+  ar_invoices                         ['shipment_id']
+  ar_receipts                         ['invoice_id']
+  batch_ingredients                   ['batch_id']
+  batches                             ['plant_id']
+  batches                             ['formula_id']
+  disposition_logs                    ['return_id']
+  formula_ingredients                 ['formula_id']
+  goods_receipt_lines                 ['gr_id']
+  invoice_variances                   ['invoice_id']
+  order_lines                         ['order_id']
+  production_lines                    ['plant_id']
+  purchase_order_lines                ['po_id']
+  purchase_orders                     ['supplier_id']
+  return_lines                        ['return_id']
+  shipment_lines                      ['shipment_id']
+  supplier_ingredients                ['supplier_id']
+  supplier_ingredients                ['ingredient_id']
+
+  Total: 22 FKs
+
+================================================================================
+COLUMN COMMENTS (semantic hints)
+================================================================================
+  batches.product_type: finished_good, bulk_intermediate, or premix
+  bulk_intermediates.bom_level: 1=primary bulk, 2=premix sub-intermediate
+  chart_of_accounts.account_type: asset, liability, revenue, expense
+  formulas.bom_level: 0=SKU->BULK, 1=BULK->RM/PREMIX, 2=PREMIX->RM
+  ingredients.subcategory: base_material, active_ingredient, packaging
+  invoice_variances.variance_type: price or qty
+
+  Total: 6 annotated columns
+
+================================================================================
+INDEXES
+================================================================================
+  idx_ap_invoices_date                          ON ap_invoices
+  idx_ap_payments_date                          ON ap_payments
+  idx_ap_payments_invoice                       ON ap_payments
+  idx_ar_invoices_channel                       ON ar_invoices
+  idx_ar_invoices_date                          ON ar_invoices
+  idx_ar_receipts_date                          ON ar_receipts
+  idx_ar_receipts_invoice                       ON ar_receipts
+  idx_batches_production_date                   ON batches
+  idx_batches_status                            ON batches
+  idx_gl_journal_account                        ON gl_journal
+  idx_gl_journal_entry_date                     ON gl_journal
+  idx_gl_journal_reference                      ON gl_journal
+  idx_gl_journal_seq                            ON gl_journal
+  idx_goods_receipts_status                     ON goods_receipts
+  idx_inventory_day                             ON inventory
+  idx_inventory_location                        ON inventory
+  idx_invoice_variances_invoice                 ON invoice_variances
+  idx_orders_day                                ON orders
+  idx_orders_status                             ON orders
+  idx_purchase_orders_status                    ON purchase_orders
+  idx_returns_status                            ON returns
+  idx_shipments_route_type                      ON shipments
+  idx_shipments_ship_date                       ON shipments
+  idx_shipments_status                          ON shipments
+  idx_work_orders_status                        ON work_orders
+
+  Total: 25 indexes

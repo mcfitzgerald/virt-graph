@@ -1,0 +1,197 @@
+
+  Refined Domain Architecture
+
+  The SCOR-DS loop maps onto your three buckets like this:
+
+                          ┌─────────────────────┐
+                          │    SYNCHRONIZE       │
+                          │  (Plan, Forecast)    │
+                          └──────────┬──────────┘
+                                     │
+                ┌────────────────────┼────────────────────┐
+                │                    │                     │
+                ▼                    ▼                     ▼
+       ┌─────────────┐    ┌──────────────────┐   ┌──────────────┐
+       │ PROCUREMENT  │───▶│     SUPPLY       │──▶│    DEMAND     │
+       │  (Source)    │    │ (Transform+Net)  │   │(Order+Fulfill)│
+       │              │◀───│                  │◀──│               │
+       └─────────────┘    └──────────────────┘   └──────────────┘
+                ▲                    │                     │
+                │                    ▼                     │
+                │           ┌────────────────┐            │
+                └───────────│  REGENERATE    │◀───────────┘
+                            │  (Return)      │
+                            └────────────────┘
+                                     │
+                       ┌─────────────┴─────────────┐
+                       │       ORCHESTRATE          │
+                       │  (Finance, GL, Variance)   │
+                       └───────────────────────────┘
+
+  The Three Domains + Meta-flows
+
+  1. PROCUREMENT (≈ SCOR Source)
+
+  ┌──────────────────┬──────────────────────────────────────────┐
+  │    Sub-domain    │                 Classes                  │
+  ├──────────────────┼──────────────────────────────────────────┤
+  │ Sourcing         │ Supplier, Ingredient, SupplierIngredient │
+  ├──────────────────┼──────────────────────────────────────────┤
+  │ Purchasing       │ PurchaseOrder, PurchaseOrderLine         │
+  ├──────────────────┼──────────────────────────────────────────┤
+  │ Inbound Receipt  │ GoodsReceipt, GoodsReceiptLine           │
+  ├──────────────────┼──────────────────────────────────────────┤
+  │ Accounts Payable │ APInvoice, APInvoiceLine, APPayment      │
+  └──────────────────┴──────────────────────────────────────────┘
+
+  2. SUPPLY (≈ SCOR Transform + Network)
+
+  ┌───────────────┬──────────────────────────────────────────────────────────┐
+  │  Sub-domain   │                         Classes                          │
+  ├───────────────┼──────────────────────────────────────────────────────────┤
+  │ Product       │ SKU, BulkIntermediate, Formula, FormulaIngredient        │
+  ├───────────────┼──────────────────────────────────────────────────────────┤
+  │ Manufacturing │ Plant, ProductionLine, WorkOrder, Batch, BatchIngredient │
+  ├───────────────┼──────────────────────────────────────────────────────────┤
+  │ Network       │ DistributionCenter, RouteSegment                         │
+  └───────────────┴──────────────────────────────────────────────────────────┘
+
+  3. DEMAND (≈ SCOR Order + Fulfill + Plan + Return)
+
+  ┌─────────────────────────┬──────────────────────────────────────────────────────┐
+  │       Sub-domain        │                       Classes                        │
+  ├─────────────────────────┼──────────────────────────────────────────────────────┤
+  │ Planning                │ DemandForecast                                       │
+  ├─────────────────────────┼──────────────────────────────────────────────────────┤
+  │ Customer Service        │ Channel, Order, OrderLine, RetailLocation, Inventory │
+  ├─────────────────────────┼──────────────────────────────────────────────────────┤
+  │ Fulfillment & Logistics │ Shipment, ShipmentLine                               │
+  ├─────────────────────────┼──────────────────────────────────────────────────────┤
+  │ Reverse Logistics       │ Return, ReturnLine, DispositionLog                   │
+  ├─────────────────────────┼──────────────────────────────────────────────────────┤
+  │ Accounts Receivable     │ ARInvoice, ARInvoiceLine, ARReceipt                  │
+  └─────────────────────────┴──────────────────────────────────────────────────────┘
+
+  Cross-cutting: ORCHESTRATE (Finance)
+
+  ┌─────────────────────────────────────────────┐
+  │                   Classes                   │
+  ├─────────────────────────────────────────────┤
+  │ ChartOfAccounts, GLJournal, InvoiceVariance │
+  └─────────────────────────────────────────────┘
+
+  Inter-domain Flows
+
+  This is the key piece — the domains aren't silos, they're connected by typed flows. I'd propose capturing these explicitly in the ontology
+  (e.g., as schema-level annotations or a new section):
+
+  ┌───────────────────┬───────────────────────────────────────┬─────────────┬─────────────────────────────────────────────────────────────┐
+  │       Flow        │               Direction               │    Type     │                      Key Relationships                      │
+  ├───────────────────┼───────────────────────────────────────┼─────────────┼─────────────────────────────────────────────────────────────┤
+  │ Material          │ Procurement → Supply → Demand         │ Material    │ GRLineForIngredient → BatchConsumesIngredient →             │
+  │ (forward)         │                                       │             │ ShipmentLineForSKU                                          │
+  ├───────────────────┼───────────────────────────────────────┼─────────────┼─────────────────────────────────────────────────────────────┤
+  │ Demand signal     │ Demand → Supply → Procurement         │ Information │ DemandForecastForSKU → WorkOrderUsesFormula →               │
+  │                   │                                       │             │ POFromSupplier                                              │
+  ├───────────────────┼───────────────────────────────────────┼─────────────┼─────────────────────────────────────────────────────────────┤
+  │ Financial         │ Demand → Procurement (reverse of      │ Financial   │ ARReceiptForInvoice ← GLJournalToAccount →                  │
+  │                   │ material)                             │             │ APPaymentForInvoice                                         │
+  ├───────────────────┼───────────────────────────────────────┼─────────────┼─────────────────────────────────────────────────────────────┤
+  │ Return/Regenerate │ Demand → Procurement (reverse         │ Material    │ ReturnFromRetailLocation → DispositionForReturn             │
+  │                   │ material)                             │             │                                                             │
+  ├───────────────────┼───────────────────────────────────────┼─────────────┼─────────────────────────────────────────────────────────────┤
+  │ Synchronize       │ Plan ↔ all three domains              │ Information │ DemandForecast bridges Demand ↔ Supply ↔ Procurement        │
+  └───────────────────┴───────────────────────────────────────┴─────────────┴─────────────────────────────────────────────────────────────┘
+
+  Decisions I'm capturing from your feedback:
+
+  - Inventory → Demand > Customer Service (demand visibility, not supply)
+  - RetailLocation → Demand (customer-facing, including retail DCs)
+  - DistributionCenter → Supply > Network (company-controlled infrastructure)
+  - SKU → Supply > Product (but referenced across domains via flows)
+  - Finance → Cross-cutting Orchestrate layer
+  - DemandForecast → Demand > Planning (the "Synchronize" bridge)
+
+  Implementation approach
+
+  I'm thinking:
+  1. Reorganize pcg.yaml section headers — replace the 9 DOMAIN A-H2 sections with the 3 domains + sub-domains + cross-cutting
+  2. Add schema-level flow annotations — declare the inter-domain material/information/financial flows at the top of pcg.yaml
+  3. Update scm_base.yaml — potentially add abstract classes or mixins for the domain groupings if useful
+  4. Update the description to reference the SCOR-DS alignment
+
+  Should I proceed with this, or do you want to adjust any of the groupings or flow definitions first?
+
+✻ Worked for 4m 1s
+
+❯ this is looking really good but the idea behind this ontology as the connective tissue of an end-to-end virtual twin of the supply chain
+suggests that orchesatrate is really more about the flow and kinetics across and through all domains, so agree finance belongs there, but is
+it more too?
+
+⏺ Yes, exactly. If this ontology is the connective tissue of an end-to-end virtual twin, then Orchestrate isn't just "where Finance lives" —
+  it's the layer that makes the whole thing a system rather than three silos.
+
+  Think about what Orchestrate needs to do in a virtual twin context:
+
+  Orchestrate = the system-level intelligence layer
+
+  1. Financial Flow (what we already have)
+  - ChartOfAccounts, GLJournal, InvoiceVariance
+  - The monetary thread that connects AP (Procurement) ↔ GL ↔ AR (Demand)
+
+  2. Kinetic Flow (what we've already annotated but haven't "housed" properly)
+  - State machines — 9 entities with status lifecycles that span domains. A PO status change in Procurement triggers a GR in Procurement which
+  triggers a Batch in Supply which triggers a Shipment in Demand. Orchestrate is where you reason about these cross-domain state transitions as
+   a system.
+  - Flow configs — the 10 relationships with vg:flow_config (material/financial/information flows). These are literally the inter-domain
+  plumbing.
+  - Axioms — mass balance, temporal ordering, GL balance constraints. These are system-level invariants that no single domain owns.
+
+  3. Causal Ordering (already in the data)
+  - transaction_sequence_id — the single thread that ties the entire P2P and O2C lifecycle together across all three domains. That's an
+  Orchestrate concept.
+
+  4. Scenario & What-If (the virtual twin use case)
+  - vg:scenario_params, vg:actions — perturbation propagation across domains. "What if this supplier's lead time doubles?" starts in
+  Procurement, propagates through Supply (production delays), into Demand (stockouts, fulfillment delays). The propagation itself is
+  Orchestrate.
+
+  5. Conservation Groups (already in the ontology accessor)
+  - get_conservation_groups() returns procure_to_pay, order_to_cash, etc. — these are end-to-end process traces that are Orchestrate.
+
+  So the revised picture:
+
+                ┌─────────────────────────────────────────────────┐
+                │              O R C H E S T R A T E              │
+                │                                                 │
+                │  Finance    ChartOfAccounts, GLJournal,         │
+                │             InvoiceVariance                     │
+                │                                                 │
+                │  Kinetics   State machines, flow configs,       │
+                │             axioms, causal ordering             │
+                │                                                 │
+                │  Scenario   Scenario params, actions,           │
+                │             propagation rules                   │
+                │                                                 │
+                │  Process    Conservation groups (P2P, O2C,      │
+                │  Traces     BOM explosion, network flows)       │
+                │                                                 │
+                └──────┬──────────────┬───────────────┬──────────┘
+                       │              │               │
+                       ▼              ▼               ▼
+                PROCUREMENT      SUPPLY          DEMAND
+
+  Orchestrate doesn't just contain Finance — it contains everything that reasons across domain boundaries. The three domains own their entities
+   and local relationships. Orchestrate owns the cross-domain flows, constraints, and simulation logic.
+
+  In ontology terms, this means:
+  - The classes (ChartOfAccounts, GLJournal, InvoiceVariance) stay in Orchestrate because they're genuinely cross-cutting entities
+  - The annotations (vg:flow_config, vg:state_machine, vg:axioms, vg:scenario_params, vg:actions) live on their respective domain classes but
+  are interpreted at the Orchestrate level — and we should document that explicitly
+  - The process flows (P2P, O2C, BOM, Network, Returns) are Orchestrate-level constructs that thread through the three domains
+
+  Does this framing land? If so, I'd also want to think about whether Orchestrate needs its own section in the ontology that explicitly
+  declares the end-to-end process traces and inter-domain flow definitions — not just as comments, but as structured annotations.
+
+❯ ok this is looking really good!! plan out how we transition to this, what needs to change (do we need to change virt_graph.yaml or
+scm_basee.yaml too?)
