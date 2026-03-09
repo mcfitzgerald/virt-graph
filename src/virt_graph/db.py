@@ -17,7 +17,10 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 
-import psycopg
+try:
+    import psycopg
+except ImportError:
+    psycopg = None  # type: ignore[assignment]
 
 
 def _load_dotenv() -> None:
@@ -59,7 +62,15 @@ def get_database_url() -> str:
     return url
 
 
-def get_connection(conninfo: str | None = None, **kwargs) -> psycopg.Connection:
+def _require_psycopg():
+    if psycopg is None:
+        raise ImportError(
+            "psycopg is required for database access. "
+            "Install with: pip install virt-graph[db]"
+        )
+
+
+def get_connection(conninfo: str | None = None, **kwargs) -> "psycopg.Connection":
     """
     Open a PostgreSQL connection.
 
@@ -70,6 +81,7 @@ def get_connection(conninfo: str | None = None, **kwargs) -> psycopg.Connection:
     Returns:
         psycopg.Connection
     """
+    _require_psycopg()
     if conninfo is None:
         conninfo = get_database_url()
     return psycopg.connect(conninfo, **kwargs)

@@ -8,16 +8,17 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
-    "psycopg[binary] (>=3.1)",
-    "networkx>=3.2",
     "pyyaml>=6.0",
     "linkml>=1.7",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
+db = [
+    "psycopg[binary] (>=3.1)",
+]
+handlers = [
+    "psycopg[binary] (>=3.1)",
+    "networkx>=3.2",
 ]
 neo4j = [
     "neo4j>=5.0",
@@ -27,6 +28,15 @@ notebooks = [
     "ipykernel>=6.0",
     "pandas>=2.0",
     "tabulate>=0.9",
+]
+all = [
+    "psycopg[binary] (>=3.1)",
+    "networkx>=3.2",
+    "neo4j>=5.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
 ]
 
 [tool.poetry]
@@ -44,6 +54,8 @@ build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
 dev = [
+    "psycopg[binary] (>=3.1,<4.0.0)",
+    "networkx (>=3.2,<4.0.0)",
     "pytest (>=9.0.1,<10.0.0)",
     "pytest-cov (>=7.0.0,<8.0.0)",
     "mkdocs (>=1.6.1,<2.0.0)",
