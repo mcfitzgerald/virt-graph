@@ -37,8 +37,9 @@ poetry install                                    # Install dependencies
 poetry run pytest pcg_example/tests/ -v           # All tests
 
 # Ontology validation
-poetry run python scripts/validate_ontology.py --all   # Full two-layer validation (LinkML + VG)
+poetry run python scripts/validate_ontology.py --all   # Full three-layer validation (LinkML + VG + Domain)
 poetry run python scripts/show_ontology.py             # Show TBox/RBox definitions
+poetry run python scripts/show_ontology.py --by-domain # Show grouped by business domain
 
 # Schema match validation (requires live DB)
 poetry run python scripts/validate_schema_match.py --all   # Ontology vs DB cross-reference
@@ -84,7 +85,7 @@ pcg_example/
 
 ### Key Concepts
 
-**Two-layer validation**: Ontologies are validated first by LinkML (structure) then by VG metamodel (`virt_graph.yaml`) for required annotations.
+**Three-layer validation**: Ontologies are validated by LinkML (structure), VG metamodel (`virt_graph.yaml`) for required annotations, and domain coverage (all elements have valid `vg:domain`).
 
 **Operation types**: Relationships in the ontology declare which operations they support:
 - `direct_join` → Standard SQL
@@ -140,7 +141,7 @@ The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 
 ## Metamodel
 
-`virt_graph.yaml` (v3.0) is the single source of truth for VG extensions. The two core extension classes:
+`virt_graph.yaml` (v3.1) is the single source of truth for VG extensions. The two core extension classes:
 - `SQLMappedClass` (TBox): requires `vg:table`, `vg:primary_key`
 - `SQLMappedRelationship` (RBox): requires `vg:edge_table`, `vg:domain_key`, `vg:range_key`, `vg:operation_types`
 
@@ -159,8 +160,19 @@ The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 | Actions | `vg:actions` | What-if mutation docs on Batch, Order, Plant, etc. |
 | Scenario params | `vg:scenario_params` | Perturbable attributes on Plant, Supplier, RouteSegment, etc. |
 | OWL 2 axioms | `vg:functional`, `vg:acyclic`, etc. | SKUSupersedes (asymmetric, irreflexive, acyclic), many functional FKs |
+| Domains | `vg:domain`, `vg:subdomain`, `vg:cross_domain` | SCOR-DS 3+1 model across all 88 elements |
 
 See `docs/vg-extensions.md` for full reference.
+
+### Domain Model (SCOR-DS)
+
+All 88 ontology elements are organized into a 3+1 domain model:
+- **Procurement** (10 classes, 14 rels): sourcing, purchasing, inbound, accounts_payable
+- **Supply** (11 classes, 13 rels): manufacturing, product, network
+- **Demand** (14 classes, 21 rels): ordering, fulfillment, planning, returns, accounts_receivable
+- **Orchestrate** (3 classes, 2 rels): finance, GL — cross-cutting interpretation layer
+
+16 cross-domain relationships connect entities across domain boundaries.
 
 ## Working with Ontologies
 
@@ -192,6 +204,15 @@ axioms = ontology.get_class_axioms("Shipment")     # → [{"name": "temporal_ord
 fc = ontology.get_role_flow_config("BatchConsumesIngredient")  # → {"flow_type": "material", ...}
 actions = ontology.get_class_actions("Batch")       # → [{"name": "start_production", ...}]
 params = ontology.get_class_scenario_params("Plant") # → [{"attribute": "capacity_tons_per_day", ...}]
+
+# Domain queries (v3.1)
+ontology.get_class_domain("Supplier")              # → "procurement"
+ontology.get_class_subdomain("Supplier")            # → "sourcing"
+ontology.get_role_domain_category("POAtPlant")      # → "procurement"
+ontology.is_role_cross_domain("POAtPlant")          # → True
+ontology.get_all_domains()                          # → {"procurement": {...}, "supply": {...}, ...}
+ontology.get_cross_domain_roles()                   # → ["POAtPlant", "GRFromShipment", ...]
+ontology.get_orchestrate_summary()                  # → aggregated kinetic metadata
 
 # Discovery queries
 ontology.get_classes_with_state_machines()          # → ["PurchaseOrder", "Order", ...]

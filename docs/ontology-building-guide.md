@@ -10,9 +10,10 @@ This complements [Creating Ontologies](ontology-creation.md) (the 5-phase protoc
 1. Map the schema          → one class per table, one relationship per FK
 2. Verify against data     → query actual values, fix mismatches
 3. Classify operations     → direct_join, traversal, pathfinding, aggregation
-4. Write context blocks    → teach the AI what everything MEANS
-5. Add behavioral metadata → state machines, axioms, flows, scenarios
-6. Validate and test       → two-layer validation + live DB cross-reference
+4. Assign domains          → procurement, supply, demand, orchestrate (SCOR-DS)
+5. Write context blocks    → teach the AI what everything MEANS
+6. Add behavioral metadata → state machines, axioms, flows, scenarios
+7. Validate and test       → three-layer validation + live DB cross-reference
 ```
 
 Each step feeds the next. Don't try to do it all in one pass — iterate.

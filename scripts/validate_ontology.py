@@ -82,19 +82,74 @@ def validate_vg_annotations(ontology_path: Path) -> bool:
         return False
 
 
+def validate_domain_coverage(ontology_path: Path) -> bool:
+    """
+    Layer 3: Validate domain annotation coverage.
+
+    Checks that all classes and relationships have vg:domain annotations
+    and that domain values are valid.
+    """
+    print(f"\n{'='*60}")
+    print(f"Layer 3: Domain Coverage Validation")
+    print(f"{'='*60}")
+    print(f"File: {ontology_path}")
+
+    try:
+        ontology = OntologyAccessor(ontology_path, validate=False)
+    except Exception as e:
+        print(f"✗ Error loading ontology: {e}")
+        return False
+
+    valid_domains = {"procurement", "supply", "demand", "orchestrate"}
+    errors = []
+
+    # Check classes
+    for name in ontology.classes:
+        domain = ontology.get_class_domain(name)
+        if not domain:
+            errors.append(f"Class '{name}' missing vg:domain")
+        elif domain not in valid_domains:
+            errors.append(f"Class '{name}' has invalid domain '{domain}'")
+
+    # Check relationships
+    for name in ontology.roles:
+        domain = ontology.get_role_domain_category(name)
+        if not domain:
+            errors.append(f"Relationship '{name}' missing vg:domain")
+        elif domain not in valid_domains:
+            errors.append(f"Relationship '{name}' has invalid domain '{domain}'")
+
+    if errors:
+        print(f"✗ Domain coverage validation failed ({len(errors)} issues):")
+        for error in errors:
+            print(f"  - {error}")
+        return False
+
+    domains = ontology.get_all_domains()
+    cross_count = len(ontology.get_cross_domain_roles())
+    print("✓ Domain coverage validation passed")
+    for d in sorted(domains):
+        info = domains[d]
+        print(f"  - {d}: {len(info['classes'])} classes, {len(info['roles'])} roles")
+    print(f"  - {cross_count} cross-domain relationships")
+    return True
+
+
 def validate_ontology(ontology_path: Path) -> bool:
-    """Run both layers of validation."""
+    """Run all layers of validation."""
     layer1_passed = validate_linkml_structure(ontology_path)
     layer2_passed = validate_vg_annotations(ontology_path)
+    layer3_passed = validate_domain_coverage(ontology_path)
 
     print(f"\n{'='*60}")
     print("Validation Summary")
     print(f"{'='*60}")
     print(f"  Layer 1 (LinkML Structure): {'✓ PASS' if layer1_passed else '✗ FAIL'}")
     print(f"  Layer 2 (VG Annotations):   {'✓ PASS' if layer2_passed else '✗ FAIL'}")
+    print(f"  Layer 3 (Domain Coverage):  {'✓ PASS' if layer3_passed else '✗ FAIL'}")
     print(f"{'='*60}")
 
-    return layer1_passed and layer2_passed
+    return layer1_passed and layer2_passed and layer3_passed
 
 
 def main():

@@ -96,7 +96,7 @@ Abstract classes and mixins live in `scm_base.yaml` — domain-agnostic and reus
 
 ### Ontology Features
 
-The metamodel (`virt_graph.yaml` v3.0) supports rich graph declarations. Here's what the PCG ontology actually uses:
+The metamodel (`virt_graph.yaml` v3.1) supports rich graph declarations. Here's what the PCG ontology actually uses:
 
 | Feature | What It Does | PCG Usage |
 |---------|-------------|-----------|
@@ -109,6 +109,24 @@ The metamodel (`virt_graph.yaml` v3.0) supports rich graph declarations. Here's 
 | **Axioms** | `vg:axioms` are SQL-evaluable integrity constraints | Mass balance, temporal ordering, GL balance |
 | **Actions** | `vg:actions` document mutations for what-if reasoning | Production start, order fulfillment, capacity changes |
 | **OWL 2 axioms** | `vg:functional`, `vg:acyclic`, etc. | SKU chain (asymmetric, irreflexive, acyclic), many functional FKs |
+| **Domains** | `vg:domain`, `vg:subdomain`, `vg:cross_domain` | SCOR-DS aligned 3+1 model: Procurement, Supply, Demand + Orchestrate |
+
+### Domain Model (SCOR-DS)
+
+The PCG ontology organizes all 88 elements into a 3+1 domain model aligned to the SCOR Digital Standard double-infinity loop:
+
+| Domain | Classes | Relationships | Cross-Domain | What It Covers |
+|--------|---------|---------------|--------------|----------------|
+| **Procurement** | 10 | 14 | 3 | Sourcing, purchasing, inbound logistics, AP |
+| **Supply** | 11 | 13 | 2 | Manufacturing, product master, transport network |
+| **Demand** | 14 | 21 | 11 | Orders, fulfillment, planning, returns, AR |
+| **Orchestrate** | 3 | 2 | 1 | GL, chart of accounts, invoice variances |
+
+16 cross-domain relationships connect entities across domain boundaries. The Orchestrate domain provides a cross-cutting financial and kinetic interpretation layer.
+
+```bash
+poetry run python scripts/show_ontology.py --by-domain  # View ontology grouped by domain
+```
 
 ### Operation Types
 

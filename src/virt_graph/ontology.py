@@ -514,7 +514,7 @@ class OntologyAccessor:
         """Get all entity class definitions (TBox) with key annotations surfaced."""
         result = {}
         for name, cls in self._tbox.items():
-            result[name] = {
+            entry = {
                 "name": name,
                 "description": cls.get("description", ""),
                 "table": self._get_annotation(cls, "table"),
@@ -524,6 +524,13 @@ class OntologyAccessor:
                 "attributes": cls.get("attributes", {}),
                 "annotations": cls.get("annotations", {}),
             }
+            domain = self._get_annotation(cls, "domain")
+            if domain:
+                entry["domain"] = domain
+            subdomain = self._get_annotation(cls, "subdomain")
+            if subdomain:
+                entry["subdomain"] = subdomain
+            result[name] = entry
         return result
 
     def get_class(self, name: str) -> dict:
@@ -762,6 +769,109 @@ class OntologyAccessor:
         return groups
 
     # =========================================================================
+    # Domain Classification (v3.1)
+    # =========================================================================
+
+    _VALID_DOMAINS = {"procurement", "supply", "demand", "orchestrate"}
+    _FINANCIAL_SUBDOMAINS = {"accounts_payable", "accounts_receivable", "finance"}
+
+    def get_class_domain(self, name: str) -> Optional[str]:
+        """Get the business domain for an entity class."""
+        return self._get_annotation(self._tbox[name], "domain")
+
+    def get_class_subdomain(self, name: str) -> Optional[str]:
+        """Get the subdomain grouping for an entity class."""
+        return self._get_annotation(self._tbox[name], "subdomain")
+
+    def get_role_domain_category(self, name: str) -> Optional[str]:
+        """Get the business domain for a relationship.
+
+        Named domain_category to avoid collision with get_role_domain()
+        which returns the domain entity class.
+        """
+        resolved = self._resolve_role_name(name)
+        return self._get_annotation(self._rbox[resolved], "domain")
+
+    def is_role_cross_domain(self, name: str) -> bool:
+        """Check if a relationship bridges two different domains."""
+        resolved = self._resolve_role_name(name)
+        return bool(self._get_annotation(self._rbox[resolved], "cross_domain", False))
+
+    def get_classes_by_domain(self, domain: str) -> list[str]:
+        """Get all class names belonging to a domain."""
+        return [
+            name for name, cls in self._tbox.items()
+            if self._get_annotation(cls, "domain") == domain
+        ]
+
+    def get_roles_by_domain(self, domain: str) -> list[str]:
+        """Get all relationship names belonging to a domain."""
+        return [
+            name for name, cls in self._rbox.items()
+            if self._get_annotation(cls, "domain") == domain
+        ]
+
+    def get_all_domains(self) -> dict[str, dict]:
+        """Get all domains with their classes and roles.
+
+        Returns:
+            Dict mapping domain name to {classes: [...], roles: [...]}
+        """
+        domains: dict[str, dict] = {}
+        for name, cls in self._tbox.items():
+            d = self._get_annotation(cls, "domain")
+            if d:
+                domains.setdefault(d, {"classes": [], "roles": []})["classes"].append(name)
+        for name, cls in self._rbox.items():
+            d = self._get_annotation(cls, "domain")
+            if d:
+                domains.setdefault(d, {"classes": [], "roles": []})["roles"].append(name)
+        return domains
+
+    def get_cross_domain_roles(self) -> list[str]:
+        """Get all relationships flagged as cross-domain."""
+        return [
+            name for name, cls in self._rbox.items()
+            if self._get_annotation(cls, "cross_domain", False)
+        ]
+
+    def get_orchestrate_summary(self) -> dict:
+        """Aggregate Orchestrate-level metadata across all domains.
+
+        Returns dict with keys: state_machines, flow_configs, axioms,
+        conservation_groups, scenario_params, cross_domain_roles.
+        """
+        return {
+            "state_machines": {
+                name: self.get_class_state_machine(name)
+                for name in self.get_classes_with_state_machines()
+            },
+            "flow_configs": {
+                name: self.get_role_flow_config(name)
+                for name in self.get_roles_with_flow_config()
+            },
+            "axioms": {
+                name: self.get_class_axioms(name)
+                for name, cls in self._tbox.items()
+                if self._get_annotation(cls, "axioms")
+            },
+            "conservation_groups": self.get_conservation_groups(),
+            "scenario_params": {
+                name: self.get_class_scenario_params(name)
+                for name, cls in self._tbox.items()
+                if self._get_annotation(cls, "scenario_params")
+            },
+            "cross_domain_roles": self.get_cross_domain_roles(),
+        }
+
+    def get_financial_entities(self) -> list[str]:
+        """Get all classes with financial subdomains (AP, AR, GL)."""
+        return [
+            name for name, cls in self._tbox.items()
+            if self._get_annotation(cls, "subdomain") in self._FINANCIAL_SUBDOMAINS
+        ]
+
+    # =========================================================================
     # RBox: Roles (Relationships)
     # =========================================================================
 
@@ -770,7 +880,7 @@ class OntologyAccessor:
         """Get all relationship definitions (RBox) with key annotations surfaced."""
         result = {}
         for name, cls in self._rbox.items():
-            result[name] = {
+            entry = {
                 "name": name,
                 "description": cls.get("description", ""),
                 "edge_table": self._get_annotation(cls, "edge_table"),
@@ -789,6 +899,13 @@ class OntologyAccessor:
                 "operation_types": self.get_operation_types(name),
                 "annotations": cls.get("annotations", {}),
             }
+            domain = self._get_annotation(cls, "domain")
+            if domain:
+                entry["domain"] = domain
+            cross_domain = self._get_annotation(cls, "cross_domain")
+            if cross_domain:
+                entry["cross_domain"] = cross_domain
+            result[name] = entry
         return result
 
     def get_role(self, name: str) -> dict:

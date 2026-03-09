@@ -2,48 +2,28 @@
 # Prism Consumer Goods (PCG) - ERP Supply Chain Ontology
 # ============================================================================
 #
-# Virtual twin declaration for the PCG schema (38 tables, ~330-400M rows).
+# Virtual twin declaration for the PCG schema (38 tables, ~330M rows).
 # Uses class hierarchy via scm_base.yaml imports (is_a, mixins, abstract classes).
 #
-# v3.2 — PREMIX & Status Lifecycle Update:
-#   - BulkIntermediate now includes PREMIX sub-intermediates (bom_level=2)
-#   - batches.product_type has 3 values: finished_good, bulk_intermediate, premix
-#   - Formula hierarchy extended to 3 levels (bom_level 0/1/2)
-#   - All 9 transaction document entities have diverse status distributions
-#   - Real supplier/ingredient names, lead time ranges, batch variance
-#   - GL anomaly context (-DUP duplicates, rounding imbalances)
-#   - Network topology: lateral RDC-to-RDC links, multi-source DCs
-#   - SKU alias chains clarified as depth-1 only
-#   - order_lines.unit_price now populated (was previously zero)
+# Domain model: 3+1 SCOR-DS aligned domains:
+#   - Procurement (Source): sourcing, purchasing, inbound, accounts payable
+#   - Supply (Transform + Network): product master, manufacturing, distribution
+#   - Demand (Order + Fulfill + Plan + Return): planning, customer service,
+#     fulfillment, reverse logistics, accounts receivable
+#   - Orchestrate (cross-cutting): finance (GL, variance); interprets state
+#     machines, flows, axioms, and scenarios across domain boundaries
 #
-# v3.1 — Context Enrichment:
-#   - All 38 classes now carry vg:context with business_logic + llm_prompt_hint
-#   - All 50 relationships now carry vg:context with traversal_semantics
-#   - Type discriminators fixed to match actual DB values
-#   - State machines annotated with data_note documenting observed status values
-#   - Additional scenario_params and axioms based on benchmark testing
+# v4.0 — SCOR-DS Domain Restructure:
+#   - 3+1 domain model with vg:domain/vg:subdomain on all 88 elements
+#   - Schema-level vg:domains, vg:inter_domain_flows, vg:process_traces
+#   - Context blocks cleaned: structural/semantic only, no data-specific counts
+#   - Database target changed to DuckDB
+#   - Cross-domain relationships flagged with vg:cross_domain
 #
-# v3.0 — Structural Hierarchy:
-#   - Imports scm_base.yaml for abstract classes, mixins, shared slots, enums
-#   - Location hierarchy: Plant, DistributionCenter, RetailLocation → Location
-#   - TransactionDocument hierarchy: PO, GR, Order, Shipment, Return, AP/AR → TransactionDocument
-#   - LineItem hierarchy: all line items → LineItem
-#   - Mixins: HasActiveFlag, HasName for master data entities
-#   - LocationType enum for polymorphic location_type columns
-#
-# v2.0 — Complete Virtual Twin Declaration:
-#   - 50 relationships: all FK columns mapped, including polymorphic
-#   - Operation types: 8 of 11 types used
-#   - Transport network, SKU alias chain, BOM hierarchy
-#   - Polymorphic relationships, context blocks, edge attributes
-#   - OWL 2 role axioms: functional, asymmetric, irreflexive, acyclic
-#
-# Kinetic Annotations (v3.0):
-#   - State machines: 9 entities with status lifecycle
-#   - Axioms: Physics constraints (mass balance, temporal order, GL balance)
-#   - Actions: Business mutation semantics for what-if reasoning
-#   - Scenario params: Perturbable attributes for sensitivity analysis
-#   - Flow config: Material/financial flow metadata on key relationships
+# v3.2 — PREMIX & Status Lifecycle Update
+# v3.1 — Context Enrichment (all 88 elements)
+# v3.0 — Structural Hierarchy (scm_base.yaml, mixins, abstract classes)
+# v2.0 — Complete Virtual Twin (50 relationships, polymorphic, kinetic)
 #
 # Dates are INTEGER (day number 1-365), not timestamps.
 # transaction_sequence_id provides causal ordering across tables.
@@ -54,14 +34,15 @@
 
 id: https://virt-graph.dev/schemas/pcg
 name: pcg
-version: "3.2.0"
+version: "4.0.0"
 description: >-
   Prism Consumer Goods ERP ontology for Virtual Graph.
-  Models a full FMCG supply chain across 9 domains: Source, Transform,
-  Product, Order, Fulfill, Logistics, Plan, Return, and Finance.
-  38 entity classes with class hierarchy (Location, TransactionDocument,
-  LineItem), 50 relationships with polymorphic patterns, transport network
-  graph, recursive alias chains, and full business context on every entity.
+  Models a full FMCG supply chain in a 3+1 SCOR-DS aligned domain model:
+  Procurement (Source), Supply (Transform + Network), Demand (Order + Fulfill
+  + Plan + Return), and Orchestrate (cross-cutting finance, kinetic
+  interpretation). 38 entity classes with class hierarchy, 50 relationships
+  with polymorphic patterns, transport network graph, recursive alias chains,
+  and full business context on every entity.
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -74,9 +55,29 @@ imports:
 default_range: string
 
 annotations:
-  vg:database_type: postgresql
-  vg:database_version: "15"
-  vg:connection_string: "postgresql://virt_graph:dev_password@localhost:5433/prism_fmcg"
+  vg:database_type: duckdb
+  vg:database_version: "1.2"
+  vg:connection_string: "duckdb:///path/to/erp.duckdb"
+  vg:domains: >-
+    {
+      "procurement": {"scor_alignment": "Source", "description": "Sourcing, purchasing, inbound, accounts payable"},
+      "supply": {"scor_alignment": "Transform + Network", "description": "Product master, manufacturing, distribution network"},
+      "demand": {"scor_alignment": "Order + Fulfill + Plan + Return", "description": "Planning, customer service, fulfillment, reverse logistics, accounts receivable"},
+      "orchestrate": {"scor_alignment": "Orchestrate", "description": "Cross-cutting finance (GL, variance); interprets state machines, flows, axioms, and scenarios across domains"}
+    }
+  vg:inter_domain_flows: >-
+    [
+      {"name": "material_forward", "direction": "procurement -> supply -> demand", "flow_type": "material", "description": "Raw materials through production to finished goods to customer"},
+      {"name": "demand_signal", "direction": "demand -> supply -> procurement", "flow_type": "information", "description": "Forecasts and orders pull replenishment upstream"},
+      {"name": "financial_reverse", "direction": "demand -> orchestrate -> procurement", "flow_type": "financial", "description": "AR receipts through GL to AP payments (reverse of material)"},
+      {"name": "regenerate", "direction": "demand -> procurement", "flow_type": "material", "description": "Returns and disposition flow (reverse logistics)"}
+    ]
+  vg:process_traces: >-
+    [
+      {"name": "procure_to_pay", "conservation_group": "procure_to_pay", "domains": ["procurement", "orchestrate"], "scor_process": "Source"},
+      {"name": "order_to_cash", "conservation_group": "order_to_cash", "domains": ["demand", "orchestrate"], "scor_process": "Deliver"},
+      {"name": "production_mass_balance", "conservation_group": "production_mass_balance", "domains": ["supply", "procurement"], "scor_process": "Transform"}
+    ]
 
 # =============================================================================
 # CLASSES
@@ -85,8 +86,10 @@ annotations:
 classes:
 
   # ===========================================================================
-  # DOMAIN A: SOURCE (Procurement & Inbound)
+  # PROCUREMENT DOMAIN (Source)
   # ===========================================================================
+
+  # --- subdomain: sourcing ---
 
   Supplier:
     description: "Raw material and ingredient supplier"
@@ -99,9 +102,11 @@ classes:
       vg:table: suppliers
       vg:primary_key: id
       vg:identifier: supplier_code
+      vg:domain: procurement
+      vg:subdomain: sourcing
       vg:context: >-
         {
-          "business_logic": "50 base suppliers with real company names (e.g., Meridian Chemical Corp, Pacific Packaging Solutions). 6 duplicate entries with -ALT suffix on supplier_code exist — likely data entry errors or legacy system imports requiring entity resolution. All tier=1 in current data. country drives lead time and risk modeling.",
+          "business_logic": "Suppliers with real company names. Some have -ALT suffix duplicates on supplier_code requiring entity resolution. country drives lead time and risk modeling. tier column for strategic segmentation.",
           "llm_prompt_hint": "Watch for -ALT suffix duplicates when counting unique suppliers — use REPLACE(supplier_code, '-ALT', '') to normalize. Join supplier_ingredients for sourcing matrix. supplier_id FK appears on purchase_orders and ap_invoices."
         }
       vg:scenario_params: >-
@@ -137,9 +142,11 @@ classes:
       vg:table: ingredients
       vg:primary_key: id
       vg:identifier: ingredient_code
+      vg:domain: procurement
+      vg:subdomain: sourcing
       vg:context: >-
         {
-          "business_logic": "78 raw materials with real chemical/packaging names (e.g., Sodium Fluoride, Glycerin USP, Sodium Lauryl Sulfate, PET Clear Bottle). Organized by subcategory: active_ingredient (20), base_material (18), packaging (40). bom_level=2 indicates raw material position in BOM hierarchy. cost_per_kg is the standard cost basis for cost rollup calculations through formulas.",
+          "business_logic": "Raw materials with real chemical/packaging names. Organized by category and subcategory (active_ingredient, base_material, packaging). bom_level=2 indicates raw material position in BOM hierarchy. cost_per_kg is the standard cost basis for cost rollup calculations through formulas.",
           "llm_prompt_hint": "Join formula_ingredients for BOM membership. Join supplier_ingredients for sourcing options with cost/lead time. ingredient_id FK appears in purchase_order_lines, goods_receipt_lines, ap_invoice_lines, batch_ingredients. Use category/subcategory for material type analysis."
         }
       vg:scenario_params: >-
@@ -161,9 +168,11 @@ classes:
     annotations:
       vg:table: supplier_ingredients
       vg:primary_key: id
+      vg:domain: procurement
+      vg:subdomain: sourcing
       vg:context: >-
         {
-          "business_logic": "176 sourcing links connecting suppliers to ingredients with commercial terms. lead_time_days ranges 5-72 days, driven by sourcing origin (LOCAL 5-15d, REGIONAL 15-30d, GLOBAL 30-75d). Multiple suppliers may offer the same ingredient at different cost/lead time/MOQ combinations. This is the basis for procurement optimization and supplier comparison.",
+          "business_logic": "Sourcing matrix connecting suppliers to ingredients with commercial terms. lead_time_days driven by sourcing origin (LOCAL, REGIONAL, GLOBAL tiers). Multiple suppliers may offer the same ingredient at different cost/lead time/MOQ combinations. Basis for procurement optimization.",
           "llm_prompt_hint": "This is a junction table with edge attributes (unit_cost, lead_time_days, min_order_qty). For cheapest-supplier analysis, compare unit_cost across suppliers for same ingredient_id. lead_time_days for supply risk assessment. min_order_qty for order planning constraints."
         }
     attributes:
@@ -174,6 +183,8 @@ classes:
       min_order_qty:
         range: decimal
 
+  # --- subdomain: purchasing ---
+
   PurchaseOrder:
     description: "Purchase order header for procuring ingredients"
     is_a: TransactionDocument
@@ -183,10 +194,12 @@ classes:
       vg:table: purchase_orders
       vg:primary_key: id
       vg:identifier: po_number
+      vg:domain: procurement
+      vg:subdomain: purchasing
       vg:context: >-
         {
           "business_logic": "Entry point of the procure-to-pay cycle. Each PO links a supplier to a receiving plant. order_date is day-integer (1-365). transaction_sequence_id provides causal ordering across all transaction documents. Lifecycle: PO → GoodsReceipt → APInvoice → APPayment.",
-          "llm_prompt_hint": "Join supplier_id → suppliers, plant_id → plants. PO lines in purchase_order_lines (po_id FK). For three-way match: PO lines ↔ GR lines ↔ AP invoice lines by ingredient_id and quantity_kg. Status values: closed (~91%), open (~4%), received (~4%)."
+          "llm_prompt_hint": "Join supplier_id → suppliers, plant_id → plants. PO lines in purchase_order_lines (po_id FK). For three-way match: PO lines ↔ GR lines ↔ AP invoice lines by ingredient_id and quantity_kg."
         }
       vg:state_machine: >-
         {
@@ -222,6 +235,8 @@ classes:
     annotations:
       vg:table: purchase_order_lines
       vg:primary_key: '["po_id", "line_number"]'
+      vg:domain: procurement
+      vg:subdomain: purchasing
       vg:context: >-
         {
           "business_logic": "Composite PK (po_id, line_number). Each line orders a specific ingredient at a quantity and unit cost. These values are the 'expected' baseline for three-way match against goods receipt lines and AP invoice lines.",
@@ -233,6 +248,8 @@ classes:
       unit_cost:
         range: decimal
 
+  # --- subdomain: inbound ---
+
   GoodsReceipt:
     description: "Goods receipt header confirming delivery of purchased materials"
     is_a: TransactionDocument
@@ -242,9 +259,11 @@ classes:
       vg:table: goods_receipts
       vg:primary_key: id
       vg:identifier: gr_number
+      vg:domain: procurement
+      vg:subdomain: inbound
       vg:context: >-
         {
-          "business_logic": "Inbound receiving confirmation. Links to an inbound shipment (shipment_id) and receiving plant (plant_id). gr_number is the natural key. GR confirms physical receipt of materials ordered via PO.",
+          "business_logic": "Inbound receiving confirmation. Links to an inbound shipment (shipment_id) and receiving plant (plant_id). GR confirms physical receipt of materials ordered via PO.",
           "llm_prompt_hint": "Join shipment_id → shipments for inbound logistics. Join plant_id → plants for receiving location. GR lines in goods_receipt_lines (gr_id FK). Links to AP invoices via ap_invoices.gr_id for three-way match."
         }
       vg:state_machine: >-
@@ -273,6 +292,8 @@ classes:
     annotations:
       vg:table: goods_receipt_lines
       vg:primary_key: '["gr_id", "line_number"]'
+      vg:domain: procurement
+      vg:subdomain: inbound
       vg:context: >-
         {
           "business_logic": "Composite PK (gr_id, line_number). Records actual quantity received per ingredient. quantity_kg is compared against PO line quantity for receipt verification and against AP invoice lines for three-way match.",
@@ -283,8 +304,10 @@ classes:
         range: decimal
 
   # ===========================================================================
-  # DOMAIN B: TRANSFORM (Manufacturing)
+  # SUPPLY DOMAIN (Transform + Network)
   # ===========================================================================
+
+  # --- subdomain: manufacturing ---
 
   Plant:
     description: "Manufacturing plant with production capacity"
@@ -295,9 +318,11 @@ classes:
       vg:table: plants
       vg:primary_key: id
       vg:identifier: plant_code
+      vg:domain: supply
+      vg:subdomain: manufacturing
       vg:context: >-
         {
-          "business_logic": "4 manufacturing plants: Dallas (PLANT-TX), Columbus (PLANT-OH), Atlanta (PLANT-GA), Sacramento (PLANT-CA). Each specializes in product categories. capacity_tons_per_day is the key constraint for production planning and scenario analysis.",
+          "business_logic": "Manufacturing plants, each specializing in product categories. capacity_tons_per_day is the key constraint for production planning and scenario analysis. Plants are also origin/destination nodes in the transport network.",
           "llm_prompt_hint": "plant_id FK appears on purchase_orders, work_orders, batches, production_lines, goods_receipts. For capacity utilization: sum batch quantity_kg by plant by day vs capacity_tons_per_day * 1000. Plants are also nodes in the transport network (route_segments origin/destination)."
         }
       vg:axioms: >-
@@ -330,9 +355,11 @@ classes:
       vg:table: production_lines
       vg:primary_key: id
       vg:identifier: line_code
+      vg:domain: supply
+      vg:subdomain: manufacturing
       vg:context: >-
         {
-          "business_logic": "15 production lines across 4 plants. line_type determines which product categories a line can produce. capacity_units_per_hour is the throughput rate. is_active filters operational lines (ontology has vg:sql_filter on the relationship).",
+          "business_logic": "Production lines within plants. line_type determines which product categories a line can produce. capacity_units_per_hour is the throughput rate. is_active filters operational lines (ontology has vg:sql_filter on the relationship).",
           "llm_prompt_hint": "Join plant_id → plants for location. line_type for category capability matching against SKU/formula categories. Use is_active=true filter for operational analysis. capacity_units_per_hour for bottleneck identification."
         }
       vg:scenario_params: >-
@@ -355,9 +382,11 @@ classes:
       vg:table: formulas
       vg:primary_key: id
       vg:identifier: formula_code
+      vg:domain: supply
+      vg:subdomain: product
       vg:context: >-
         {
-          "business_logic": "562 formulas total: 500 SKU-level (bom_level=0), 49 bulk-level (bom_level=1), 13 premix-level (bom_level=2). product_id is polymorphic — bom_level=0 → skus table, bom_level=1 → bulk_intermediates table, bom_level=2 → bulk_intermediates table (premix sub-intermediates). Variable BOM depth (2-4 levels). Diamond dependencies exist (same raw material in both premix and parent bulk formula).",
+          "business_logic": "Manufacturing formulas at three BOM levels: SKU-level (bom_level=0), bulk-level (bom_level=1), premix-level (bom_level=2). product_id is polymorphic — bom_level=0 → skus table, bom_level=1/2 → bulk_intermediates table. Variable BOM depth (2-4 levels). Diamond dependencies exist (same raw material in both premix and parent bulk formula).",
           "llm_prompt_hint": "Use bom_level to determine product_id target table (0→skus, 1→bulk_intermediates, 2→bulk_intermediates). Join formula_ingredients for BOM contents. For full BOM explosion: N-level recursion — start at bom_level=0, find intermediates (bulk or premix), look up their formulas at bom_level=1 or 2, recurse until only raw materials remain. yield_percent and run_rate_cases_per_hour for production efficiency analysis."
         }
     attributes:
@@ -377,10 +406,12 @@ classes:
     annotations:
       vg:table: formula_ingredients
       vg:primary_key: '["formula_id", "ingredient_id", "sequence"]'
+      vg:domain: supply
+      vg:subdomain: product
       vg:context: >-
         {
-          "business_logic": "BOM line items with composite PK (formula_id, ingredient_id, sequence). quantity_kg is the per-unit (per-case) requirement — multiply by batch quantity (cases) to get total planned consumption. IMPORTANT: ingredient_id is polymorphic — it can point to ingredients table (78 raw materials), bulk_intermediates table (49 primary bulks at bom_level=1), or bulk_intermediates table (13 premix sub-intermediates at bom_level=2). No discriminator column exists; must LEFT JOIN both tables to resolve. In a bom_level=0 formula, sequence=1 is typically the bulk intermediate; remaining sequences are packaging from the ingredients table.",
-          "llm_prompt_hint": "For BOM explosion: resolve each ingredient_id by LEFT JOIN to both ingredients and bulk_intermediates tables. If match is a bulk_intermediate (bom_level=1 or 2), find its formula and recurse. For bom_level=1 bulks, ingredients may include PREMIX products (bom_level=2) — recurse. For bom_level=2 premixes, ingredients are always raw materials. quantity_kg for cost rollup."
+          "business_logic": "BOM line items with composite PK (formula_id, ingredient_id, sequence). quantity_kg is the per-unit requirement. IMPORTANT: ingredient_id is polymorphic — it can point to ingredients table (raw materials) or bulk_intermediates table (primary bulks or premix sub-intermediates). No discriminator column; must LEFT JOIN both tables to resolve.",
+          "llm_prompt_hint": "For BOM explosion: resolve each ingredient_id by LEFT JOIN to both ingredients and bulk_intermediates tables. If match is a bulk_intermediate, find its formula and recurse. quantity_kg for cost rollup."
         }
     attributes:
       quantity_kg:
@@ -397,9 +428,11 @@ classes:
       vg:table: work_orders
       vg:primary_key: id
       vg:identifier: wo_number
+      vg:domain: supply
+      vg:subdomain: manufacturing
       vg:context: >-
         {
-          "business_logic": "Production scheduling document linking a formula to a plant. planned_quantity_kg is the target output. All 9 transaction document entities have diverse status distributions reflecting real operational lifecycles.",
+          "business_logic": "Production scheduling document linking a formula to a plant. planned_quantity_kg is the target output. Links formula (what to make) to plant (where to make it).",
           "llm_prompt_hint": "Join plant_id → plants, formula_id → formulas. Batches link back via batches.wo_id. planned_start_date and due_date are day-integers for scheduling analysis. Note: actual status value is 'complete' (lowercase, no 'd')."
         }
       vg:state_machine: >-
@@ -441,9 +474,11 @@ classes:
       vg:table: batches
       vg:primary_key: id
       vg:identifier: batch_number
+      vg:domain: supply
+      vg:subdomain: manufacturing
       vg:context: >-
         {
-          "business_logic": "Production execution record. product_type discriminates output: 'finished_good' → SKU table (~75%), 'bulk_intermediate' → BulkIntermediate table (~23%), 'premix' → BulkIntermediate table (bom_level=2 sub-intermediates, ~1.4%). bom_level mirrors formula hierarchy (0=finished, 1=intermediate, 2=premix). Mass balance: sum of input ingredient quantities (batch_ingredients) should approximate batch output quantity_kg / yield_percent. Actual consumed quantities may include small recording variance vs formula specification due to measurement tolerances.",
+          "business_logic": "Production execution record. product_type discriminates output: finished_good → SKU table, bulk_intermediate → BulkIntermediate table, premix → BulkIntermediate table (bom_level=2 sub-intermediates). bom_level mirrors formula hierarchy (0=finished, 1=intermediate, 2=premix). Mass balance: sum of input ingredient quantities (batch_ingredients) should approximate batch output quantity_kg / yield_percent.",
           "llm_prompt_hint": "Use product_type to determine which product table to join: finished_good→skus, bulk_intermediate→bulk_intermediates, premix→bulk_intermediates (filter bom_level=2). For BOM tracing: follow formula_id → formula_ingredients. For actual consumption: join batch_ingredients by batch_id. wo_id links to work_order for scheduling context."
         }
       vg:state_machine: >-
@@ -509,18 +544,18 @@ classes:
     annotations:
       vg:table: batch_ingredients
       vg:primary_key: id
+      vg:domain: supply
+      vg:subdomain: manufacturing
       vg:context: >-
         {
-          "business_logic": "Actual consumption records for production batches. quantity_kg records what was actually used. Variance vs formula is typically small (measurement tolerances). Expected quantity = formula_ingredients.quantity_kg × batches.quantity_kg (formula qty is per-case, batch qty is cases produced). Useful for planned-vs-actual variance analysis and mass balance verification.",
-          "llm_prompt_hint": "Join batch_id → batches for production context. Join ingredient_id → ingredients for material details. To compare planned vs actual: expected_kg = formula_ingredients.quantity_kg * batches.quantity_kg (fi is per-case, b is total cases). Compare against batch_ingredients.quantity_kg."
+          "business_logic": "Actual consumption records for production batches. quantity_kg records what was actually used. Expected quantity = formula_ingredients.quantity_kg × batches.quantity_kg. Useful for planned-vs-actual variance analysis and mass balance verification.",
+          "llm_prompt_hint": "Join batch_id → batches for production context. Join ingredient_id → ingredients for material details. To compare planned vs actual: expected_kg = formula_ingredients.quantity_kg * batches.quantity_kg. Compare against batch_ingredients.quantity_kg."
         }
     attributes:
       quantity_kg:
         range: decimal
 
-  # ===========================================================================
-  # DOMAIN C: PRODUCT (SKU Master)
-  # ===========================================================================
+  # --- subdomain: product ---
 
   BulkIntermediate:
     description: "Intermediate bulk product (e.g., paste, base compound)"
@@ -533,9 +568,11 @@ classes:
       vg:table: bulk_intermediates
       vg:primary_key: id
       vg:identifier: bulk_code
+      vg:domain: supply
+      vg:subdomain: product
       vg:context: >-
         {
-          "business_logic": "62 intermediate products: 49 primary bulks (bom_level=1, code pattern BULK-{category}-{variant}) and 13 premix sub-intermediates (bom_level=2, code pattern PREMIX-{category}-{variant}). Bridges raw materials to finished goods in a variable-depth BOM (2-4 levels). Primary bulks are the output of bom_level=1 formulas; premixes are the output of bom_level=2 formulas. Some bom_level=1 formulas consume premixes as ingredients, creating 3-level BOMs.",
+          "business_logic": "Intermediate products in two tiers: primary bulks (bom_level=1) and premix sub-intermediates (bom_level=2). Bridges raw materials to finished goods in a variable-depth BOM (2-4 levels). Some bom_level=1 formulas consume premixes as ingredients, creating 3-level BOMs.",
           "llm_prompt_hint": "Join formulas matching the intermediate's bom_level (1 or 2). For bom_level=1 bulks, ingredients may include PREMIX products (bom_level=2) — recurse. For bom_level=2 premixes, ingredients are always raw materials. To find what SKUs use it: look for it as an ingredient in bom_level=0 formula_ingredients. bulk_intermediates.id appears as formula_ingredients.ingredient_id (polymorphic, no discriminator)."
         }
     attributes:
@@ -555,9 +592,11 @@ classes:
       vg:table: skus
       vg:primary_key: id
       vg:identifier: sku_code
+      vg:domain: supply
+      vg:subdomain: product
       vg:context: >-
         {
-          "business_logic": "500 finished goods across categories: ORAL_CARE, PERSONAL_WASH, HOME_CARE. 21 SKUs have -OLD suffix renamed codes (~4%) with supersedes_sku_id linking to the replacement SKU. value_segment (premium/mid/value) drives margin analysis. price_per_case is list price; actual revenue is in AR invoices.",
+          "business_logic": "Finished goods across categories (ORAL_CARE, PERSONAL_WASH, HOME_CARE). Some SKUs have -OLD suffix renamed codes with supersedes_sku_id linking to the replacement SKU. value_segment (premium/mid/value) drives margin analysis. price_per_case is list price; actual revenue is in AR invoices.",
           "llm_prompt_hint": "For alias chain resolution: follow supersedes_sku_id recursively (use traverse handler). sku_id FK appears on order_lines, shipment_lines, ar_invoice_lines, inventory. category for product mix analysis. value_segment for margin segmentation. WARNING: order_lines.unit_price is ALWAYS ZERO — use ar_invoice_lines for actual revenue."
         }
     attributes:
@@ -572,9 +611,13 @@ classes:
       supersedes_sku_id:
         range: integer
 
+  # --- subdomain: network ---
+
   # ===========================================================================
-  # DOMAIN D: ORDER (Demand Signal)
+  # DEMAND DOMAIN (Order + Fulfill + Plan + Return)
   # ===========================================================================
+
+  # --- subdomain: customer_service ---
 
   Channel:
     description: "Sales channel (retail, wholesale, e-commerce)"
@@ -587,9 +630,11 @@ classes:
       vg:table: channels
       vg:primary_key: id
       vg:identifier: channel_code
+      vg:domain: demand
+      vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "7 sales channels with approximate revenue share: MASS_RETAIL (30%), GROCERY (20%), ECOMMERCE (18%), CLUB (14%), DISTRIBUTOR (9%), PHARMACY (6%), DTC (3%). channel_type is 'b2b' for all channels. Channels are the demand signal grouping for sales analysis.",
+          "business_logic": "Sales channels (MASS_RETAIL, GROCERY, ECOMMERCE, etc.). channel_type column for B2B/B2C classification. Channels are the demand signal grouping for sales analysis.",
           "llm_prompt_hint": "Channel IDs are 1-7. Join orders.source_id → channels for channel-level order analysis. BUT source_id is polymorphic — values 1-7 are channels, values 67+ are retail_locations. For revenue by channel, use ar_invoices.channel column directly (more reliable). channel_code for grouping."
         }
     attributes:
@@ -607,10 +652,12 @@ classes:
       vg:table: orders
       vg:primary_key: id
       vg:identifier: order_number
+      vg:domain: demand
+      vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "Demand signal document. source_id is POLYMORPHIC: values 1-7 point to channels table, values 67+ point to retail_locations table. No discriminator column — resolved by ID range (channels max id=7, retail_locations min id=67). retail_location_id is the non-polymorphic delivery destination. day column is the order date (integer 1-365).",
-          "llm_prompt_hint": "For channel-level analysis: filter source_id <= 7 and join channels, OR use retail_location_id for store-level analysis (non-polymorphic). Status values: ~88% delivered, ~6% shipped, ~3% allocated, ~3% pending. order_lines.unit_price is populated from product price_per_case — revenue analysis can use either order_lines or ar_invoice_lines."
+          "business_logic": "Demand signal document. source_id is POLYMORPHIC: low IDs point to channels table, higher IDs point to retail_locations table. No discriminator column — resolved by ID range. retail_location_id is the non-polymorphic delivery destination. day column is the order date (integer 1-365).",
+          "llm_prompt_hint": "For channel-level analysis: filter source_id <= 7 and join channels, OR use retail_location_id for store-level analysis (non-polymorphic). order_lines.unit_price is populated from product price_per_case — revenue analysis can use either order_lines or ar_invoice_lines."
         }
       vg:state_machine: >-
         {
@@ -674,9 +721,11 @@ classes:
     annotations:
       vg:table: order_lines
       vg:primary_key: '["order_id", "line_number"]'
+      vg:domain: demand
+      vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "Composite PK (order_id, line_number). Links orders to SKUs with quantity and unit_price. unit_price populated from product price_per_case (FG) or supplier unit_cost (PO). Revenue analysis can use either order_lines or ar_invoice_lines.",
+          "business_logic": "Composite PK (order_id, line_number). Links orders to SKUs with quantity and unit_price. Revenue analysis can use either order_lines or ar_invoice_lines.",
           "llm_prompt_hint": "Join order_id → orders for header. Join sku_id → skus for product details. unit_price and quantity_cases are both valid for revenue/volume analysis. For financial reconciliation, cross-check against ar_invoice_lines."
         }
     attributes:
@@ -685,9 +734,7 @@ classes:
       unit_price:
         range: decimal
 
-  # ===========================================================================
-  # DOMAIN E: FULFILL (Outbound)
-  # ===========================================================================
+  # (Supply > network — physical infrastructure)
 
   DistributionCenter:
     description: "Distribution center / warehouse"
@@ -698,9 +745,11 @@ classes:
       vg:table: distribution_centers
       vg:primary_key: id
       vg:identifier: dc_code
+      vg:domain: supply
+      vg:subdomain: network
       vg:context: >-
         {
-          "business_logic": "62 distribution centers in two subtypes distinguished by type column: 6 RDCs (type='rdc', regional consolidation hubs: RDC-MW Chicago, RDC-NE Allentown, RDC-SE Jacksonville, RDC-SO Memphis, RDC-SW Phoenix, RDC-WE Reno) and 56 customer DCs (type='customer_dc', retailer/channel warehouses, code pattern {CHANNEL}-DC-{nnn} or {CHANNEL}-FC-{nnn}). ~29% of customer DCs are multi-source (served by 2 upstream RDCs).",
+          "business_logic": "Distribution centers in two subtypes distinguished by type column: RDCs (type='rdc', regional consolidation hubs) and customer DCs (type='customer_dc', retailer/channel warehouses). Some customer DCs are multi-source (served by multiple upstream RDCs).",
           "llm_prompt_hint": "ALWAYS filter by type column when analyzing DCs: type='rdc' for PCG network nodes, type='customer_dc' for customer endpoints. dc_id FK appears on returns. distribution_centers appear as origin/destination in route_segments (origin_type/destination_type values: 'rdc' or 'customer_dc', NOT 'dc')."
         }
     attributes:
@@ -718,9 +767,11 @@ classes:
       vg:table: retail_locations
       vg:primary_key: id
       vg:identifier: location_code
+      vg:domain: demand
+      vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "3,817 retail endpoints representing stores across all channels. store_format (supermarket, convenience, warehouse, etc.) and channel columns enable segmentation. location_code pattern indicates the channel (e.g., MASS-RETAIL-xxx, GROCERY-xxx). These are the final delivery points in the supply chain.",
+          "business_logic": "Retail endpoints representing stores across all channels. store_format (supermarket, convenience, warehouse, etc.) and channel columns enable segmentation. These are the final delivery points in the supply chain.",
           "llm_prompt_hint": "retail_location_id FK on orders for delivery destination. customer_location_id FK on ar_invoices. source_id FK on returns. In route_segments, retail locations appear as destination_type='store'. channel column for channel-level store analysis. store_format for format-level analysis."
         }
     attributes:
@@ -738,10 +789,12 @@ classes:
       vg:table: shipments
       vg:primary_key: id
       vg:identifier: shipment_number
+      vg:domain: demand
+      vg:subdomain: fulfillment
       vg:context: >-
         {
-          "business_logic": "Fulfillment execution document. origin_id and destination_id are polymorphic WITHOUT explicit type columns. route_type encodes the compound pattern: plant_to_rdc, rdc_to_customer_dc, customer_dc_to_store, plant_to_customer_dc, etc. Use route_type to infer origin/destination types. freight_cost for logistics cost analysis.",
-          "llm_prompt_hint": "Parse route_type to determine origin/destination tables (e.g., plant_to_rdc → origin is plants, destination is distribution_centers). For precise resolution, cross-reference with route_segments which have explicit type columns. Shipment lines in shipment_lines (shipment_id FK). Links to ar_invoices via ar_invoices.shipment_id. Status values: ~96% delivered, ~3% in_transit, ~1% planned."
+          "business_logic": "Fulfillment execution document. origin_id and destination_id are polymorphic WITHOUT explicit type columns. route_type encodes the compound pattern: plant_to_rdc, rdc_to_customer_dc, customer_dc_to_store, etc. Use route_type to infer origin/destination types. freight_cost for logistics cost analysis.",
+          "llm_prompt_hint": "Parse route_type to determine origin/destination tables (e.g., plant_to_rdc → origin is plants, destination is distribution_centers). For precise resolution, cross-reference with route_segments which have explicit type columns. Shipment lines in shipment_lines (shipment_id FK). Links to ar_invoices via ar_invoices.shipment_id."
         }
       vg:state_machine: >-
         {
@@ -808,6 +861,8 @@ classes:
     annotations:
       vg:table: shipment_lines
       vg:primary_key: '["shipment_id", "line_number"]'
+      vg:domain: demand
+      vg:subdomain: fulfillment
       vg:context: >-
         {
           "business_logic": "Composite PK (shipment_id, line_number). Records what SKUs and quantities were shipped. quantity_cases for fulfillment volume, weight_kg for logistics weight calculations.",
@@ -826,10 +881,12 @@ classes:
     annotations:
       vg:table: inventory
       vg:primary_key: id
+      vg:domain: demand
+      vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "Point-in-time inventory snapshots. day column (integer 1-365) enables temporal trend analysis. location_type discriminates the polymorphic location_id: 'plant' → plants, 'rdc' → distribution_centers (type='rdc'), 'customer_dc' → distribution_centers (type='customer_dc'), 'store' → retail_locations. Store inventory is ~98% of all records by volume.",
-          "llm_prompt_hint": "ALWAYS filter by location_type to determine which location table to join. For trend analysis: GROUP BY day. For network-level inventory: GROUP BY location_type. Largest volume is store-level inventory. sku_id for product-level analysis. quantity_cases is the snapshot value (not a delta)."
+          "business_logic": "Point-in-time inventory snapshots. day column (integer 1-365) enables temporal trend analysis. location_type discriminates the polymorphic location_id: plant → plants, rdc → distribution_centers (type='rdc'), customer_dc → distribution_centers (type='customer_dc'), store → retail_locations. Store inventory is the majority of records by volume.",
+          "llm_prompt_hint": "ALWAYS filter by location_type to determine which location table to join. For trend analysis: GROUP BY day. For network-level inventory: GROUP BY location_type. sku_id for product-level analysis. quantity_cases is the snapshot value (not a delta)."
         }
       vg:axioms: >-
         [
@@ -853,9 +910,7 @@ classes:
       quantity_cases:
         range: decimal
 
-  # ===========================================================================
-  # DOMAIN E2: LOGISTICS (Transport Network)
-  # ===========================================================================
+  # (Supply > network — transport graph)
 
   RouteSegment:
     description: "Transport route segment between two locations"
@@ -865,9 +920,11 @@ classes:
       vg:table: route_segments
       vg:primary_key: id
       vg:identifier: segment_code
+      vg:domain: supply
+      vg:subdomain: network
       vg:context: >-
         {
-          "business_logic": "This IS the transport network graph (4,025 edges). Each row is a directed edge between two polymorphic locations. Origin types: supplier, plant, rdc, customer_dc. Destination types: plant, rdc, customer_dc, store. Network includes 12 lateral RDC-to-RDC links (6 pairs of directed edges) for transshipment. ~29% of DCs are multi-source (served by 2 upstream RDCs). Graph is not a strict tree — shortest-path and centrality analyses are non-trivial. distance_km and transit_time_hours are dual edge weights for pathfinding. transport_mode (truck, rail, etc.) for modal analysis.",
+          "business_logic": "This IS the transport network graph. Each row is a directed edge between two polymorphic locations. Origin types: supplier, plant, rdc, customer_dc. Destination types: plant, rdc, customer_dc, store. Network includes lateral RDC-to-RDC links for transshipment. Some DCs are multi-source (served by multiple upstream RDCs). Graph is not a strict tree — shortest-path and centrality analyses are non-trivial. distance_km and transit_time_hours are dual edge weights.",
           "llm_prompt_hint": "Use RouteSegmentOrigin/RouteSegmentDestination relationships and their type_discriminators for graph traversal. Weight by distance_km for shortest distance, transit_time_hours for fastest route. Origin/destination type values in data are: supplier, plant, rdc, customer_dc, store — NOT 'dc' or 'retail'."
         }
       vg:scenario_params: >-
@@ -889,9 +946,7 @@ classes:
       transit_time_hours:
         range: decimal
 
-  # ===========================================================================
-  # DOMAIN F: PLAN (Demand & Supply Planning)
-  # ===========================================================================
+  # --- subdomain: planning ---
 
   DemandForecast:
     description: "Demand forecast for SKU at location"
@@ -900,6 +955,8 @@ classes:
     annotations:
       vg:table: demand_forecasts
       vg:primary_key: id
+      vg:domain: demand
+      vg:subdomain: planning
       vg:context: >-
         {
           "business_logic": "Forward-looking demand projections by SKU and location. forecast_version enables scenario comparison (e.g., baseline vs optimistic). location_type for polymorphic location resolution (same as inventory). forecast_type distinguishes baseline from promotional forecasts.",
@@ -917,9 +974,7 @@ classes:
       forecast_type:
         range: string
 
-  # ===========================================================================
-  # DOMAIN G: RETURN (Regenerate)
-  # ===========================================================================
+  # --- subdomain: reverse_logistics ---
 
   Return:
     description: "Customer return (RMA) header"
@@ -930,10 +985,12 @@ classes:
       vg:table: returns
       vg:primary_key: id
       vg:identifier: return_number
+      vg:domain: demand
+      vg:subdomain: reverse_logistics
       vg:context: >-
         {
           "business_logic": "Reverse logistics entry point. source_id points to the retail_location where the return originated. dc_id points to the distribution_center where the return is processed (for inspection and disposition). return_date is day-integer.",
-          "llm_prompt_hint": "Join source_id → retail_locations for originating store. Join dc_id → distribution_centers for processing DC. Return lines in return_lines (return_id FK). Disposition outcomes in disposition_logs (return_id FK). Status values: ~91% processed, ~4% received, ~2% approved, ~2% requested."
+          "llm_prompt_hint": "Join source_id → retail_locations for originating store. Join dc_id → distribution_centers for processing DC. Return lines in return_lines (return_id FK). Disposition outcomes in disposition_logs (return_id FK)."
         }
       vg:state_machine: >-
         {
@@ -962,6 +1019,8 @@ classes:
     annotations:
       vg:table: return_lines
       vg:primary_key: '["return_id", "line_number"]'
+      vg:domain: demand
+      vg:subdomain: reverse_logistics
       vg:context: >-
         {
           "business_logic": "Composite PK (return_id, line_number). Records returned SKU, quantity, and condition. condition column (sellable, damaged, expired, etc.) determines disposition path and recovery value.",
@@ -980,6 +1039,8 @@ classes:
     annotations:
       vg:table: disposition_logs
       vg:primary_key: '["return_id", "return_line_number"]'
+      vg:domain: demand
+      vg:subdomain: reverse_logistics
       vg:context: >-
         {
           "business_logic": "Records what happens to returned goods after inspection. disposition values include restock, destroy, rework, donate. No PK constraint in the database (composite key is logical). quantity_cases may differ from return_line quantity if partial disposition.",
@@ -992,8 +1053,10 @@ classes:
         range: decimal
 
   # ===========================================================================
-  # DOMAIN H: FINANCE
+  # ORCHESTRATE DOMAIN (Cross-cutting Finance + Kinetic Interpretation)
   # ===========================================================================
+
+  # --- subdomain: finance ---
 
   ChartOfAccounts:
     description: "General ledger chart of accounts"
@@ -1005,9 +1068,11 @@ classes:
       vg:table: chart_of_accounts
       vg:primary_key: id
       vg:identifier: account_code
+      vg:domain: orchestrate
+      vg:subdomain: finance
       vg:context: >-
         {
-          "business_logic": "14 GL accounts across 4 types: asset, liability, revenue, expense. account_code is the join key used by gl_journal (NOT id). account_name column (not 'name' — HasName mixin was removed from this class) provides the display label.",
+          "business_logic": "GL accounts across 4 types: asset, liability, revenue, expense. account_code is the join key used by gl_journal (NOT id). account_name column (not 'name' — HasName mixin was removed from this class) provides the display label.",
           "llm_prompt_hint": "Join gl_journal.account_code → chart_of_accounts.account_code for GL analysis. account_type for financial statement grouping. Note: join key is account_code (VARCHAR), not id (INTEGER)."
         }
     attributes:
@@ -1025,10 +1090,12 @@ classes:
     annotations:
       vg:table: gl_journal
       vg:primary_key: id
+      vg:domain: orchestrate
+      vg:subdomain: finance
       vg:context: >-
         {
-          "business_logic": "Financial backbone — ~48M rows recording every financial event. Balanced to the penny daily (debits = credits per day, tolerance ~$1.10). reference_type + reference_id provide full traceability to source documents (purchase_order, goods_receipt, batch, order, shipment, etc.). node_id identifies the facility. is_reversal marks correction entries. account_code joins to chart_of_accounts. ~0.5% of GL postings are deliberate duplicates (reference_id suffix '-DUP'). ~4 days have small rounding imbalances ($0.01-$1.00).",
-          "llm_prompt_hint": "Use reference_type and reference_id to trace GL entries back to source documents. Filter is_reversal = false for net balances. Watch for '-DUP' suffix on reference_id — these are duplicate postings (~290K entries) that should be excluded from clean analysis. account_code joins to chart_of_accounts.account_code (NOT id). node_id for facility-level P&L. product_id for product-level cost attribution. GROUP BY entry_date for daily balances."
+          "business_logic": "Financial backbone recording every financial event as double-entry journal entries. Balanced daily (debits = credits per day). reference_type + reference_id provide full traceability to source documents (purchase_order, goods_receipt, batch, order, shipment, etc.). is_reversal marks correction entries. Some GL postings are deliberate duplicates (reference_id suffix '-DUP'). A few days have small rounding imbalances.",
+          "llm_prompt_hint": "Use reference_type and reference_id to trace GL entries back to source documents. Filter is_reversal = false for net balances. Watch for '-DUP' suffix on reference_id — these are duplicate postings that should be excluded from clean analysis. account_code joins to chart_of_accounts.account_code (NOT id). node_id for facility-level P&L. product_id for product-level cost attribution. GROUP BY entry_date for daily balances."
         }
       vg:axioms: >-
         [
@@ -1075,10 +1142,12 @@ classes:
       vg:table: ap_invoices
       vg:primary_key: id
       vg:identifier: invoice_number
+      vg:domain: procurement
+      vg:subdomain: accounts_payable
       vg:context: >-
         {
-          "business_logic": "Source-side payables from suppliers. Links supplier_id + gr_id for three-way match (PO ↔ GR ↔ AP). total_amount for spend analysis. Data quality notes: ~8% of lines have price variances and ~5% have quantity variances vs PO terms (recorded in invoice_variances table), plus ~0.5% duplicate invoices with -DUP suffix on invoice_number.",
-          "llm_prompt_hint": "Join supplier_id → suppliers for vendor context. Join gr_id → goods_receipts for receipt matching. AP lines in ap_invoice_lines (invoice_id FK). Check invoice_variances for mismatches. Watch for -DUP suffix duplicates on invoice_number. Status: 100% open in current data (payments tracked separately in ap_payments table)."
+          "business_logic": "Source-side payables from suppliers. Links supplier_id + gr_id for three-way match (PO ↔ GR ↔ AP). total_amount for spend analysis. Some lines have price or quantity variances vs PO terms (recorded in invoice_variances table). Some duplicate invoices with -DUP suffix on invoice_number.",
+          "llm_prompt_hint": "Join supplier_id → suppliers for vendor context. Join gr_id → goods_receipts for receipt matching. AP lines in ap_invoice_lines (invoice_id FK). Check invoice_variances for mismatches. Watch for -DUP suffix duplicates on invoice_number. Payment status tracked in ap_payments table."
         }
       vg:state_machine: >-
         {
@@ -1117,6 +1186,8 @@ classes:
     annotations:
       vg:table: ap_invoice_lines
       vg:primary_key: '["invoice_id", "line_number"]'
+      vg:domain: procurement
+      vg:subdomain: accounts_payable
       vg:context: >-
         {
           "business_logic": "Composite PK (invoice_id, line_number). Records what was invoiced: ingredient, quantity, unit cost, line amount. These are the 'actual' values for three-way match against PO lines (expected) and GR lines (received).",
@@ -1128,6 +1199,8 @@ classes:
       line_amount:
         range: decimal
 
+  # --- subdomain: accounts_receivable ---
+
   ARInvoice:
     description: "Accounts receivable invoice to customer"
     is_a: TransactionDocument
@@ -1137,10 +1210,12 @@ classes:
       vg:table: ar_invoices
       vg:primary_key: id
       vg:identifier: invoice_number
+      vg:domain: demand
+      vg:subdomain: accounts_receivable
       vg:context: >-
         {
-          "business_logic": "Source of truth for recognized revenue. channel column enables direct revenue-by-channel analysis without joining orders. customer_location_id → retail_locations. shipment_id links to fulfillment. ~0.5% bad debt rate (status=disputed or uncollectable).",
-          "llm_prompt_hint": "For revenue analysis: SUM(total_amount) or join ar_invoice_lines for SKU-level detail. Use channel column for revenue-by-channel (do NOT try to derive from orders). customer_location_id → retail_locations for geographic revenue. shipment_id → shipments for fulfillment linkage. Status values in data: disputed, open, partial."
+          "business_logic": "Source of truth for recognized revenue. channel column enables direct revenue-by-channel analysis without joining orders. customer_location_id → retail_locations. shipment_id links to fulfillment.",
+          "llm_prompt_hint": "For revenue analysis: SUM(total_amount) or join ar_invoice_lines for SKU-level detail. Use channel column for revenue-by-channel (do NOT try to derive from orders). customer_location_id → retail_locations for geographic revenue. shipment_id → shipments for fulfillment linkage."
         }
       vg:state_machine: >-
         {
@@ -1188,9 +1263,11 @@ classes:
     annotations:
       vg:table: ar_invoice_lines
       vg:primary_key: '["invoice_id", "line_number"]'
+      vg:domain: demand
+      vg:subdomain: accounts_receivable
       vg:context: >-
         {
-          "business_logic": "Composite PK (invoice_id, line_number). This is where SKU-level revenue data lives — unit_price and line_amount ARE populated here (unlike order_lines). quantity_cases for volume, line_amount for revenue attribution by SKU.",
+          "business_logic": "Composite PK (invoice_id, line_number). This is where SKU-level revenue data lives — unit_price and line_amount ARE populated here. quantity_cases for volume, line_amount for revenue attribution by SKU.",
           "llm_prompt_hint": "Join invoice_id → ar_invoices for header (channel, customer, dates). Join sku_id → skus for product details. For SKU-level revenue: SUM(line_amount) GROUP BY sku_id. This is the ONLY reliable source of unit pricing data."
         }
     attributes:
@@ -1199,9 +1276,7 @@ classes:
       line_amount:
         range: decimal
 
-  # ===========================================================================
-  # DOMAIN H2: DATA QUALITY & VARIANCES
-  # ===========================================================================
+  # (Orchestrate > finance — variance and data quality)
 
   InvoiceVariance:
     description: "Price or quantity variance on AP invoice line"
@@ -1210,6 +1285,8 @@ classes:
     annotations:
       vg:table: invoice_variances
       vg:primary_key: id
+      vg:domain: orchestrate
+      vg:subdomain: finance
       vg:context: >-
         {
           "business_logic": "Records mismatches between AP invoice lines and PO terms. variance_type is 'price' (unit cost mismatch) or 'qty' (quantity mismatch). expected_value vs actual_value with variance_amount = actual - expected. resolution_status tracks audit progress.",
@@ -1221,6 +1298,8 @@ classes:
       variance_amount:
         range: decimal
 
+  # (Procurement > accounts_payable — payment settlement)
+
   APPayment:
     description: "Payment against an AP invoice"
     instantiates:
@@ -1228,9 +1307,11 @@ classes:
     annotations:
       vg:table: ap_payments
       vg:primary_key: id
+      vg:domain: procurement
+      vg:subdomain: accounts_payable
       vg:context: >-
         {
-          "business_logic": "Settlement of AP invoices. ~10% of payments receive a 2% early-pay discount. net_amount = amount - discount_amount. payment_method is typically EFT. This completes the procure-to-pay cycle.",
+          "business_logic": "Settlement of AP invoices. Some payments receive early-pay discount. net_amount = amount - discount_amount. This completes the procure-to-pay cycle.",
           "llm_prompt_hint": "Join invoice_id → ap_invoices for invoice context. discount_amount > 0 indicates early-pay discount taken. For cash flow analysis: SUM(net_amount) GROUP BY payment_date. payment_date is day-integer."
         }
     attributes:
@@ -1241,6 +1322,8 @@ classes:
       net_amount:
         range: decimal
 
+  # (Demand > accounts_receivable — collection)
+
   ARReceipt:
     description: "Receipt of payment against an AR invoice"
     instantiates:
@@ -1248,6 +1331,8 @@ classes:
     annotations:
       vg:table: ar_receipts
       vg:primary_key: id
+      vg:domain: demand
+      vg:subdomain: accounts_receivable
       vg:context: >-
         {
           "business_logic": "Collection of AR invoices. amount is the payment received. This completes the order-to-cash cycle. Compare amount against ar_invoices.total_amount for collection rate analysis.",
@@ -1276,6 +1361,7 @@ classes:
       vg:domain_class: Supplier
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Many-to-many sourcing matrix between suppliers and ingredients. Each edge carries commercial terms (unit_cost, lead_time_days, min_order_qty). Multiple suppliers may offer the same ingredient — this is the basis for procurement optimization.",
@@ -1311,6 +1397,7 @@ classes:
       vg:domain_class: PurchaseOrder
       vg:range_class: Supplier
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:functional: true
       vg:context: >-
         {
@@ -1333,6 +1420,8 @@ classes:
       vg:domain_class: PurchaseOrder
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -1355,6 +1444,7 @@ classes:
       vg:domain_class: PurchaseOrder
       vg:range_class: PurchaseOrderLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "One-to-many: PO header to its line items. Each line specifies an ingredient, quantity, and unit cost. Lines are the detail level for three-way match verification.",
@@ -1384,6 +1474,7 @@ classes:
       vg:domain_class: PurchaseOrderLine
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Links each PO line to the ingredient being ordered. Used for ingredient-level procurement analysis and traceability from supplier through to production.",
@@ -1405,6 +1496,8 @@ classes:
       vg:domain_class: GoodsReceipt
       vg:range_class: Shipment
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -1427,6 +1520,8 @@ classes:
       vg:domain_class: GoodsReceipt
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -1449,6 +1544,7 @@ classes:
       vg:domain_class: GoodsReceipt
       vg:range_class: GoodsReceiptLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "One-to-many: GR header to its line items. Each line records actual quantity received per ingredient. Used for receipt verification against PO lines.",
@@ -1478,6 +1574,7 @@ classes:
       vg:domain_class: GoodsReceiptLine
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Links each GR line to the ingredient received. Used for material traceability — confirms which ingredient was physically received.",
@@ -1501,6 +1598,7 @@ classes:
       vg:domain_class: ProductionLine
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:functional: true
       vg:sql_filter: "is_active = true"
       vg:context: >-
@@ -1524,6 +1622,7 @@ classes:
       vg:domain_class: Formula
       vg:range_class: '["SKU", "BulkIntermediate"]'
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:functional: true
       vg:type_discriminator: >-
         {"column": "bom_level", "mapping": {"0": "SKU", "1": "BulkIntermediate", "2": "BulkIntermediate"}}
@@ -1548,6 +1647,8 @@ classes:
       vg:domain_class: Formula
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join", "hierarchical_aggregation", "path_aggregation"]'
+      vg:domain: supply
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "BOM explosion semantics — quantity_kg is per-batch requirement. For total requirements, multiply through the hierarchy via N-level traversal (formula → sub-formula → ingredients). IMPORTANT: ingredient_id is polymorphic — points to ingredients table (raw materials), bulk_intermediates table (bom_level=1 primary bulks or bom_level=2 premixes). No discriminator column; must LEFT JOIN both tables. Diamond dependencies exist — a raw material may appear in both a premix formula AND directly in its parent bulk formula.",
@@ -1584,6 +1685,7 @@ classes:
       vg:domain_class: WorkOrder
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:functional: true
       vg:context: >-
         {
@@ -1606,6 +1708,7 @@ classes:
       vg:domain_class: WorkOrder
       vg:range_class: Formula
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:functional: true
       vg:context: >-
         {
@@ -1628,6 +1731,7 @@ classes:
       vg:domain_class: Batch
       vg:range_class: WorkOrder
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:context: >-
         {
           "business_logic": "Links batch to its originating work order. A work order may produce multiple batches. This connects production execution to production planning.",
@@ -1649,6 +1753,7 @@ classes:
       vg:domain_class: Batch
       vg:range_class: Plant
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:context: >-
         {
           "business_logic": "Links batch to the plant where it was produced. For plant-level production volume and capacity utilization analysis.",
@@ -1670,6 +1775,7 @@ classes:
       vg:domain_class: Batch
       vg:range_class: Formula
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:context: >-
         {
           "business_logic": "Links batch to the formula used for production. Through the formula, connects to ingredient requirements and the product being made.",
@@ -1691,6 +1797,7 @@ classes:
       vg:domain_class: Batch
       vg:range_class: '["SKU", "BulkIntermediate"]'
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
       vg:functional: true
       vg:type_discriminator: >-
         {"column": "product_type", "mapping": {"finished_good": "SKU", "bulk_intermediate": "BulkIntermediate", "premix": "BulkIntermediate"}}
@@ -1715,6 +1822,8 @@ classes:
       vg:domain_class: Batch
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:domain: supply
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Actual ingredient consumption during production. quantity_kg = total kg consumed. Expected = formula_ingredients.quantity_kg × batches.quantity_kg (per-case × cases). Mass balance: sum of inputs should approximate batch output / yield_percent. Use for planned-vs-actual analysis and full traceability.",
@@ -1750,6 +1859,7 @@ classes:
       vg:domain_class: SKU
       vg:range_class: SKU
       vg:operation_types: '["direct_join", "recursive_traversal"]'
+      vg:domain: supply
       vg:asymmetric: true
       vg:irreflexive: true
       vg:acyclic: true
@@ -1776,6 +1886,7 @@ classes:
       vg:domain_class: Order
       vg:range_class: Channel
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:functional: true
       vg:context: >-
         {
@@ -1798,6 +1909,7 @@ classes:
       vg:domain_class: Order
       vg:range_class: RetailLocation
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:functional: true
       vg:context: >-
         {
@@ -1820,6 +1932,7 @@ classes:
       vg:domain_class: Order
       vg:range_class: OrderLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "One-to-many: order header to its line items. Lines specify SKUs and quantities. WARNING: unit_price on order_lines is ALWAYS ZERO — do not use for revenue calculations.",
@@ -1849,6 +1962,8 @@ classes:
       vg:domain_class: OrderLine
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links order line to the SKU being ordered. Used for product-level demand analysis (volume only — not revenue).",
@@ -1872,6 +1987,8 @@ classes:
       vg:domain_class: Shipment
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -1894,6 +2011,8 @@ classes:
       vg:domain_class: Shipment
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -1916,6 +2035,7 @@ classes:
       vg:domain_class: Shipment
       vg:range_class: ShipmentLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "One-to-many: shipment header to its line items. Each line records an SKU, quantity in cases, and weight. Used for fulfillment verification and logistics weight planning.",
@@ -1945,6 +2065,8 @@ classes:
       vg:domain_class: ShipmentLine
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links shipment line to the SKU being shipped. Used for product-level logistics analysis and fulfillment tracking.",
@@ -1966,6 +2088,8 @@ classes:
       vg:domain_class: Inventory
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links inventory snapshots to the SKU being tracked. Each inventory row is a point-in-time snapshot for a specific SKU at a specific location.",
@@ -1987,6 +2111,8 @@ classes:
       vg:domain_class: Inventory
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:type_discriminator: >-
         {"column": "location_type", "mapping": {"plant": "Plant", "rdc": "DistributionCenter", "customer_dc": "DistributionCenter", "store": "RetailLocation"}}
       vg:context: >-
@@ -2012,6 +2138,7 @@ classes:
       vg:domain_class: RouteSegment
       vg:range_class: '["Plant", "DistributionCenter", "Supplier"]'
       vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
+      vg:domain: supply
       vg:functional: true
       vg:type_discriminator: >-
         {"column": "origin_type", "mapping": {"plant": "Plant", "rdc": "DistributionCenter", "customer_dc": "DistributionCenter", "supplier": "Supplier"}}
@@ -2042,6 +2169,7 @@ classes:
       vg:domain_class: RouteSegment
       vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
       vg:operation_types: '["direct_join", "shortest_path", "centrality", "connected_components", "resilience_analysis"]'
+      vg:domain: supply
       vg:functional: true
       vg:type_discriminator: >-
         {"column": "destination_type", "mapping": {"plant": "Plant", "rdc": "DistributionCenter", "customer_dc": "DistributionCenter", "store": "RetailLocation"}}
@@ -2074,6 +2202,8 @@ classes:
       vg:domain_class: DemandForecast
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links demand forecast to the SKU being forecasted. Used for demand planning and forecast accuracy analysis.",
@@ -2097,6 +2227,7 @@ classes:
       vg:domain_class: Return
       vg:range_class: RetailLocation
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:functional: true
       vg:context: >-
         {
@@ -2119,6 +2250,7 @@ classes:
       vg:domain_class: Return
       vg:range_class: ReturnLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "One-to-many: return header to its line items. Each line records the returned SKU, quantity, and condition assessment.",
@@ -2140,6 +2272,8 @@ classes:
       vg:domain_class: ReturnLine
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links return line to the SKU being returned. Used for product-level return analysis and quality tracking.",
@@ -2161,6 +2295,8 @@ classes:
       vg:domain_class: Return
       vg:range_class: DistributionCenter
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:functional: true
       vg:context: >-
         {
@@ -2183,6 +2319,7 @@ classes:
       vg:domain_class: DispositionLog
       vg:range_class: Return
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:functional: true
       vg:context: >-
         {
@@ -2207,6 +2344,7 @@ classes:
       vg:domain_class: APInvoice
       vg:range_class: Supplier
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:functional: true
       vg:context: >-
         {
@@ -2229,6 +2367,7 @@ classes:
       vg:domain_class: APInvoice
       vg:range_class: GoodsReceipt
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Links AP invoice to the goods receipt it matches. Part of three-way match: PO ↔ GR ↔ AP Invoice. When all three agree on quantity and cost, the invoice is approved for payment.",
@@ -2250,6 +2389,7 @@ classes:
       vg:domain_class: APInvoice
       vg:range_class: APInvoiceLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "One-to-many: AP invoice header to its line items. Lines detail what was invoiced — ingredient, quantity, unit cost, line amount. Used for three-way match at the line level.",
@@ -2279,6 +2419,7 @@ classes:
       vg:domain_class: APInvoiceLine
       vg:range_class: Ingredient
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Links AP invoice line to the ingredient being invoiced. Used for ingredient-level cost tracking and variance analysis against PO terms.",
@@ -2300,6 +2441,7 @@ classes:
       vg:domain_class: ARInvoice
       vg:range_class: RetailLocation
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:functional: true
       vg:context: >-
         {
@@ -2322,6 +2464,7 @@ classes:
       vg:domain_class: ARInvoice
       vg:range_class: ARInvoiceLine
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "One-to-many: AR invoice header to its line items. THIS is where SKU-level revenue data lives — unit_price and line_amount ARE populated (unlike order_lines). The source of truth for product-level revenue attribution.",
@@ -2351,6 +2494,8 @@ classes:
       vg:domain_class: ARInvoiceLine
       vg:range_class: SKU
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links AR invoice line to the SKU sold. This is the revenue attribution join — line_amount here is the actual revenue for this SKU sale. Critical for product profitability analysis.",
@@ -2372,6 +2517,7 @@ classes:
       vg:domain_class: APPayment
       vg:range_class: APInvoice
       vg:operation_types: '["direct_join"]'
+      vg:domain: procurement
       vg:context: >-
         {
           "business_logic": "Links payment to the AP invoice being settled. Completes the procure-to-pay financial cycle. ~10% of payments include early-pay discount (discount_amount > 0).",
@@ -2401,6 +2547,7 @@ classes:
       vg:domain_class: ARReceipt
       vg:range_class: ARInvoice
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "Links receipt to the AR invoice being collected. Completes the order-to-cash financial cycle. Compare receipt amount against invoice total_amount for collection rate analysis.",
@@ -2430,6 +2577,7 @@ classes:
       vg:domain_class: ARInvoice
       vg:range_class: Shipment
       vg:operation_types: '["direct_join"]'
+      vg:domain: demand
       vg:context: >-
         {
           "business_logic": "Links AR invoice to the shipment that triggered it. Connects fulfillment execution to revenue recognition. Each shipment generates an AR invoice upon delivery.",
@@ -2451,6 +2599,7 @@ classes:
       vg:domain_class: GLJournal
       vg:range_class: ChartOfAccounts
       vg:operation_types: '["direct_join"]'
+      vg:domain: orchestrate
       vg:context: >-
         {
           "business_logic": "Links GL journal entries to their chart of accounts classification. IMPORTANT: join key is account_code (VARCHAR), NOT id (INTEGER). ~48M journal entries across 14 accounts.",
@@ -2472,6 +2621,8 @@ classes:
       vg:domain_class: InvoiceVariance
       vg:range_class: APInvoice
       vg:operation_types: '["direct_join"]'
+      vg:domain: orchestrate
+      vg:cross_domain: true
       vg:context: >-
         {
           "business_logic": "Links variance records to the AP invoice with discrepancies. ~8% of invoices have price variances, ~5% have quantity variances.",

@@ -8,13 +8,14 @@ VG/SQL uses multi-layer validation to ensure ontologies are structurally correct
 |-------|------|----------------|
 | 1. Structure | `linkml-lint` | YAML syntax, LinkML schema rules |
 | 2. Semantics | `OntologyAccessor` | VG annotations, complexity values, class references |
-| 3. Schema Match | `validate_schema_match.py` | Ontology vs live database consistency |
+| 3. Domains | `validate_ontology.py` | All classes/roles have valid `vg:domain` |
+| 4. Schema Match | `validate_schema_match.py` | Ontology vs live database consistency |
 
 All layers should pass for an ontology to be considered valid.
 
 ## Quick Validation
 
-### Full Validation (Layers 1 + 2)
+### Full Validation (Layers 1 + 2 + 3)
 
 ```bash
 poetry run python scripts/validate_ontology.py --all

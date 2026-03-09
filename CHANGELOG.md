@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0] - 2026-03-09
+
+### Changed
+
+- **SCOR-DS domain restructure** — 3+1 domain model (Procurement, Supply, Demand + Orchestrate cross-cutting layer) applied to all 88 ontology elements
+  - All 38 classes annotated with `vg:domain` and `vg:subdomain`
+  - All 50 relationships annotated with `vg:domain` and `vg:cross_domain`
+  - 16 cross-domain relationships identified and flagged
+  - Orchestrate domain aggregates state machines, flow configs, axioms, conservation groups across domains
+- **PCG ontology v4.0** (`pcg_example/ontology/pcg.yaml`)
+  - Database target changed from PostgreSQL to DuckDB
+  - Schema-level `vg:domains`, `vg:inter_domain_flows`, `vg:process_traces` annotations
+  - Context blocks cleaned: removed data-specific details (counts, percentages, specific names), kept structural/semantic descriptions
+  - Section headers restructured by domain with subdomain markers
+- **Metamodel v3.1** (`virt_graph.yaml`)
+  - Added `domain`/`subdomain` to `SQLMappedClass`
+  - Added `domain`/`cross_domain` to `SQLMappedRelationship`
+- **OntologyAccessor** — 10 new domain methods: `get_class_domain()`, `get_class_subdomain()`, `get_role_domain_category()`, `is_role_cross_domain()`, `get_classes_by_domain()`, `get_roles_by_domain()`, `get_all_domains()`, `get_cross_domain_roles()`, `get_orchestrate_summary()`, `get_financial_entities()`
+
+### Added
+
+- **Domain structure tests** (`pcg_example/tests/test_domain_structure.py`) — 18 integration tests covering domain assignment completeness, cross-domain flagging, domain integrity, and orchestrate summary
+- **Validation Layer 3** — domain coverage check in `scripts/validate_ontology.py` (all classes/roles have valid domain)
+- **`--by-domain` flag** for `scripts/show_ontology.py` — groups output by business domain with subdomain and cross-domain indicators
+- Domain summary in `show_ontology.py` output footer
+- **Domain structure diagram** (`docs/domain-structure.mmd`) — Mermaid chart showing 3+1 domain layout with cross-domain bridges
+
 ## [1.8.1] - 2026-03-07
 
 ### Added

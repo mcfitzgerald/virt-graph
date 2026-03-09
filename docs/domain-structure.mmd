@@ -1,0 +1,139 @@
+---
+title: PCG Ontology — SCOR-DS Domain Model v4.0
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#f8fafc"
+    primaryTextColor: "#1e293b"
+    lineColor: "#94a3b8"
+    fontSize: 13px
+    fontFamily: "Inter, system-ui, sans-serif"
+  flowchart:
+    curve: basis
+    padding: 16
+    nodeSpacing: 30
+    rankSpacing: 40
+    wrappingWidth: 120
+---
+
+graph TB
+
+  %% ════════════════════════════════════════════════════════
+  %% PROCUREMENT — collapsed to primary entities
+  %% ════════════════════════════════════════════════════════
+  subgraph PROC["PROCUREMENT · Source"]
+    direction LR
+    sup([Supplier])
+    ing([Ingredient])
+    po([PurchaseOrder])
+    gr([GoodsReceipt])
+    api([APInvoice])
+    app([APPayment])
+
+    sup --- ing
+    sup --- po
+    po --- gr
+    gr --- api
+    api --- app
+  end
+
+  %% ════════════════════════════════════════════════════════
+  %% SUPPLY — manufacturing + product + network
+  %% ════════════════════════════════════════════════════════
+  subgraph SUPP["SUPPLY · Transform + Network"]
+    direction LR
+    plt([Plant])
+    wo([WorkOrder])
+    bat([Batch])
+    frm([Formula])
+    sku([SKU])
+    dc([DistributionCenter])
+    rs([RouteSegment])
+
+    plt --- wo
+    wo --- bat
+    bat --- frm
+    frm --- sku
+    sku -.-|supersedes| sku
+    plt --- rs
+    rs --- dc
+  end
+
+  %% ════════════════════════════════════════════════════════
+  %% DEMAND — order, fulfill, plan, return
+  %% ════════════════════════════════════════════════════════
+  subgraph DEM["DEMAND · Order + Fulfill + Plan + Return"]
+    direction LR
+    ord([Order])
+    shp([Shipment])
+    inv([Inventory])
+    fcst([Forecast])
+    ret([Return])
+    ari([ARInvoice])
+    arr([ARReceipt])
+
+    ord --- shp
+    shp --- ari
+    ari --- arr
+    ord --- inv
+    ord --- fcst
+    ord --- ret
+  end
+
+  %% ════════════════════════════════════════════════════════
+  %% ORCHESTRATE — finance cross-cut
+  %% ════════════════════════════════════════════════════════
+  subgraph ORCH["ORCHESTRATE · Finance"]
+    direction LR
+    gl([GLJournal])
+    coa([ChartOfAccounts])
+    ivar([InvoiceVariance])
+
+    gl --- coa
+  end
+
+  %% ════════════════════════════════════════════════════════
+  %% CROSS-DOMAIN BRIDGES (16 relationships)
+  %% ════════════════════════════════════════════════════════
+
+  %% Procurement ↔ Supply
+  po ===|"PO → Plant"| plt
+  gr ===|"GR → Plant"| plt
+  bat ===|"consumes"| ing
+  frm ===|"BOM ingredients"| ing
+
+  %% Procurement ↔ Demand
+  gr ===|"from shipment"| shp
+
+  %% Demand ↔ Supply
+  ord ===|"lines → SKU"| sku
+  shp ===|"origin/dest"| plt
+  shp ===|"lines → SKU"| sku
+  inv ===|"for SKU"| sku
+  inv ===|"at location"| plt
+  fcst ===|"for SKU"| sku
+  ret ===|"lines → SKU"| sku
+  ret ===|"to DC"| dc
+  ari ===|"lines → SKU"| sku
+
+  %% Orchestrate ↔ Procurement
+  ivar ===|"for AP invoice"| api
+
+  %% ════════════════════════════════════════════════════════
+  %% STYLING
+  %% ════════════════════════════════════════════════════════
+
+  classDef procNode fill:#eff6ff,stroke:#3b82f6,stroke-width:1.5px,color:#1e40af,rx:20,ry:20
+  classDef suppNode fill:#f0fdf4,stroke:#22c55e,stroke-width:1.5px,color:#166534,rx:20,ry:20
+  classDef demNode fill:#fff7ed,stroke:#f97316,stroke-width:1.5px,color:#9a3412,rx:20,ry:20
+  classDef orchNode fill:#faf5ff,stroke:#a855f7,stroke-width:1.5px,color:#6b21a8,rx:20,ry:20
+
+  class sup,ing,po,gr,api,app procNode
+  class plt,wo,bat,frm,sku,dc,rs suppNode
+  class ord,shp,inv,fcst,ret,ari,arr demNode
+  class gl,coa,ivar orchNode
+
+  style PROC fill:#eff6ff08,stroke:#3b82f6,stroke-width:2px,rx:12,ry:12,color:#1e40af,font-weight:bold
+  style SUPP fill:#f0fdf408,stroke:#22c55e,stroke-width:2px,rx:12,ry:12,color:#166534,font-weight:bold
+  style DEM fill:#fff7ed08,stroke:#f97316,stroke-width:2px,rx:12,ry:12,color:#9a3412,font-weight:bold
+  style ORCH fill:#faf5ff08,stroke:#a855f7,stroke-width:2px,rx:12,ry:12,color:#6b21a8,font-weight:bold

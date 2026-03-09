@@ -513,6 +513,50 @@ To see the complete metamodel:
 poetry run python scripts/show_ontology.py
 ```
 
+## Domain Classification (v3.1)
+
+Domain annotations organize ontology elements into business domains aligned to the SCOR Digital Standard.
+
+### Entity Domain (SQLMappedClass)
+
+| Annotation | Type | Description |
+|------------|------|-------------|
+| `vg:domain` | string | Business domain: `procurement`, `supply`, `demand`, or `orchestrate` |
+| `vg:subdomain` | string | Sub-grouping within the domain (e.g., `sourcing`, `manufacturing`, `fulfillment`) |
+
+```yaml
+Supplier:
+  annotations:
+    vg:domain: procurement
+    vg:subdomain: sourcing
+```
+
+### Relationship Domain (SQLMappedRelationship)
+
+| Annotation | Type | Description |
+|------------|------|-------------|
+| `vg:domain` | string | Primary execution domain for this relationship |
+| `vg:cross_domain` | boolean | True if this relationship connects entities in different domains |
+
+```yaml
+OrderLineForSKU:
+  annotations:
+    vg:domain: demand
+    vg:cross_domain: true    # OrderLine (demand) → SKU (supply)
+```
+
+### OntologyAccessor Methods
+
+```python
+ontology.get_class_domain("Supplier")           # → "procurement"
+ontology.get_class_subdomain("Supplier")         # → "sourcing"
+ontology.get_role_domain_category("POAtPlant")   # → "procurement"
+ontology.is_role_cross_domain("POAtPlant")       # → True
+ontology.get_all_domains()                       # → {"procurement": {...}, "supply": {...}, ...}
+ontology.get_cross_domain_roles()                # → ["POAtPlant", "GRFromShipment", ...]
+ontology.get_orchestrate_summary()               # → aggregated kinetic metadata across all domains
+```
+
 ## Axioms (v3.0)
 
 Axioms are SQL-evaluable constraints declared on classes or relationships. Claude checks them via `SELECT COUNT(*) FROM table WHERE NOT (sql_expression)`.

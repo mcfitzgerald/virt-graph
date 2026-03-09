@@ -8,7 +8,7 @@
 
 id: https://virt-graph.dev/metamodel
 name: virt_graph_metamodel
-version: "3.0"
+version: "3.1"
 description: >-
   Virtual Graph metamodel extension for LinkML.
   Enables graph-like queries over relational data by mapping
@@ -204,6 +204,15 @@ classes:
         inlined_as_list: true
         description: "Perturbable attributes for scenario/what-if analysis"
 
+      # === Domain Classification (v3.1) ===
+      domain:
+        range: string
+        description: "Business domain: procurement, supply, demand, or orchestrate"
+      subdomain:
+        range: string
+        description: "Sub-domain grouping within the domain (e.g., sourcing, manufacturing)"
+
+
   # ---------------------------------------------------------------------------
   # SQLMappedRelationship: Extension for relationships (RBox)
   # ---------------------------------------------------------------------------
@@ -358,6 +367,15 @@ classes:
         range: FlowConfig
         inlined: true
         description: "Material/information/financial flow metadata for throughput analysis"
+
+      # === Domain Classification (v3.1) ===
+      domain:
+        range: string
+        description: "Primary execution domain for this relationship"
+      cross_domain:
+        range: boolean
+        description: "True if this relationship connects entities in different domains"
+
 
   # ---------------------------------------------------------------------------
   # WeightColumn: Describes a numeric column usable as edge weight

@@ -9,6 +9,7 @@ Usage:
     poetry run python scripts/show_ontology.py [ontology_path]
     poetry run python scripts/show_ontology.py --tbox-only
     poetry run python scripts/show_ontology.py --rbox-only
+    poetry run python scripts/show_ontology.py --by-domain
     poetry run python scripts/show_ontology.py --json
 """
 
@@ -39,6 +40,14 @@ def format_tbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
         if soft_delete[0]:
             entry["soft_delete_column"] = soft_delete[1]
 
+        # Domain
+        domain = ontology.get_class_domain(name)
+        if domain:
+            entry["domain"] = domain
+        subdomain = ontology.get_class_subdomain(name)
+        if subdomain:
+            entry["subdomain"] = subdomain
+
         # Kinetic extensions
         sm = ontology.get_class_state_machine(name)
         if sm:
@@ -61,9 +70,12 @@ def format_tbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
     # Text format
     lines = ["TBox (Entity Classes)", "=" * 60]
     for entry in tbox_data:
-        lines.append(f"\n{entry['class']}")
+        domain_tag = f" [{entry['domain']}]" if entry.get('domain') else ""
+        lines.append(f"\n{entry['class']}{domain_tag}")
         lines.append(f"  table: {entry['table']}")
         lines.append(f"  primary_key: {entry['primary_key']}")
+        if entry.get('subdomain'):
+            lines.append(f"  subdomain: {entry['subdomain']}")
         if entry['identifier']:
             lines.append(f"  identifier: {entry['identifier']}")
         if entry['row_count']:
@@ -120,6 +132,13 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
         if temporal:
             entry["temporal_bounds"] = temporal
 
+        # Domain
+        role_domain = ontology.get_role_domain_category(name)
+        if role_domain:
+            entry["domain"] = role_domain
+        if ontology.is_role_cross_domain(name):
+            entry["cross_domain"] = True
+
         # Kinetic extensions
         fc = ontology.get_role_flow_config(name)
         if fc:
@@ -137,10 +156,12 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
     lines = ["RBox (Relationship Classes)", "=" * 60]
 
     for entry in rbox_data:
-        domain = entry["domain_class"]
+        domain_cls = entry["domain_class"]
         range_ = entry["range_class"]
         ops = ", ".join(entry["operation_types"]) if entry["operation_types"] else "none"
-        lines.append(f"\n{entry['relationship']}: {domain} -> {range_}")
+        domain_tag = f" [{entry['domain']}]" if entry.get('domain') else ""
+        cross_tag = " ✕" if entry.get('cross_domain') else ""
+        lines.append(f"\n{entry['relationship']}{domain_tag}{cross_tag}: {domain_cls} -> {range_}")
         lines.append(f"  table: {entry['edge_table']}")
         lines.append(f"  keys: {entry['domain_key']} -> {entry['range_key']}")
         lines.append(f"  operations: {ops}")
@@ -158,6 +179,47 @@ def format_rbox(ontology: OntologyAccessor, as_json: bool = False) -> str:
             lines.append(f"  flow: {entry['flow_config']}")
         if entry.get('axiom_count'):
             lines.append(f"  axioms: {entry['axiom_count']}")
+
+    return "\n".join(lines)
+
+
+def format_by_domain(ontology: OntologyAccessor) -> str:
+    """Format ontology grouped by domain."""
+    lines = ["Ontology by Domain", "=" * 60]
+    domains = ontology.get_all_domains()
+
+    for domain_name in ["procurement", "supply", "demand", "orchestrate"]:
+        if domain_name not in domains:
+            continue
+        info = domains[domain_name]
+        lines.append(f"\n{'─' * 60}")
+        lines.append(f"  {domain_name.upper()} ({len(info['classes'])} classes, {len(info['roles'])} roles)")
+        lines.append(f"{'─' * 60}")
+
+        lines.append("\n  Classes:")
+        for cls_name in sorted(info["classes"]):
+            subdomain = ontology.get_class_subdomain(cls_name) or ""
+            table = ontology.get_class_table(cls_name)
+            sd_tag = f" ({subdomain})" if subdomain else ""
+            lines.append(f"    {cls_name}{sd_tag} → {table}")
+
+        lines.append("\n  Relationships:")
+        for role_name in sorted(info["roles"]):
+            cross = " ✕" if ontology.is_role_cross_domain(role_name) else ""
+            domain_cls = ontology.get_role_domain(role_name)
+            range_cls = ontology.get_role_range(role_name)
+            lines.append(f"    {role_name}{cross}: {domain_cls} → {range_cls}")
+
+    cross_roles = ontology.get_cross_domain_roles()
+    if cross_roles:
+        lines.append(f"\n{'─' * 60}")
+        lines.append(f"  CROSS-DOMAIN RELATIONSHIPS ({len(cross_roles)} total, marked ✕ above)")
+        lines.append(f"{'─' * 60}")
+        for name in sorted(cross_roles):
+            d = ontology.get_role_domain_category(name)
+            dc = ontology.get_role_domain(name)
+            rc = ontology.get_role_range(name)
+            lines.append(f"    [{d}] {name}: {dc} → {rc}")
 
     return "\n".join(lines)
 
@@ -180,6 +242,11 @@ def main():
         "--rbox-only",
         action="store_true",
         help="Show only RBox (relationships)"
+    )
+    parser.add_argument(
+        "--by-domain",
+        action="store_true",
+        help="Group output by business domain"
     )
     parser.add_argument(
         "--json",
@@ -206,7 +273,9 @@ def main():
         sys.exit(1)
 
     # Output
-    if args.json:
+    if args.by_domain:
+        print(format_by_domain(ontology))
+    elif args.json:
         if args.tbox_only:
             print(format_tbox(ontology, as_json=True))
         elif args.rbox_only:
@@ -230,8 +299,16 @@ def main():
         sm_count = len(ontology.get_classes_with_state_machines())
         fc_count = len(ontology.get_roles_with_flow_config())
         cg_count = len(ontology.get_conservation_groups())
+        domains = ontology.get_all_domains()
+        cross_count = len(ontology.get_cross_domain_roles())
         print(f"\n{'=' * 60}")
         print(f"Summary: {len(ontology.classes)} entities, {len(ontology.roles)} relationships")
+        if domains:
+            domain_summary = ", ".join(
+                f"{d}={len(info['classes'])}c/{len(info['roles'])}r"
+                for d, info in sorted(domains.items())
+            )
+            print(f"Domains: {domain_summary} ({cross_count} cross-domain)")
         if sm_count or fc_count or cg_count:
             print(f"Kinetic: {sm_count} state machines, {fc_count} flow configs, {cg_count} conservation groups")
 
