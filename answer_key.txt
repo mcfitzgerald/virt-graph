@@ -1,0 +1,127 @@
+Yes for most of them. Here's what we can validate against:
+
+  Hard Numbers (from the demo DB verification output)
+
+  ┌──────────────────────────────┬───────────────────────────────────────────────┐
+  │           Question           │                Expected Answer                │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q4 — Margin by channel       │ Club ~53.6%, Grocery ~38.3%, Conv ~21.9%      │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q5 — Freight by leg          │ Club $1.60 total, Grocery $4.20, Conv ~$12.50 │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q6 — Conv last-mile by store │ NYC $15.00, Newark $9.50, Philly $7.20        │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q9 — HDPE overcharge         │ PO $0.68, AP $0.72, open variance $1,480      │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q10 — Bad yield batches      │ 5 Citrus Premix batches, yield 82-85%         │
+  ├──────────────────────────────┼───────────────────────────────────────────────┤
+  │ Q11 — DSO by channel         │ Club ~14.5d, Grocery ~33.4d, Conv ~69.8d      │
+  └──────────────────────────────┴───────────────────────────────────────────────┘
+
+  Known from Test Assertions (test_demo_db.py)
+
+  ┌───────────────────────────┬────────────────────────────────────────────────────────────┐
+  │         Question          │                     Validation Source                      │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q1 — Table count          │ 38 tables, all populated                                   │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q4 — Club margin range    │ 50-57% (test_club_margin)                                  │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q4 — Grocery margin range │ 33-42% (test_grocery_margin)                               │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q4 — Conv margin range    │ 15-26% (test_convenience_margin)                           │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q7 — Category margins     │ Oral Care > Home Care > Personal Wash through Grocery      │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q7 — Negative margin      │ Personal Wash is lowest, test asserts it's below Home Care │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q10 — Bad yield           │ batches WHERE formula_id = 2 AND yield_percent < 90 ≥ 4    │
+  ├───────────────────────────┼────────────────────────────────────────────────────────────┤
+  │ Q11 — DSO ordering        │ Club < Grocery < Convenience                               │
+  └───────────────────────────┴────────────────────────────────────────────────────────────┘
+
+  Known from Data Design (generate_demo_db.py)
+
+  ┌────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │        Question        │                                                 What We Know                                                  │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q2 — Graph patterns    │ Transport network, SKU alias chain, BOM hierarchy                                                             │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q3 — Cross-domain rels │ 16 declared in ontology                                                                                       │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q8 — Order trace       │ Traceable but we don't have a pre-computed expected answer — this is a good "does the agent figure it out"    │
+  │                        │ test                                                                                                          │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q12 — State            │ Most entities are in terminal states (delivered, complete, closed) since the demo data represents a completed │
+  │ distribution           │  90-day window                                                                                                │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q13 — O2C trace for    │ Traceable but no pre-computed answer — the O2C demo script (trace_o2c.py) does this for PostgreSQL, so the    │
+  │ 5001                   │ pattern exists                                                                                                │
+  └────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Unknown / Agent Must Derive
+
+  ┌───────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │       Question        │                                                     Notes                                                      │
+  ├───────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q14 — Yield fix       │ Agent needs to calculate: material wasted in bad batches × annualization factor. We know the inputs but not    │
+  │ savings               │ the pre-computed answer.                                                                                       │
+  ├───────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q15 — Drop 2 stores   │ Agent needs to recalculate margins excluding highest-freight stores. We know the store-level data but not the  │
+  │                       │ recalculated margin.                                                                                           │
+  ├───────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Q16 — HDPE            │ Should be straightforward: $0.04 × total HDPE units × annualization. We know the per-unit delta but not the    │
+  │ renegotiation         │ annualized total.                                                                                              │
+  └───────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  Bottom Line
+
+  Questions 1-7 and 9-11 have hard validation. Questions 8, 12-13 are "can the agent navigate the schema" tests with verifiable logic.
+  Questions 14-16 are the simulation questions where we validate the approach more than the exact number.
+
+
+⏺ Here's the full answer key:
+
+  Q14: Yield Fix Savings
+
+  ┌───────┬───────┬─────────┬───────────────────┬─────────────────────────┬─────────┐
+  │ Batch │ Yield │ Output  │ Material Consumed │ Efficient Need (at 97%) │  Waste  │
+  ├───────┼───────┼─────────┼───────────────────┼─────────────────────────┼─────────┤
+  │ B-002 │ 85%   │ 42.5 kg │ 59.1 kg           │ 43.8 kg                 │ 15.3 kg │
+  ├───────┼───────┼─────────┼───────────────────┼─────────────────────────┼─────────┤
+  │ B-003 │ 82%   │ 41.0 kg │ 58.2 kg           │ 42.3 kg                 │ 16.0 kg │
+  ├───────┼───────┼─────────┼───────────────────┼─────────────────────────┼─────────┤
+  │ B-016 │ 83%   │ 41.5 kg │ 58.4 kg           │ 42.8 kg                 │ 15.6 kg │
+  ├───────┼───────┼─────────┼───────────────────┼─────────────────────────┼─────────┤
+  │ B-017 │ 84%   │ 42.0 kg │ 59.0 kg           │ 43.3 kg                 │ 15.7 kg │
+  ├───────┼───────┼─────────┼───────────────────┼─────────────────────────┼─────────┤
+  │ B-029 │ 82%   │ 41.0 kg │ 59.2 kg           │ 42.3 kg                 │ 16.9 kg │
+  └───────┴───────┴─────────┴───────────────────┴─────────────────────────┴─────────┘
+
+  - 5 bad batches, 79.4 kg excess material consumed
+  - Avg ingredient cost: $14.68/kg
+  - 90-day waste cost: $1,166
+  - Annualized: ~$4,663
+
+  Q15: Drop 2 Highest-Freight Convenience Stores
+
+  ┌───────┬──────────────┬──────────────────┐
+  │ Store │     City     │ Last-Mile $/case │
+  ├───────┼──────────────┼──────────────────┤
+  │ 5     │ New York     │ $15.00           │
+  ├───────┼──────────────┼──────────────────┤
+  │ 6     │ Newark       │ $9.50            │
+  ├───────┼──────────────┼──────────────────┤
+  │ 8     │ Philadelphia │ $7.20            │
+  └───────┴──────────────┴──────────────────┘
+
+  Drop NYC + Newark, keep only Philadelphia:
+  - Freight/case drops from $13.87 → $10.50
+  - Margin improves from 21.9% → 30.1% (+8.3pp)
+
+  Q16: HDPE Renegotiation Savings
+
+  - 6 AP invoice lines, 27,000 units at $0.72 (vs PO contract $0.68)
+  - 90-day overcharge: $1,080
+  - Annualized: ~$4,320
+  - 8 open invoice variances totaling $1,480 (includes other suppliers too)

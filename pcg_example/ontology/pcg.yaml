@@ -2,16 +2,27 @@
 # Prism Consumer Goods (PCG) - ERP Supply Chain Ontology
 # ============================================================================
 #
-# Virtual twin declaration for the PCG schema (38 tables, ~330M rows).
+# Virtual twin declaration for the PCG schema (41 tables, ~330M rows).
 # Uses class hierarchy via scm_base.yaml imports (is_a, mixins, abstract classes).
 #
 # Domain model: 3+1 SCOR-DS aligned domains:
 #   - Procurement (Source): sourcing, purchasing, inbound, accounts payable
 #   - Supply (Transform + Network): product master, manufacturing, distribution
-#   - Demand (Order + Fulfill + Plan + Return): planning, customer service,
-#     fulfillment, reverse logistics, accounts receivable
+#   - Demand (Order + Fulfill + Plan + Return + Trade): planning, customer service,
+#     fulfillment, reverse logistics, accounts receivable, trade management
 #   - Orchestrate (cross-cutting): finance (GL, variance); interprets state
 #     machines, flows, axioms, and scenarios across domain boundaries
+#
+# v4.2 — Trade Management Entities:
+#   - TradeProgram, PromoEvent, TradeDeduction classes (demand/trade_management)
+#   - 7 new relationships covering programs→events→deductions→invoices
+#   - Analytical methodology: trade_decomposition for gross-to-net waterfall
+#   - Updated ARInvoice/Channel context blocks to reference trade entities
+#
+# v4.1 — Analytical Methodology Context:
+#   - Freight allocation: all 3 shipment legs must be allocated to channel
+#   - Yield waste: efficient-need methodology for material waste costing
+#   - Margin computation: schema-level annotation for C2D margin formula
 #
 # v4.0 — SCOR-DS Domain Restructure:
 #   - 3+1 domain model with vg:domain/vg:subdomain on all 88 elements
@@ -34,15 +45,15 @@
 
 id: https://virt-graph.dev/schemas/pcg
 name: pcg
-version: "4.0.0"
+version: "4.2.0"
 description: >-
   Prism Consumer Goods ERP ontology for Virtual Graph.
   Models a full FMCG supply chain in a 3+1 SCOR-DS aligned domain model:
   Procurement (Source), Supply (Transform + Network), Demand (Order + Fulfill
-  + Plan + Return), and Orchestrate (cross-cutting finance, kinetic
-  interpretation). 38 entity classes with class hierarchy, 50 relationships
+  + Plan + Return + Trade), and Orchestrate (cross-cutting finance, kinetic
+  interpretation). 41 entity classes with class hierarchy, 57 relationships
   with polymorphic patterns, transport network graph, recursive alias chains,
-  and full business context on every entity.
+  trade management decomposition, and full business context on every entity.
 
 prefixes:
   linkml: https://w3id.org/linkml/
@@ -78,6 +89,26 @@ annotations:
       {"name": "order_to_cash", "conservation_group": "order_to_cash", "domains": ["demand", "orchestrate"], "scor_process": "Deliver"},
       {"name": "production_mass_balance", "conservation_group": "production_mass_balance", "domains": ["supply", "procurement"], "scor_process": "Transform"}
     ]
+  vg:analytical_methodology: >-
+    {
+      "margin_computation": {
+        "formula": "channel_margin = (revenue - COGS - total_allocated_freight) / revenue",
+        "freight_allocation": "Total freight includes ALL upstream shipment legs (plant_to_rdc, rdc_to_customer_dc, customer_dc_to_store), not just the last-mile AR-linked shipments. Only customer_dc_to_store shipments have AR invoice links; upstream legs must be allocated proportionally by weight or cases to downstream channels.",
+        "revenue_source": "ar_invoice_lines (NOT order_lines, where unit_price is zero)",
+        "cogs_source": "skus.cost_per_case"
+      },
+      "yield_waste_costing": {
+        "formula": "excess_waste_kg = actual_consumed_kg - (output_kg / target_yield_pct). waste_cost = excess_waste_kg * weighted_avg_ingredient_cost_per_kg",
+        "explanation": "Compute what WOULD have been needed at target yield to produce the same output. The excess over that efficient need is the waste to cost. Do NOT use input × (1 - yield%) which conflates unavoidable process loss with excess waste."
+      },
+      "trade_decomposition": {
+        "formula": "gross_revenue = list_price × qty; net_revenue = gross_revenue - SUM(trade_deductions); trade_pct = SUM(deductions) / gross_revenue",
+        "waterfall": "Gross Revenue (list price × qty) → - Trade Deductions (by type: scan, rebate, promo, slotting, off-invoice) → = Net Revenue (ar_invoice_lines.line_amount) → - COGS → = Gross Margin → - Freight (3 legs) → - Returns → = CS&L Contribution",
+        "promo_roi": "incremental_revenue = lift_pct × base_volume × net_price; promo_cost = incremental_spend + (base_volume × lift_pct × promo_fund_rate); ROI = incremental_revenue / promo_cost",
+        "key_tables": "trade_programs (standing rates by channel/type), promo_events (time-bound activities), trade_deductions (per-invoice-line actuals)",
+        "invariant": "For every AR invoice: SUM(trade_deductions.deduction_amount) = gross_revenue - net_revenue exactly"
+      }
+    }
 
 # =============================================================================
 # CLASSES
@@ -479,7 +510,7 @@ classes:
       vg:context: >-
         {
           "business_logic": "Production execution record. product_type discriminates output: finished_good → SKU table, bulk_intermediate → BulkIntermediate table, premix → BulkIntermediate table (bom_level=2 sub-intermediates). bom_level mirrors formula hierarchy (0=finished, 1=intermediate, 2=premix). Mass balance: sum of input ingredient quantities (batch_ingredients) should approximate batch output quantity_kg / yield_percent.",
-          "llm_prompt_hint": "Use product_type to determine which product table to join: finished_good→skus, bulk_intermediate→bulk_intermediates, premix→bulk_intermediates (filter bom_level=2). For BOM tracing: follow formula_id → formula_ingredients. For actual consumption: join batch_ingredients by batch_id. wo_id links to work_order for scheduling context."
+          "llm_prompt_hint": "Use product_type to determine which product table to join: finished_good→skus, bulk_intermediate→bulk_intermediates, premix→bulk_intermediates (filter bom_level=2). For BOM tracing: follow formula_id → formula_ingredients. For actual consumption: join batch_ingredients by batch_id. wo_id links to work_order for scheduling context. YIELD WASTE COSTING: To compute material waste from low yield, use the efficient-need method: efficient_need_kg = output_kg / target_yield (e.g., 0.97). excess_waste_kg = actual_consumed_kg - efficient_need_kg. Cost the excess at weighted average ingredient cost per kg. Do NOT use input × (1 - yield%) which conflates unavoidable process loss with excess waste."
         }
       vg:state_machine: >-
         {
@@ -634,8 +665,8 @@ classes:
       vg:subdomain: customer_service
       vg:context: >-
         {
-          "business_logic": "Sales channels (MASS_RETAIL, GROCERY, ECOMMERCE, etc.). channel_type column for B2B/B2C classification. Channels are the demand signal grouping for sales analysis.",
-          "llm_prompt_hint": "Channel IDs are 1-7. Join orders.source_id → channels for channel-level order analysis. BUT source_id is polymorphic — values 1-7 are channels, values 67+ are retail_locations. For revenue by channel, use ar_invoices.channel column directly (more reliable). channel_code for grouping."
+          "business_logic": "Sales channels (MASS_RETAIL, GROCERY, ECOMMERCE, etc.). channel_type column for B2B/B2C classification. Channels are the demand signal grouping for sales analysis. Each channel has trade programs (trade_programs.channel_id) defining deduction rates by type (scan, rebate, promo, slotting, off-invoice).",
+          "llm_prompt_hint": "Channel IDs are 1-7. Join orders.source_id → channels for channel-level order analysis. BUT source_id is polymorphic — values 1-7 are channels, values 67+ are retail_locations. For revenue by channel, use ar_invoices.channel column directly (more reliable). channel_code for grouping. For trade spend: join trade_programs.channel_id → channels.id to get channel-level trade agreements."
         }
     attributes:
       channel_code:
@@ -793,8 +824,8 @@ classes:
       vg:subdomain: fulfillment
       vg:context: >-
         {
-          "business_logic": "Fulfillment execution document. origin_id and destination_id are polymorphic WITHOUT explicit type columns. route_type encodes the compound pattern: plant_to_rdc, rdc_to_customer_dc, customer_dc_to_store, etc. Use route_type to infer origin/destination types. freight_cost for logistics cost analysis.",
-          "llm_prompt_hint": "Parse route_type to determine origin/destination tables (e.g., plant_to_rdc → origin is plants, destination is distribution_centers). For precise resolution, cross-reference with route_segments which have explicit type columns. Shipment lines in shipment_lines (shipment_id FK). Links to ar_invoices via ar_invoices.shipment_id."
+          "business_logic": "Fulfillment execution document. origin_id and destination_id are polymorphic WITHOUT explicit type columns. route_type encodes the compound pattern: plant_to_rdc, rdc_to_customer_dc, customer_dc_to_store, etc. Use route_type to infer origin/destination types. freight_cost for logistics cost analysis. IMPORTANT: Shipments come in 3-leg chains (plant_to_rdc → rdc_to_customer_dc → customer_dc_to_store). Only the last-mile leg (customer_dc_to_store) links to AR invoices. For cost-to-deliver / margin analysis, freight from ALL three legs must be allocated downstream to the end channel — upstream legs carry trunk-line and middle-mile freight that is invisible if you only follow AR invoice links.",
+          "llm_prompt_hint": "Parse route_type to determine origin/destination tables (e.g., plant_to_rdc → origin is plants, destination is distribution_centers). For precise resolution, cross-reference with route_segments which have explicit type columns. Shipment lines in shipment_lines (shipment_id FK). Links to ar_invoices via ar_invoices.shipment_id. FREIGHT ALLOCATION: All 3 legs share the same total_weight_kg. To allocate upstream freight to channels, trace the weight through each leg and assign proportionally to the last-mile shipments that link to AR invoices."
         }
       vg:state_machine: >-
         {
@@ -1052,6 +1083,120 @@ classes:
       quantity_cases:
         range: decimal
 
+  # --- subdomain: trade_management ---
+
+  TradeProgram:
+    description: "Channel-level trade agreement defining a deduction type and base rate"
+    mixins:
+      - HasActiveFlag
+      - HasName
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: trade_programs
+      vg:primary_key: id
+      vg:identifier: program_code
+      vg:domain: demand
+      vg:subdomain: trade_management
+      vg:context: >-
+        {
+          "business_logic": "Standing trade agreements by channel. program_type values: scan_allowance, volume_rebate, off_invoice, promo_fund, slotting. rate_pct is the deduction rate as a decimal fraction (e.g., 0.05 = 5%). Multiple programs per channel decompose the total trade discount. start_day/end_day define the agreement period.",
+          "llm_prompt_hint": "Join channel_id → channels for channel context. For total trade rate by channel: SUM(rate_pct) GROUP BY channel_id. For trade spend analysis: join trade_deductions.trade_program_id → trade_programs.id. promo_fund programs are the parent for promo_events."
+        }
+    attributes:
+      program_code:
+        range: string
+      channel_id:
+        range: integer
+      program_type:
+        range: string
+      rate_pct:
+        range: decimal
+      start_day:
+        range: integer
+      end_day:
+        range: integer
+
+  PromoEvent:
+    description: "Time-bound promotional event tied to a trade program and SKU"
+    is_a: TransactionDocument
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: promo_events
+      vg:primary_key: id
+      vg:identifier: event_code
+      vg:domain: demand
+      vg:subdomain: trade_management
+      vg:context: >-
+        {
+          "business_logic": "Promotional activities that drive incremental volume. Always linked to a promo_fund-type trade program. promo_type values: bogo, tpr (temp price reduction), display, feature. lift_pct is expected volume uplift as decimal (0.30 = 30%). incremental_spend is additional cost beyond the base promo_fund rate for this event.",
+          "llm_prompt_hint": "Join trade_program_id → trade_programs (must be promo_fund type). Join sku_id → skus for promoted product. For promo ROI: compare incremental_spend + (base_volume × lift_pct × rate) vs incremental revenue. trade_deductions with matching promo_event_id show actual deductions from this event."
+        }
+      vg:state_machine: >-
+        {
+          "state_column": "status",
+          "states": ["planned", "active", "completed"],
+          "transitions": [
+            {"from_state": "planned", "to_state": "active", "description": "Promo event starts on start_day"},
+            {"from_state": "active", "to_state": "completed", "description": "Promo event ends on end_day"}
+          ],
+          "initial_state": "planned",
+          "terminal_states": ["completed"],
+          "data_note": "Status tracks the lifecycle of the promotional event. Events transition based on calendar days."
+        }
+    attributes:
+      event_code:
+        range: string
+      trade_program_id:
+        range: integer
+      promo_type:
+        range: string
+      sku_id:
+        range: integer
+      start_day:
+        range: integer
+      end_day:
+        range: integer
+      lift_pct:
+        range: decimal
+      incremental_spend:
+        range: decimal
+      status:
+        range: string
+
+  TradeDeduction:
+    description: "Per-invoice-line deduction record linking trade program to AR invoice line"
+    instantiates:
+      - vg:SQLMappedClass
+    annotations:
+      vg:table: trade_deductions
+      vg:primary_key: id
+      vg:domain: demand
+      vg:subdomain: trade_management
+      vg:context: >-
+        {
+          "business_logic": "Transactional record of actual trade deductions applied per AR invoice line. Each invoice line gets N deductions (one per trade program for its channel). deduction_amount = list_price_per_case × quantity_cases × program rate_pct. For promo_fund deductions within a promo event window, promo_event_id links to the specific event. Key invariant: SUM(deductions per invoice) = gross_revenue - net_revenue exactly.",
+          "llm_prompt_hint": "Join trade_program_id → trade_programs for program type/rate. Join ar_invoice_id → ar_invoices for invoice context. Join sku_id → skus for product. promo_event_id is nullable — only populated for promo_fund deductions within event windows. For gross-to-net waterfall: group by trade program type."
+        }
+    attributes:
+      trade_program_id:
+        range: integer
+      promo_event_id:
+        range: integer
+      ar_invoice_id:
+        range: integer
+      ar_line_number:
+        range: integer
+      sku_id:
+        range: integer
+      list_price_per_case:
+        range: decimal
+      quantity_cases:
+        range: decimal
+      deduction_amount:
+        range: decimal
+
   # ===========================================================================
   # ORCHESTRATE DOMAIN (Cross-cutting Finance + Kinetic Interpretation)
   # ===========================================================================
@@ -1214,8 +1359,8 @@ classes:
       vg:subdomain: accounts_receivable
       vg:context: >-
         {
-          "business_logic": "Source of truth for recognized revenue. channel column enables direct revenue-by-channel analysis without joining orders. customer_location_id → retail_locations. shipment_id links to fulfillment.",
-          "llm_prompt_hint": "For revenue analysis: SUM(total_amount) or join ar_invoice_lines for SKU-level detail. Use channel column for revenue-by-channel (do NOT try to derive from orders). customer_location_id → retail_locations for geographic revenue. shipment_id → shipments for fulfillment linkage."
+          "business_logic": "Source of truth for recognized NET revenue (after trade deductions). total_amount reflects net revenue post-deductions. channel column enables direct revenue-by-channel analysis. customer_location_id → retail_locations. shipment_id links to fulfillment. Trade deductions are in trade_deductions table (ar_invoice_id FK), decomposing gross-to-net by program type.",
+          "llm_prompt_hint": "For revenue analysis: SUM(total_amount) gives NET revenue. For gross revenue: SUM(skus.price_per_case × quantity_cases). For trade decomposition: join trade_deductions.ar_invoice_id → ar_invoices.id. Use channel column for revenue-by-channel. customer_location_id → retail_locations for geographic revenue. shipment_id → shipments for fulfillment linkage."
         }
       vg:state_machine: >-
         {
@@ -2586,6 +2731,169 @@ classes:
             "outbound": "which shipment triggered this AR invoice"
           },
           "llm_prompt_hint": "Join ar_invoices.shipment_id → shipments.id. For order-to-cash tracing: orders → shipments → ar_invoices → ar_receipts."
+        }
+
+  # --- Trade management relationships ---
+
+  TradeProgramForChannel:
+    description: "Trade program belongs to a sales channel"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: trade_programs
+      vg:domain_key: id
+      vg:range_key: channel_id
+      vg:domain_class: TradeProgram
+      vg:range_class: Channel
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "Links trade programs to their sales channel. Each channel has multiple programs (scan, rebate, promo, slotting, off-invoice) that together decompose the total trade discount rate.",
+          "traversal_semantics": {
+            "inbound": "what trade programs apply to this channel",
+            "outbound": "which channel this trade program is for"
+          },
+          "llm_prompt_hint": "Join trade_programs.channel_id → channels.id. For channel trade rates: SUM(rate_pct) GROUP BY channel_id."
+        }
+
+  PromoEventFromProgram:
+    description: "Promo event is funded by a trade program"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: promo_events
+      vg:domain_key: id
+      vg:range_key: trade_program_id
+      vg:domain_class: PromoEvent
+      vg:range_class: TradeProgram
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "Links promo events to their parent trade program. All promo events must reference a promo_fund-type program. The parent program's rate_pct is the base deduction; the event's incremental_spend is the additional cost.",
+          "traversal_semantics": {
+            "inbound": "what promo events are funded by this trade program",
+            "outbound": "which trade program funds this promo event"
+          },
+          "llm_prompt_hint": "Join promo_events.trade_program_id → trade_programs.id. Only promo_fund programs have child events."
+        }
+
+  PromoEventForSKU:
+    description: "Promo event promotes a specific SKU"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: promo_events
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: PromoEvent
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "Links promo events to the SKU being promoted. Cross-domain: promo events (demand/trade_management) reference SKUs (supply/product). lift_pct on the event estimates incremental volume for this SKU.",
+          "traversal_semantics": {
+            "inbound": "what promo events promote this SKU",
+            "outbound": "which SKU is promoted by this event"
+          },
+          "llm_prompt_hint": "Join promo_events.sku_id → skus.id. For promo calendar: list events by SKU with start/end days. Cross-domain bridge between trade management and product master."
+        }
+
+  DeductionFromProgram:
+    description: "Trade deduction is calculated from a trade program"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: trade_deductions
+      vg:domain_key: id
+      vg:range_key: trade_program_id
+      vg:domain_class: TradeDeduction
+      vg:range_class: TradeProgram
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "Links each deduction to the trade program that generated it. deduction_amount = list_price_per_case × quantity_cases × trade_program.rate_pct.",
+          "traversal_semantics": {
+            "inbound": "what deductions were generated from this trade program",
+            "outbound": "which trade program generated this deduction"
+          },
+          "llm_prompt_hint": "Join trade_deductions.trade_program_id → trade_programs.id. For spend by program type: SUM(deduction_amount) GROUP BY program_type."
+        }
+
+  DeductionFromPromoEvent:
+    description: "Trade deduction linked to a specific promo event (nullable)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: trade_deductions
+      vg:domain_key: id
+      vg:range_key: promo_event_id
+      vg:domain_class: TradeDeduction
+      vg:range_class: PromoEvent
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:functional: true
+      vg:context: >-
+        {
+          "business_logic": "Links promo_fund deductions to the specific promo event (when the invoice falls within the event window). NULL for non-promo deductions and promo_fund deductions outside event windows.",
+          "traversal_semantics": {
+            "inbound": "what deductions were driven by this promo event",
+            "outbound": "which promo event (if any) drove this deduction"
+          },
+          "llm_prompt_hint": "Join trade_deductions.promo_event_id → promo_events.id (LEFT JOIN — nullable FK). For promo ROI: SUM(deduction_amount) WHERE promo_event_id = X."
+        }
+
+  DeductionOnInvoice:
+    description: "Trade deduction applied to an AR invoice"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: trade_deductions
+      vg:domain_key: id
+      vg:range_key: ar_invoice_id
+      vg:domain_class: TradeDeduction
+      vg:range_class: ARInvoice
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:context: >-
+        {
+          "business_logic": "Links deductions to the AR invoice they apply to. Combined with ar_line_number, identifies the specific invoice line. Key invariant: SUM(deduction_amount) per invoice = gross_revenue - net_revenue.",
+          "traversal_semantics": {
+            "inbound": "what trade deductions were applied to this AR invoice",
+            "outbound": "which AR invoice this deduction applies to"
+          },
+          "llm_prompt_hint": "Join trade_deductions.ar_invoice_id → ar_invoices.id. For gross-to-net waterfall: SUM(deduction_amount) by ar_invoice_id, then compare to (gross - net)."
+        }
+
+  DeductionForSKU:
+    description: "Trade deduction references a SKU (denormalized for analytics)"
+    instantiates:
+      - vg:SQLMappedRelationship
+    annotations:
+      vg:edge_table: trade_deductions
+      vg:domain_key: id
+      vg:range_key: sku_id
+      vg:domain_class: TradeDeduction
+      vg:range_class: SKU
+      vg:operation_types: '["direct_join"]'
+      vg:domain: demand
+      vg:cross_domain: true
+      vg:context: >-
+        {
+          "business_logic": "Denormalized SKU reference on deductions for analytics. Enables trade spend by SKU without joining through invoice lines. Cross-domain: deductions (demand) reference SKUs (supply).",
+          "traversal_semantics": {
+            "inbound": "what trade deductions apply to this SKU",
+            "outbound": "which SKU this deduction is for"
+          },
+          "llm_prompt_hint": "Join trade_deductions.sku_id → skus.id. For trade spend by SKU: SUM(deduction_amount) GROUP BY sku_id. Cross-domain bridge between trade management and product master."
         }
 
   GLJournalToAccount:

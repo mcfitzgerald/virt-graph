@@ -17,7 +17,7 @@ VALID_DOMAINS = {"procurement", "supply", "demand", "orchestrate"}
 EXPECTED_DOMAIN_COUNTS = {
     "procurement": {"classes": 10, "roles": 14},
     "supply": {"classes": 11, "roles": 13},
-    "demand": {"classes": 14, "roles": 21},
+    "demand": {"classes": 17, "roles": 28},
     "orchestrate": {"classes": 3, "roles": 2},
 }
 
@@ -28,6 +28,7 @@ EXPECTED_CROSS_DOMAIN = {
     "ShipmentLineForSKU", "InventoryForSKU", "InventoryAtLocation",
     "DemandForecastForSKU", "ReturnLineForSKU", "ReturnToDC",
     "ARInvoiceLineForSKU", "InvoiceVarianceForAPInvoice",
+    "PromoEventForSKU", "DeductionForSKU",
 }
 
 
@@ -95,7 +96,7 @@ class TestRelationshipDomains:
         assert actual == EXPECTED_CROSS_DOMAIN
 
     def test_cross_domain_count(self, ontology):
-        assert len(ontology.get_cross_domain_roles()) == 16
+        assert len(ontology.get_cross_domain_roles()) == 18
 
 
 class TestDomainIntegrity:

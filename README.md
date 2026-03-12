@@ -20,6 +20,18 @@ poetry run python scripts/validate_ontology.py --all   # Validate the reference 
 poetry run python scripts/show_ontology.py             # View TBox/RBox definitions
 ```
 
+### Demo Database
+
+Generate a curated ~2400-row DuckDB with cost-to-serve stories across all 41 tables:
+
+```bash
+poetry install --with demo
+poetry run python scripts/generate_demo_db.py          # Generates pcg_example/data/demo.duckdb
+poetry run pytest pcg_example/tests/test_demo_db.py -v  # 72 integration tests
+```
+
+Story: Same premium toothpaste, 54% margin through Club, 22% through Convenience — driven by freight economics, trade spend, returns, payment terms, yield variance, and supplier price creep.
+
 ### Database Setup
 
 ```bash
@@ -62,7 +74,7 @@ These handlers are easily extended or new ones created for domain-specific graph
 |----------|----------|---------|
 | Metamodel | `virt_graph.yaml` | VG extensions (single source of truth for validation rules) |
 | Base Schema | `scm_base.yaml` | Supply chain structural patterns (abstract classes, mixins, enums) |
-| Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (38 classes, 50 relationships) |
+| Reference Ontology | `pcg_example/ontology/pcg.yaml` | PCG supply chain ontology (41 classes, 57 relationships) |
 | Benchmark | `pcg_example/benchmark/` | 85 natural-language questions + category mappings |
 | Handlers | `src/virt_graph/handlers/` | Graph operations (traversal, pathfinding, network) |
 | Estimator | `src/virt_graph/estimator/` | Runtime estimation and safety guards |
@@ -103,7 +115,7 @@ The metamodel (`virt_graph.yaml` v3.1) supports rich graph declarations. Here's 
 | **Polymorphism** | `vg:type_discriminator` resolves FKs that point to multiple table types | 5 relationships — route segments, batches, formulas, inventory |
 | **Edge weights** | `vg:weight_columns` for pathfinding algorithms | `distance_km`, `transit_time_hours` on transport network |
 | **Edge properties** | `vg:edge_attributes` for Property Graph style data on edges | `unit_cost`/`lead_time_days` on supplier offers, `quantity_kg` on BOM |
-| **Context blocks** | `vg:context` provides domain semantics for AI query generation | All 38 classes + all 50 relationships with business logic, traversal semantics, and prompt hints |
+| **Context blocks** | `vg:context` provides domain semantics for AI query generation | All 41 classes + all 57 relationships with business logic, traversal semantics, and prompt hints |
 | **State machines** | `vg:state_machine` declares lifecycle states and transitions | Orders, POs, batches, shipments, goods receipts, returns |
 | **Flow config** | `vg:flow_config` declares material/financial/information flows | 10 relationships with conservation groups |
 | **Axioms** | `vg:axioms` are SQL-evaluable integrity constraints | Mass balance, temporal ordering, GL balance |
@@ -113,19 +125,20 @@ The metamodel (`virt_graph.yaml` v3.1) supports rich graph declarations. Here's 
 
 ### Domain Model (SCOR-DS)
 
-The PCG ontology organizes all 88 elements into a 3+1 domain model aligned to the SCOR Digital Standard double-infinity loop:
+The PCG ontology organizes all 98 elements into a 3+1 domain model aligned to the SCOR Digital Standard double-infinity loop:
 
 | Domain | Classes | Relationships | Cross-Domain | What It Covers |
 |--------|---------|---------------|--------------|----------------|
 | **Procurement** | 10 | 14 | 3 | Sourcing, purchasing, inbound logistics, AP |
 | **Supply** | 11 | 13 | 2 | Manufacturing, product master, transport network |
-| **Demand** | 14 | 21 | 11 | Orders, fulfillment, planning, returns, AR |
+| **Demand** | 17 | 28 | 13 | Orders, fulfillment, planning, returns, AR, trade management |
 | **Orchestrate** | 3 | 2 | 1 | GL, chart of accounts, invoice variances |
 
-16 cross-domain relationships connect entities across domain boundaries. The Orchestrate domain provides a cross-cutting financial and kinetic interpretation layer.
+18 cross-domain relationships connect entities across domain boundaries. The Orchestrate domain provides a cross-cutting financial and kinetic interpretation layer.
 
 ```bash
 poetry run python scripts/show_ontology.py --by-domain  # View ontology grouped by domain
+poetry run python scripts/export_ontology_csv.py         # Export ontology as 4 CSV sheets
 ```
 
 ### Operation Types

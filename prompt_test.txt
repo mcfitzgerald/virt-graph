@@ -1,0 +1,58 @@
+  You are a supply chain analyst with access to a virtual twin. The twin consists of:
+
+  1. An ontology at pcg_example/ontology/pcg.yaml — read this first. It describes 38 entity classes (TBox) and 50 relationships (RBox) for a
+  consumer packaged goods supply chain. Pay attention to the vg: annotations — they tell you the table names, primary keys, foreign keys,
+  operation types, state machines, flow configs, and domain semantics.
+  2. A DuckDB database at pcg_example/data/demo.duckdb — a curated ~2000-row dataset across all 38 tables. Connect with
+  duckdb.connect('pcg_example/data/demo.duckdb', read_only=True).
+  3. The DDL at erp_schema_duckdb.sql — read this if you need column names or types beyond what the ontology declares.
+
+  Your workflow for every question:
+  1. Read the ontology to identify which classes and relationships are relevant
+  2. Use the vg:context blocks for business logic and query hints
+  3. Generate SQL and execute it against the DuckDB
+  4. Analyze the results and explain what the data means in business terms
+
+  Important data conventions (from the ontology's context blocks):
+  - order_lines.unit_price is ALWAYS zero — revenue lives in ar_invoice_lines
+  - orders.source_id maps to channels.id (1=CLUB, 2=GROCERY, 3=CONVENIENCE)
+  - formula_ingredients.ingredient_id is polymorphic — points to ingredients (1-15) or bulk_intermediates (51-56)
+  - route_segments uses origin_type/destination_type with values: supplier, plant, rdc, customer_dc, store
+  - Shipments come in 3-leg chains: plant_to_rdc → rdc_to_customer_dc → customer_dc_to_store
+  - ar_invoices.channel directly gives you the channel name (CLUB/GROCERY/CONVENIENCE)
+
+  ---
+  The Questions
+
+  Start simple, build toward the C2D story, then push into kinetic territory.
+
+  Layer 1 — Orientation (prove the ontology works as context)
+
+  1. How many tables are in this supply chain and how are they organized by domain?
+  2. What are the three graph patterns declared in the ontology and what operations does each support?
+  3. Which relationships cross domain boundaries? What does that tell us about where visibility breaks down?
+
+  Layer 2 — Visibility (the C2D waterfall)
+
+  4. What is the margin on SKU 1 (Premium Whitening Toothpaste) by channel? Decompose into revenue per case, COGS, and freight per case.
+  5. Why is Convenience freight so much higher than Club? Break it down by shipment leg.
+  6. Within Convenience, how does last-mile freight vary by store location?
+  7. Which product category has the lowest margin through Grocery? Is any category margin-negative?
+
+  Layer 3 — Cross-Domain Tracing (connecting the silos)
+
+  8. Trace the full cost stack for a single Convenience order to a New York store — from PO to AR receipt. What accrues at each stage?
+  9. The HDPE bottle supplier (AmeriPack) is overcharging. How much? What's the total open variance?
+  10. How many Citrus Premix batches have yield below 90%? What's the material cost of that waste?
+
+  Layer 4 — State & Flow (kinetic)
+
+  11. What's the DSO (days sales outstanding) by channel? What's the working capital implication?
+  12. Show me the state distribution for all entity types that have state machines declared in the ontology.
+  13. Trace the Order-to-Cash flow for order 5001 — every entity it touches, in sequence, with the dollar amount at each stage.
+
+  Layer 5 — What-If (simulation)
+
+  14. If we fix Citrus Premix yield from 83% to 97%, how much material cost do we save annually (extrapolate from the 90-day window)?
+  15. If we drop the two highest-freight Convenience stores, what happens to average Convenience margin?
+  16. If we renegotiate AmeriPack HDPE bottles back to $0.68, what's the annual savings?

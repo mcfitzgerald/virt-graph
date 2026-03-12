@@ -1,0 +1,418 @@
+C2D Virtual Twin Demo — User Story
+
+  The Setup
+
+  A CSCO sits down at a screen. He sees his supply chain — not a PowerPoint, not a dashboard of disconnected KPIs — but his actual business as
+  a connected system. Everything he's looking at was generated from his existing ERP. Nothing was migrated, rebuilt, or modeled by consultants.
+
+  Act 1: "Here's Your Business" (Visibility × Scope)
+
+  He sees a network map of his supply chain. 38 entity types, 50 relationships, organized into four domains: Procurement, Supply, Demand, and a
+   cross-cutting Finance/Orchestration layer. He can see at a glance that 16 relationships cross domain boundaries — these are the seams where
+  visibility typically breaks down.
+
+  He clicks on "Demand" and the map filters to show orders, shipments, invoices, returns — all connected. He sees three channels feeding
+  through different logistics paths to different store types. He already knows this, but he's never seen it as a single connected picture
+  derived directly from his systems.
+
+  What this illustrates: The ontology is the twin. It's a machine-readable map of the business that makes all the connections explicit. It
+  doesn't replace the ERP — it makes the ERP queryable as a network.
+
+  Act 2: "Here's What's Happening" (Visibility × Fidelity)
+
+  He clicks into a cost-to-deliver waterfall. Same premium toothpaste, three channels:
+
+  - Club: 54% margin
+  - Grocery: 38% margin
+  - Convenience: 22% margin
+
+  He already suspected this. But now he drills in. The margin gap isn't price — Convenience actually charges more per case than Grocery. The
+  destruction happens in six places:
+
+  1. Freight: $1.60/case to a Club warehouse. $15.00/case last-mile to a Manhattan bodega. Same truck, same product, 9x cost.
+  2. Trade spend: Different discount structures by channel. Club gets volume pricing, Convenience gets shelf-space premiums.
+  3. Returns: Convenience returns at 5x the rate of Club. Most come back damaged or expired.
+  4. Payment terms: Club pays in 15 days. Convenience pays in 70. That's working capital drag that never appears in a P&L.
+  5. Yield variance: The Citrus Premix line is running 83% yield when it should be 97%. That's 15% material waste buried in COGS.
+  6. Supplier price creep: The HDPE bottle supplier is invoicing $0.72 when the PO says $0.68. $1,480 in open variances that nobody has
+  escalated.
+
+  He clicks on the freight bar and the network map highlights the three-leg shipment path from plant to store. He clicks on a specific
+  Convenience store and sees that within Convenience, Manhattan costs $15/case while Philadelphia costs $7.20. A 2x spread inside the same
+  channel.
+
+  What this illustrates: The twin connects data across domains that normally live in separate systems. Freight is in TMS, invoice variances are
+   in AP, yield is in MES, DSO is in AR. The ontology is the shared language that lets you query across all of them in a single waterfall.
+
+  Act 3: "Here's How It Flows" (Visibility × Time)
+
+  He picks the worst-margin Convenience order and watches it trace end-to-end through the business:
+
+  Procurement → A purchase order goes to the HDPE supplier at $0.68/unit. The goods receipt confirms delivery. The AP invoice comes in at
+  $0.72. A variance is flagged.
+
+  Manufacturing → A work order triggers a Citrus Premix batch. Yield comes in at 83%. More material consumed, less output produced. The system
+  knows this violates the expected 96-98% range.
+
+  Logistics → Three shipment legs: plant to regional DC ($0.80/case), regional DC to customer DC ($2.50/case), customer DC to a Manhattan
+  bodega ($15.00/case). Each leg has a state: planned → in-transit → delivered.
+
+  Finance → The AR invoice goes out. Payment terms are Net-60. The customer pays on day 70. The GL journal records balanced debits and credits
+  at every stage.
+
+  At each handoff, the system checks conservation: cases ordered = cases shipped = cases invoiced. If they don't match, it flags the
+  discrepancy. The rules for what should be true are declared in the twin, not buried in a report someone runs quarterly.
+
+  What this illustrates: A twin isn't a snapshot — it's a system that understands how things flow. Material flows forward, money flows
+  backward, and at every boundary the system can verify that the rules of the business are being respected. The state machines and flow
+  declarations are part of the ontology, not hardcoded logic.
+
+  Act 4: "Here's What You Can Do About It" (Simulation)
+
+  Now the CSCO starts asking questions:
+
+  "What if we fix the yield problem?" He adjusts Citrus Premix yield from 83% to 97%. The waterfall recalculates. COGS drops. He sees exactly
+  which SKUs are affected and by how much.
+
+  "What if we renegotiate the HDPE price back to contract?" He adjusts from $0.72 to $0.68. The system traces through: AP invoice amounts
+  change, invoice variances clear, COGS adjusts, margins improve by a specific dollar amount.
+
+  "What if we drop the Manhattan Convenience stores?" He removes two nodes from the network. The system recalculates: which orders are
+  affected, how freight allocation changes for remaining stores, what happens to Convenience margins overall. The map updates to show the
+  simplified network. Centrality scores shift — maybe a DC that was critical before is now underutilized.
+
+  "What if we consolidate from 3 DCs to 2?" The system traces the impact through the transport graph. Some store-level freight goes up, some
+  goes down. The net effect flows through to the waterfall. Conservation checks verify that all orders can still be fulfilled through the
+  remaining network.
+
+  Each scenario is validated against the declared rules: shipment dates must be after production dates, cases must be conserved across
+  handoffs, GL must balance. A slider can't produce an impossible state — the twin knows the constraints.
+
+  What this illustrates: The twin doesn't just show you data — it knows the structure of your business well enough to reason about changes. The
+   ontology declares which parameters are tunable, what the valid ranges are, and which downstream entities are impacted. Scenario analysis
+  isn't a separate model — it's a natural consequence of having a complete map.
+
+  Act 5: "And None of This Required a Migration" (The Close)
+
+  Everything the CSCO just saw runs on his existing ERP tables. The ontology is a YAML file — version-controlled, auditable, evolvable. When
+  the business changes (new channel, new supplier, new product line), the map updates. When a new question comes up that nobody anticipated,
+  the connected structure lets you traverse to the answer instead of building a new report.
+
+  The six cost drivers the CSCO just explored live in six different systems today. The twin makes them one system — not by moving data, but by
+  making the connections explicit and queryable.
+
+  ---
+  What the Demo Proves
+
+  ┌───────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │    Twin Dimension     │                                          What the CSCO Experiences                                           │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Visibility × Scope    │ His whole supply chain as a connected graph, not siloed dashboards                                           │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Visibility × Fidelity │ Drill from channel-level to store-level to individual invoice variances                                      │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Visibility × Time     │ End-to-end order trace with state machines and conservation checks                                           │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Simulation × Scope    │ Remove stores, consolidate DCs, see network-wide impact                                                      │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Simulation × Fidelity │ Adjust yield, negotiate prices, see exact dollar impact                                                      │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Simulation × Time     │ Change payment terms, see working capital and cash flow effects                                              │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Control               │ (Not in v1 — but the foundation is there: the axioms and actions that would drive automated recommendations) │
+  └───────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  The Single Takeaway
+
+  The demo doesn't sell technology. It sells a capability the CSCO doesn't have today: asking a question that crosses three systems and getting
+   a connected, validated, explorable answer in minutes instead of weeks. The C2D waterfall is the hook. The ontology is the engine. The twin
+  is what makes it a system instead of a report.
+
+✻ Churned for 56s
+
+❯ amazing. let's break it down, describe the first screen we see
+
+⏺ Screen 1: The Provocation
+
+  The screen opens clean. No dashboards, no sidebar nav, no 47 KPI tiles. One question, one visual.
+
+  Top Center — The Headline
+
+  A single line of text, large, plain:
+
+  Same toothpaste. Same factory. Why does margin range from 22% to 54%?
+
+  Below it, three cards side by side. Each one is a channel. Each one shows one number:
+
+  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+  │      CLUB        │  │     GROCERY      │  │   CONVENIENCE    │
+  │                  │  │                  │  │                  │
+  │     53.6%        │  │     38.3%        │  │     21.9%        │
+  │                  │  │                  │  │                  │
+  │  $1.60 freight   │  │  $4.20 freight   │  │  $12.50 freight  │
+  │  12% trade       │  │  25% trade       │  │  15% trade       │
+  │  15d DSO         │  │  33d DSO         │  │  70d DSO         │
+  └─────────────────┘  └─────────────────┘  └─────────────────┘
+
+  The margins are big. The three cost hints underneath each card are smaller, muted — just enough to signal that there's a story underneath,
+  not enough to overwhelm.
+
+  The color treatment is simple: Club is calm (green/healthy), Grocery is neutral, Convenience is warm (orange/amber) — not red, not alarming,
+  just "worth investigating."
+
+  Below the Cards — A Simplified Flow
+
+  A single horizontal flow showing the path the product takes. Not the full 38-entity ontology — just the story arc for this one product:
+
+  Supplier → Plant → RDC → Customer DC → Store → Invoice → Payment
+
+  Seven nodes in a line. Each node is a small circle with a label. The edges between them are annotated with what accrues at each step:
+
+  - Supplier → Plant: "materials cost + supplier pricing"
+  - Plant → RDC: "yield variance + leg 1 freight"
+  - RDC → Customer DC: "leg 2 freight"
+  - Customer DC → Store: "last-mile freight"
+  - Store → Invoice: "trade spend + returns"
+  - Invoice → Payment: "payment terms"
+
+  This is the supply chain as a value chain — and every step is a place where margin leaks. The CSCO immediately sees: the same product passes
+  through the same pipeline, but the costs at each step vary by channel. That's the whole story in one glance.
+
+  The Interaction — One Click
+
+  Below the flow, a single call to action:
+
+  Pick a channel to trace.
+
+  He clicks Convenience.
+
+  That's the transition to Screen 2 — the full C2D waterfall decomposition for Convenience, with the network map expanding to show the actual
+  entities, the actual shipment legs, the actual store-level freight variation.
+
+  What This Screen Does NOT Show
+
+  - No ontology jargon, no "classes" or "relationships"
+  - No database tables or SQL
+  - No technology logos or architecture diagrams
+  - No settings, filters, date pickers, or export buttons
+  - No second question — just the one
+
+  Why This Works as the Opening
+
+  The CSCO has been in the job for 15 years. He knows Convenience margins are worse. He's never seen it this cleanly. The three cards confirm
+  something he's felt but couldn't prove in under 60 seconds. The flow underneath tells him why — and more importantly, that this system
+  understands the sequence of cost accrual, not just the totals.
+
+  The implicit message: "We didn't build a report for you. We built a system that understands how your supply chain works. This is the first
+  question it answered. Click to see how."
+
+  ---
+  Want me to describe Screen 2 — what happens when he clicks Convenience?
+
+✻ Crunched for 36s
+
+❯ ok great. and where is the ontology file?
+
+⏺ pcg_example/ontology/pcg.yaml — the reference ontology (38 classes, 50 relationships, all VG annotations).
+
+  It imports scm_base.yaml (same directory) for reusable patterns, and references the metamodel at src/virt_graph/virt_graph.yaml.
+
+  Want me to pull up a section to show how the kinetic declarations (state machines, flow configs, scenario params) look in the actual YAML?
+
+❯ did we need to change the ontology at all for the new data?
+
+⏺ No. The ontology didn't change. The demo DB (generate_demo_db.py) was built to fit the existing ontology — same 38 tables, same columns, same
+   FK patterns, same polymorphic conventions (e.g., route_segments.origin_type uses supplier/plant/rdc/customer_dc/store,
+  formula_ingredients.ingredient_id points to both ingredients and bulk_intermediates).
+
+  The ontology already declared everything the C2D story needs:
+
+  - Freight decomposition: RouteSegmentOrigin/Destination with weight_columns: [distance_km, transit_time_hours]
+  - Trade spend: ARInvoiceLines with unit_price (vs SKU list price)
+  - Yield variance: Batch with yield_percent, state machine with [planned, in_progress, complete]
+  - Supplier price creep: SupplierOffersIngredient edge attributes + InvoiceVariance class
+  - DSO: ARInvoice → ARReceipt with date columns
+  - Returns: Return → ReturnLine → DispositionLog chain
+
+  The data was curated to make these declarations visible — but the schema and ontology were already there from v1.8/v1.9.
+
+  That's actually part of the point of the demo: the ontology was designed for general-purpose supply chain modeling, and the C2D story emerged
+   naturally from it without structural changes.
+
+
+
+❯ where is the ontology parser and how does it work
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Here's how it works:
+
+  The Architecture
+
+  OntologyAccessor at src/virt_graph/ontology.py:43 does two things at construction time:
+
+  1. Loads the metamodel rules (lines 132-184) — reads virt_graph.yaml (the VG extension vocabulary) via LinkML's SchemaView to discover what
+  annotations are required and what enum values are valid. This is cached once per process. The metamodel is the single source of truth for
+  validation rules — the code doesn't hardcode what's required, it reads it from the YAML.
+
+  2. Parses the domain ontology (lines 98-130):
+  - yaml.safe_load() — loads the raw YAML for direct annotation access
+  - SchemaView(path, merge_imports=True) — loads through LinkML's resolver, which follows imports: scm_base and merges inherited slots from
+  abstract classes and mixins
+  - _index_classes() (line 200) — partitions everything into TBox (entities that instantiate vg:SQLMappedClass) and RBox (relationships that
+  instantiate vg:SQLMappedRelationship)
+
+  The Key Insight
+
+  The partition is driven by a single field in the YAML — instantiates:
+
+  # In pcg.yaml — this is an entity (TBox)
+  Supplier:
+    instantiates: [vg:SQLMappedClass]
+    annotations:
+      vg:table: suppliers
+      vg:primary_key: id
+      vg:context: {...}
+      vg:state_machine: {...}
+
+  # This is a relationship (RBox)
+  SupplierOffersIngredient:
+    instantiates: [vg:SQLMappedRelationship]
+    annotations:
+      vg:edge_table: supplier_ingredients
+      vg:domain_key: supplier_id
+      vg:range_key: ingredient_id
+      vg:operation_types: [direct_join]
+      vg:flow_config: {...}
+
+  Everything downstream — get_class_table(), get_operation_types(), get_role_flow_config(), get_class_state_machine() — is just reading
+  annotations from the indexed TBox/RBox dictionaries. The _get_annotation() helper (line 233) handles the vg: prefix stripping and the
+  _parse_json_or_value() helper (line 250) handles annotations that are JSON strings vs raw values.
+
+  What This Means for the UI
+
+  The ontology accessor is already a complete read API. A React frontend with a thin Python API layer can call:
+
+  - get_all_domains() → renders the 4-domain network map
+  - get_class_state_machine("Order") → renders state machine diagrams
+  - get_role_flow_config("BatchConsumesIngredient") → renders flow arrows with types
+  - get_conservation_groups() → groups entities into traceable business processes
+  - get_class_scenario_params("Plant") → generates slider controls for what-if
+
+  The ontology is the API contract for the UI. Every panel, every interaction, every drill-down is backed by a method that already exists on
+  this class.
+
+    Why an Ontology Makes This Possible
+
+  The C2D waterfall is a business question, not a database query. No single table answers it. The answer lives in the relationships between 15+
+   tables across 3 domains. Without an ontology, you need a human who holds the mental model of the schema in their head and hand-writes a
+  200-line SQL join. With an ontology, the reasoning system can discover the answer path itself.
+
+  The Problem: Latent Structure
+
+  The PCG database has 41 tables. A raw schema dump gives you column names and types — shipments.freight_cost, ar_invoice_lines.line_amount,
+  skus.cost_per_case. But nothing in the DDL tells you:
+
+  - That ar_invoice_lines.line_amount is net revenue (post-deduction), not gross
+  - That order_lines.unit_price is always zero and is a trap
+  - That freight has 3 legs but only the last one links to an AR invoice
+  - That the other 2 legs must be allocated proportionally to channels
+  - That shipments.origin_id is polymorphic — it could point to a plant, a DC, or a retail location, and the resolution rule lives in
+  origin_type
+  - That trade deductions decompose the gap between list price and invoiced price, and the sum must reconcile exactly
+
+  All of this is latent knowledge — it exists in the heads of the people who built the system. The ontology makes it explicit and
+  machine-readable.
+
+  What the Ontology Actually Provides
+
+  1. The navigation graph — "what connects to what and how"
+
+  The RBox (57 relationships) is a map. Each relationship declares its edge table, domain/range keys, and domain/range classes. An agentic
+  system reading ARInvoiceForShipment knows: start at ar_invoices, join on shipment_id to reach shipments. It doesn't need to guess which _id
+  column goes where — the ontology says so explicitly.
+
+  This is the difference between a schema (which says shipment_id INTEGER) and an ontology (which says ARInvoice → Shipment via
+  ar_invoices.shipment_id, functional, direct_join).
+
+  2. The semantic warnings — "what NOT to do"
+
+  The vg:context blocks carry hard-won domain knowledge. The SKU context says:
+
+  "WARNING: order_lines.unit_price is ALWAYS ZERO — use ar_invoice_lines for actual revenue."
+
+  The ARInvoice context says:
+
+  "total_amount reflects net revenue post-deductions"
+
+  The freight allocation methodology says:
+
+  "Only customer_dc_to_store shipments have AR invoice links; upstream legs must be allocated proportionally"
+
+  Without these, the reasoning system would naively join order_lines.unit_price, get zeros, and produce a wrong answer confidently. The
+  ontology encodes the traps and gotchas that a new analyst would learn only after weeks of painful debugging.
+
+  3. The analytical methodology — "how to compose the answer"
+
+  The vg:analytical_methodology annotation is a recipe at the schema level. It doesn't just name the tables — it declares the formula, the
+  correct source columns, and the invariants that must hold. When the system reads:
+
+  "invariant": "For every AR invoice: SUM(trade_deductions.deduction_amount)
+                = gross_revenue - net_revenue exactly"
+
+  ...it now has a self-check. It can compute the waterfall AND verify it reconciles. This is the ontology telling the system not just what to
+  compute but how to know if the answer is right.
+
+  4. Polymorphic resolution — "the join that isn't a join"
+
+  The 3-leg freight problem is the hardest part of the waterfall. ShipmentFromOrigin and ShipmentToDestination are polymorphic relationships —
+  origin_id can point to a Plant, DC, or RetailLocation. The ontology declares:
+
+  vg:range_class: '["Plant", "DistributionCenter", "RetailLocation"]'
+
+  with context explaining that origin_type values are supplier/plant/rdc/customer_dc/store. Without this, the system would try to join
+  origin_id to a single table and get garbage. The ontology tells it to branch on origin_type and resolve to 3 different tables — and the
+  context tells it the actual discriminator values in the data (which differ from what you'd naively guess).
+
+  5. Cross-domain bridges — "how the waterfall stitches together"
+
+  The C2D waterfall crosses all 3 business domains:
+  - Supply (product master): SKU.price_per_case, SKU.cost_per_case
+  - Demand (customer-facing): AR invoices, shipments, returns, trade deductions
+  - Procurement (upstream): inbound freight legs originating from plants
+
+  The ontology flags 18 relationships as vg:cross_domain: true. These are the bridge joints — ARInvoiceLineForSKU connects demand-side revenue
+  to supply-side product, ShipmentFromOrigin connects demand-side logistics to supply-side plants. The vg:inter_domain_flows annotation maps
+  the material and financial flows that cross these boundaries.
+
+  A system reading the ontology can discover that a C2D waterfall requires traversing domain boundaries at specific relationship crossings — it
+   doesn't need to be told the full join path in advance.
+
+  6. Operation type dispatch — "SQL or handler?"
+
+  Most of the waterfall is direct_join — standard SQL. But the ontology also declares that some relationships require handlers
+  (recursive_traversal for SKU alias chains, shortest_path for transport network). The system reads vg:operation_types and knows whether to
+  generate SQL or call a Python handler. For the C2D waterfall specifically, everything is direct_join, so it's pure SQL — but the system knows
+   this because the ontology told it so, not because it guessed.
+
+  The Punchline
+
+  Without the ontology, you need a domain expert to write:
+
+  -- 200 lines of carefully ordered JOINs, CASE statements for polymorphic
+  -- resolution, proportional freight allocation CTEs, trade deduction
+  -- aggregation, return cost netting... written by someone who knows that
+  -- order_lines.unit_price is zero, that freight has 3 legs, that origin_id
+  -- is polymorphic, and that ar_invoice_lines.line_amount is already net.
+
+  With the ontology, a general-purpose reasoning system can:
+  1. Read the analytical_methodology — learn the formula and invariants
+  2. Read the TBox — discover which tables hold each waterfall component
+  3. Read the RBox — find the join paths between them
+  4. Read the vg:context blocks — avoid the traps
+  5. Resolve polymorphism — handle the multi-leg freight correctly
+  6. Self-verify — check that trade deductions reconcile, GL balances, totals match
+
+  The ontology is the transfer medium for domain expertise. It takes what lives in one person's head and makes it available to any reasoning
+  system that can read YAML. That's the raison d'etre: not just "what tables exist" but "how this business actually works, and how to not get
+  it wrong."

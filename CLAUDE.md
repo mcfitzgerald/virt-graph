@@ -85,7 +85,7 @@ pcg_example/
 
 ### Key Concepts
 
-**Three-layer validation**: Ontologies are validated by LinkML (structure), VG metamodel (`virt_graph.yaml`) for required annotations, and domain coverage (all elements have valid `vg:domain`).
+**Three-layer validation**: Ontologies are validated by LinkML (structure), VG metamodel (`virt_graph.yaml`) for required annotations, and domain coverage (all elements have valid `vg:domain`). Current: 41 classes, 57 relationships, 98 elements total.
 
 **Operation types**: Relationships in the ontology declare which operations they support:
 - `direct_join` → Standard SQL
@@ -102,7 +102,7 @@ traverse(conn, nodes_table="skus", edges_table="skus",
 
 ### Reference Ontology
 
-`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (38 classes, 50 relationships).
+`pcg_example/ontology/pcg.yaml` — PCG ERP supply chain ontology (41 classes, 57 relationships).
 
 **Graph operations declared in the ontology:**
 
@@ -111,7 +111,7 @@ traverse(conn, nodes_table="skus", edges_table="skus",
 | Transport network | `RouteSegmentOrigin`, `RouteSegmentDestination` | `shortest_path`, `centrality`, `connected_components`, `resilience_analysis` | `shortest_path()`, `centrality()`, etc. |
 | SKU alias chain | `SKUSupersedes` | `recursive_traversal` | `traverse()` |
 | BOM explosion | `FormulaHasIngredients` | `path_aggregation`, `hierarchical_aggregation` | `path_aggregate()` |
-| All other FKs | 47 relationships | `direct_join` | SQL joins |
+| All other FKs | 54 relationships | `direct_join` | SQL joins |
 
 **Polymorphic relationships** (5 with `type_discriminator`): `BatchProducesProduct`, `FormulaForProduct`, `RouteSegmentOrigin`, `RouteSegmentDestination`, `InventoryAtLocation`. Two more (`ShipmentFromOrigin`, `ShipmentToDestination`) are polymorphic without a clean discriminator column — use `vg:context` blocks instead.
 
@@ -153,7 +153,7 @@ The PCG schema DDL is at `pcg_example/pcg_schema.sql` for reference.
 | Edge weights | `vg:weight_columns` | RouteSegmentOrigin/Destination (distance_km, transit_time_hours) |
 | Edge properties | `vg:edge_attributes` | SupplierOffersIngredient, FormulaHasIngredients, BatchConsumesIngredient |
 | Edge filtering | `vg:sql_filter` | ProductionLineAtPlant (`is_active = true`) |
-| AI context | `vg:context` | All 38 classes + all 50 relationships |
+| AI context | `vg:context` | All 41 classes + all 57 relationships |
 | State machines | `vg:state_machine` | PurchaseOrder, Order, Batch, Shipment, GoodsReceipt, Return |
 | Flow config | `vg:flow_config` | 10 relationships (material/financial/information flows) |
 | Axioms | `vg:axioms` | Mass balance, temporal ordering, GL balance constraints |
@@ -166,13 +166,13 @@ See `docs/vg-extensions.md` for full reference.
 
 ### Domain Model (SCOR-DS)
 
-All 88 ontology elements are organized into a 3+1 domain model:
+All 98 ontology elements are organized into a 3+1 domain model:
 - **Procurement** (10 classes, 14 rels): sourcing, purchasing, inbound, accounts_payable
 - **Supply** (11 classes, 13 rels): manufacturing, product, network
-- **Demand** (14 classes, 21 rels): ordering, fulfillment, planning, returns, accounts_receivable
+- **Demand** (17 classes, 28 rels): ordering, fulfillment, planning, returns, accounts_receivable, trade_management
 - **Orchestrate** (3 classes, 2 rels): finance, GL — cross-cutting interpretation layer
 
-16 cross-domain relationships connect entities across domain boundaries.
+18 cross-domain relationships connect entities across domain boundaries.
 
 ## Working with Ontologies
 

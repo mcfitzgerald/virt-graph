@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.11.0] - 2026-03-11
+
+### Added
+
+- **Trade management entities** — 3 new tables making trade spend a first-class entity in the C2D waterfall
+  - `trade_programs` (10 rows): channel-level trade agreements decomposing discount multipliers by type (scan_allowance, volume_rebate, off_invoice, promo_fund, slotting)
+  - `promo_events` (8 rows): time-bound promotional activities tied to promo_fund programs with lift estimates and incremental spend
+  - `trade_deductions` (~530 rows): per-invoice-line deduction records with exact gross-to-net reconciliation
+- **Ontology classes** (pcg.yaml v4.2): `TradeProgram`, `PromoEvent` (with state machine), `TradeDeduction` in demand/trade_management subdomain
+- **7 new relationships**: `TradeProgramForChannel`, `PromoEventFromProgram`, `PromoEventForSKU` (cross-domain), `DeductionFromProgram`, `DeductionFromPromoEvent`, `DeductionOnInvoice`, `DeductionForSKU` (cross-domain)
+- **GL trade spend entries**: DR Trade Spend (5200) / CR Revenue (4000) — contra-revenue treatment for gross-to-net gap
+- **Analytical methodology**: `trade_decomposition` section in ontology with gross-to-net waterfall formula, promo ROI, and invariant documentation
+- **8 new integration tests** (`TestTradeManagement`): program decomposition, rate summation, per-invoice reconciliation, promo event linkage, GL posting verification
+- **6 new FK integrity checks**: trade_programs→channels, promo_events→trade_programs, promo_events→skus, trade_deductions→trade_programs, trade_deductions→ar_invoices, trade_deductions→skus
+
+### Changed
+
+- Updated ontology: 38→41 classes, 50→57 relationships, 88→98 elements, 16→18 cross-domain relationships
+- Updated demo DB generator: ~1850→~2400 rows, 38→41 tables
+- Updated ARInvoice context: total_amount is NET (after trade deductions)
+- Updated Channel context: reference trade_programs for trade agreements
+- Test count: 56→72 integration tests (all passing)
+
+## [1.10.0] - 2026-03-10
+
+### Added
+
+- **Cost-to-Serve demo database generator** (`scripts/generate_demo_db.py`) — curated ~2000-row DuckDB populating all 38 PCG tables with story-rich data
+  - 3D CTS cube: Channel (Club/Grocery/Convenience) x Category (OC/HC/PW) x Location (per-store)
+  - 6 cost drivers: freight/drop-size, trade spend, returns, payment terms (DSO), yield variance, supplier price creep
+  - Hero SKU margin: Club 54% → Grocery 38% → Convenience 22%
+  - Store-level freight spread: NYC $15/case vs Philadelphia $7.20/case last mile
+  - Citrus premix yield trap: 82-85% vs normal 96-98%
+  - AmeriPack HDPE bottle price creep: PO $0.68 → AP invoice $0.72
+  - 6 verification queries printed at generation time
+- **Integration tests** (`pcg_example/tests/test_demo_db.py`) — 56 tests: row counts, CTS margins, story nuggets, FK integrity, GL balance
+- **DuckDB optional dependency** (`demo` extra group)
+- Output: `pcg_example/data/demo.duckdb` (gitignored)
+
+## [1.9.1] - 2026-03-09
+
+### Added
+
+- **CSV ontology export** (`scripts/export_ontology_csv.py`) — exports ontology as 4 Google Sheet-friendly CSVs for organizational education
+  - `tbox_entities.csv` — 38 entity classes with domain, state machines, axioms, business logic
+  - `rbox_relationships.csv` — 50 relationships with operation types, polymorphism, OWL properties, flows
+  - `abox_attributes.csv` — 166 attributes with data types, inheritance source tracking
+  - `orchestration_flows.csv` — 64 rows covering state machines, flow configs, cross-domain bridges, axioms
+- Output directory: `pcg_example/exports/`
+
 ## [1.9.0] - 2026-03-09
 
 ### Changed
